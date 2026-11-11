@@ -23,6 +23,21 @@ Remaining implementation: A invitation/bootstrap/OAuth/recovery/membership, B up
 
 External release prerequisites: repository remote/Actions; confirmed rootless runtime; app-specific Bitwarden project and machine account mapping; SMTP/Google OAuth and provider authorization; note.yokoma.de routing. No secret values requested in chat.
 
+## Wave 3 · preparation
+
+Resume baseline: `1fe389732d59acaaddcb1463b1ab726fd30805a9` (clean). Contract preparation commit follows this baseline. New Pi agents only; leave previous worker worktrees/sessions untouched. Start at most two independent workers initially, in new sibling worktrees based on the contract commit.
+
+| Task | Owner / worktree | Scope | Status / dependency |
+|---|---|---|---|
+| A3 | Pi data / notebook-data-v3 | ORM + migration 0003 for documents, versions, chunks, profiles, fenced jobs; RLS/integrity tests | prepared |
+| C3 | Pi providers / notebook-provider-v3 | Typed generation/streaming, embeddings, owned execution boundary, cancellation and egress tests | prepared |
+| B3 | Pi RAG / assigned after A3 | Upload/storage, isolated parsing, durable worker and scoped text retrieval/chat | todo; A3, C3 |
+| D3 | Pi frontend / assigned after backend seam | Working upload/status/source/chat flow, no development notices | todo; B3 |
+| E3 | Pi deployment / assigned separately | Actual Supabase/storage and isolated parser runtime, local integration evidence | todo; parser requirements |
+| F3 | Independent Pi review | Cross-workspace/credential attacks, deleted/versioned sources, leases, streaming cancellation | todo; integrated candidate |
+
+Main owns contracts, app registration, root dependencies/lock, integration and orchestration records. A3 exclusively owns all ORM/migrations; C3 exclusively providers/connections plus provider tests. Workers may write their named handoff only. No production work, live credentials or nested delegation. A3 reserves isolated PostgreSQL port 55440 and a unique temporary data directory; existing 5432 and retained 55439 are untouched. C3 uses protocol fixtures and no database server. Tests using fixtures are not live-provider proof. Worker receipt IDs/branches are recorded after launch.
+
 ## Wave 2 · integrated
 
 Baseline `a34c43b`. A2 owns invitations/bootstrap/membership and all schema/migrations in notebook-auth-data. C owns provider adapters + personal connection lifecycle in notebook-providers (agent/providers), requests schema from A2. D2 owns frontend flow integration and removal of development/rollout notices in notebook-frontend. Main owns contracts/root configuration, integration and checks. No production changes authorized to workers.
