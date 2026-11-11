@@ -11,3 +11,7 @@ Initial baseline prepared from requested project instructions. Existing diagram 
 - Browser inspected desktop/mobile login and actual container frontend. No console errors observed. No authenticated browser E2E claimed without Supabase/configured accounts.
 - CI now requires npm tests, an ephemeral PostgreSQL service, migration and RLS tests. No GitHub run, Trivy scan, live Bitwarden request or production rollout occurred.
 - Local Compose project notebook-foundation-verify remains available on 127.0.0.1:18080. No existing kube1 workload modified.
+
+Independent review follow-up `18b82ec` closes all three findings on `7752e2f`; 15 auth/security tests and Compose validation passed.
+
+Final local runtime image IDs: API `sha256:8bf059b0f54cec71e52d977993b72eb42bdc9da0002463f61a0430db34b4357f`; frontend `sha256:a24838066f626869eb662fc6109985565f34a1905ebf4642bc07d8785dbe6dff`. These are local image IDs, not published registry digests.
