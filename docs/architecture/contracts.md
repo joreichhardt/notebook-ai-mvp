@@ -11,3 +11,7 @@ Provider contract: async test_connection, models, stream(messages), embed(texts)
 Future document upload: POST /notebooks/{id}/documents multipart, 25 MiB maximum; PDF/TXT/MD. Job: workspace_id, notebook_id, document_version_id, actor_user_id, connection_id, idempotency_key; never credentials. Recheck permission on claim and before publish.
 
 Chat SSE: delta {text}; citation {id,document_id,version_id,chunk_id,page,quote}; done {message_id}; error {code,message}. Disconnection cancels upstream. Validate all citations against selected authorized sources. Index profile: provider, model, revision, dimensions; no mixing profiles. Graph evidence uses same scoped chunk IDs.
+
+## Wave 2 discovery
+
+GET /capabilities exposes booleans only: auth.password_login, auth.registration, auth.google, auth.recovery, invitations, members, documents, chat. Unsupported methods are hidden; no roadmap/status notices in product UI. Provider catalog is authenticated GET /providers; an unconfigured secret store yields no connectable providers. Endpoint configuration is administrative JSON, never arbitrary URLs accepted from browser requests. Personal secret writes use Bitwarden SDK 2.1.0 while host bootstrap provisioning remains bws.
