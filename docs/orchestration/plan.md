@@ -23,6 +23,10 @@ Remaining implementation: A invitation/bootstrap/OAuth/recovery/membership, B up
 
 External release prerequisites: repository remote/Actions; confirmed rootless runtime; app-specific Bitwarden project and machine account mapping; SMTP/Google OAuth and provider authorization; note.yokoma.de routing. No secret values requested in chat.
 
-## Wave 2 · active
+## Wave 2 · integrated
 
 Baseline `a34c43b`. A2 owns invitations/bootstrap/membership and all schema/migrations in notebook-auth-data. C owns provider adapters + personal connection lifecycle in notebook-providers (agent/providers), requests schema from A2. D2 owns frontend flow integration and removal of development/rollout notices in notebook-frontend. Main owns contracts/root configuration, integration and checks. No production changes authorized to workers.
+
+A2 `8c609c1` + bootstrap tests `2914ad1`; C `9d1d9a0` + delete-response correction `b752ad7`; D2 `20ed98c` + discovery-retry correction `3c5eb91`. Candidate `e228dbc`; 50 backend tests (real PostgreSQL), 17 frontend tests, 9 provisioning tests pass. F review `5a6eead`, fix verification pending.
+
+Implemented: existing verified-account invite acceptance, admin bootstrap, owner member roles/last-owner guard; personal API connections via Bitwarden, model discovery/selection, retryable cleanup. UI contains no development rollout notices. Remaining: new-account/OAuth registration, invitation revoke/list, audit/rate limits, uploads/RAG/graph, generation/streaming/embeddings, default personal model, credential replacement, live Supabase/Bitwarden and production release gates.
