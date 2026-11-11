@@ -4,7 +4,7 @@ x-runtime: &runtime
   read_only: true
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
-  tmpfs: [/tmp:rw,noexec,nosuid,size=32m]
+  tmpfs: ["/tmp:rw,noexec,nosuid,size=32m"]
   pids_limit: 128
   mem_limit: 512m
   cpus: 1.0

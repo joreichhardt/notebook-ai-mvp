@@ -12,6 +12,20 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: notebook_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      NOTEBOOK_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/notebook_test
+      NOTEBOOK_MIGRATION_DATABASE_URL: postgresql+psycopg://postgres@127.0.0.1:5432/notebook_test
+      PYTHONPATH: backend
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
@@ -21,10 +35,11 @@ jobs:
         with:
           node-version: '22.22.2'
       - run: uv sync --frozen
+      - run: uv run alembic -c backend/migrations/alembic.ini upgrade head
       - run: uv run pytest
       - run: uv run ruff check backend
       - run: python3 -m unittest discover -s deploy/tests -v
-      - run: npm ci --ignore-scripts && npm run build
+      - run: npm ci --ignore-scripts && npm test && npm run build
         working-directory: frontend
       - run: docker compose config --quiet
       - run: docker build -f docker/api.Dockerfile -t notebook-api:ci .
