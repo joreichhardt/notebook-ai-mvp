@@ -154,4 +154,6 @@ async def disconnect(connection_id: UUID, request: Request, user: User, db: DB):
         return JSONResponse(
             status_code=202, content={"status": "disconnected", "cleanup_pending": True}
         )
+    db.delete(row)
+    db.flush()
     return Response(status_code=204)
