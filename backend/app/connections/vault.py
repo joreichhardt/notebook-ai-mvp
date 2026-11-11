@@ -106,7 +106,14 @@ class BitwardenStore:
         try:
             self._get(client, secret_id, owner, connection_id)
             result = client.secrets().delete([str(secret_id)])
-            if not result.success:
+            if not result.success or result.data is None:
+                raise ValueError()
+            results = result.data.data
+            if (
+                len(results) != 1
+                or str(results[0].id) != str(secret_id)
+                or results[0].error is not None
+            ):
                 raise ValueError()
         except Exception:  # noqa: BLE001 - SDK errors can contain credentials; redact boundary
             fail(

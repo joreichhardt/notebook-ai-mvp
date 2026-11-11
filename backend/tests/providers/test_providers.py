@@ -102,3 +102,44 @@ def test_native_anthropic_models_protocol():
     assert asyncio.run(Adapter(p, "PRIVATE", httpx.MockTransport(handler)).models()) == [
         {"id": "fixture-model"}
     ]
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    ["envelope_error", "missing", "empty", "different", "partial", "duplicate", "success"],
+)
+def test_delete_requires_exact_confirmed_sdk_item(outcome):
+    from bitwarden_sdk.schemas import (
+        ResponseForSecretsDeleteResponse,
+        SecretDeleteResponse,
+        SecretsDeleteResponse,
+    )
+
+    secret, owner, connection = uuid4(), uuid4(), uuid4()
+    item = SecretDeleteResponse(secret)
+    rows = [item]
+    if outcome == "empty":
+        rows = []
+    elif outcome == "different":
+        rows = [SecretDeleteResponse(uuid4())]
+    elif outcome == "partial":
+        rows = [SecretDeleteResponse(secret, error="PRIVATE_UPSTREAM_DETAIL")]
+    elif outcome == "duplicate":
+        rows = [item, item]
+    result = ResponseForSecretsDeleteResponse(
+        success=outcome != "envelope_error",
+        data=None if outcome == "missing" else SecretsDeleteResponse(rows),
+    )
+    client = SimpleNamespace(secrets=lambda: SimpleNamespace(delete=lambda ids: result))
+    store = BitwardenStore(ProviderSettings())
+    with (
+        patch.object(store, "client", return_value=client),
+        patch.object(store, "_get", return_value="KEY"),
+    ):
+        if outcome == "success":
+            assert store.delete(secret, owner, connection) is None
+        else:
+            with pytest.raises(HTTPException) as error:
+                store.delete(secret, owner, connection)
+            assert error.value.status_code == 503
+            assert "PRIVATE_UPSTREAM_DETAIL" not in str(error.value.detail)
