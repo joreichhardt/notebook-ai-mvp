@@ -8,6 +8,7 @@ FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf22
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY backend/app /app/app
+COPY backend/migrations /app/backend/migrations
 ENV PATH="/app/.venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 USER 10001:10001
 EXPOSE 8000

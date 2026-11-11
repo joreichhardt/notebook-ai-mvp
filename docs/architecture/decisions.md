@@ -17,3 +17,7 @@ The first integrated milestone is deliberately limited to session authentication
 ## Product copy · 2026-11-11
 
 The user explicitly rejects development-status and future-enablement notices in the application. Hide unavailable controls; use action-specific configuration guidance only when it helps the user complete that action. Keep implementation limitations in engineering handoffs and release notes, not promotional UI cards. This does not authorize fabricated functionality or successful operations.
+
+## Personal credential lifecycle
+
+Host provisioning stays on bws. Personal credentials created/replaced through the application use the official Bitwarden SDK in-process: CLI create exposes values as positional arguments. A separate least-privilege machine account and application project are required. Provider connection rows contain secret references only; endpoint choice remains administrator-controlled.
