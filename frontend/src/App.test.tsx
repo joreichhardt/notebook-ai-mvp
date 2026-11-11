@@ -271,3 +271,42 @@ it("keeps disconnected metadata visible when credential cleanup is pending", asy
     screen.getByRole("button", { name: "Verbindung testen" }),
   ).toBeDisabled();
 });
+
+it("retries capability discovery after transient failure and reveals login", async () => {
+  vi.mocked(api.session).mockResolvedValue({ user: null });
+  vi.mocked(api.authConfig)
+    .mockRejectedValueOnce(new Error("private upstream diagnostic"))
+    .mockResolvedValue({
+      password_login: true,
+      invitations: true,
+      members: true,
+    });
+  render(<App />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Die Verbindung konnte nicht geprüft werden. Bitte versuche es erneut.",
+  );
+  expect(
+    screen.queryByText("private upstream diagnostic"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Bitte wende dich für deinen Zugang an den Betreiber."),
+  ).not.toBeInTheDocument();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Verbindung erneut prüfen" }),
+  );
+  expect(await screen.findByLabelText("Passwort")).toBeVisible();
+  expect(api.authConfig).toHaveBeenCalledTimes(2);
+  expect(api.session).toHaveBeenCalledTimes(2);
+});
+it("shows a loading state while capabilities are pending", async () => {
+  vi.mocked(api.session).mockResolvedValue({ user: null });
+  vi.mocked(api.authConfig).mockReturnValue(new Promise(() => {}));
+  render(<App />);
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "Zugang wird geprüft",
+  );
+  expect(
+    screen.queryByText("Bitte wende dich für deinen Zugang an den Betreiber."),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Passwort")).not.toBeInTheDocument();
+});
