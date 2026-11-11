@@ -1,0 +1,64 @@
+name: CI foundation
+on:
+  pull_request:
+  push:
+    branches: [main, integration/notebooklm]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          version: '0.9.9'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.22.2'
+      - run: uv sync --frozen
+      - run: uv run pytest
+      - run: uv run ruff check backend
+      - run: python3 -m unittest discover -s deploy/tests -v
+      - run: npm ci --ignore-scripts && npm run build
+        working-directory: frontend
+      - run: docker compose config --quiet
+      - run: docker build -f docker/api.Dockerfile -t notebook-api:ci .
+      - run: docker build -f docker/frontend.Dockerfile -t notebook-frontend:ci .
+      - name: Scan repository vulnerabilities and configuration
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          version: v0.69.3
+          cache: 'false'
+          scan-type: fs
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+      - name: Block any detected secret
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          version: v0.69.3
+          cache: 'false'
+          scan-type: fs
+          scanners: secret
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          exit-code: '1'
+      - name: Scan final images and create SBOMs
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          date -u +%FT%TZ > reports/scanned-at.txt
+          for image in api frontend; do
+            docker inspect --format '{{.Id}}' "notebook-$image:ci" > "reports/$image-image-id.txt"
+            trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 "notebook-$image:ci"
+            trivy image --format cyclonedx --output "reports/$image.cdx.json" "notebook-$image:ci"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-sbom-${{ github.sha }}
+          path: reports/
+          retention-days: 14
