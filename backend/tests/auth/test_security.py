@@ -106,3 +106,54 @@ def test_missing_configuration_fails_closed():
     with pytest.raises(HTTPException) as exc:
         asyncio.run(SupabaseAuth(Settings()).identity("token"))
     assert exc.value.status_code == 503
+
+
+@pytest.mark.parametrize("status", [401, 403, 503])
+def test_session_invalid_vs_unavailable(monkeypatch, status):
+    async def rejected(self, token):
+        raise HTTPException(status, detail={"code": "test_error", "message": "Unavailable"})
+
+    monkeypatch.setattr(SupabaseAuth, "identity", rejected)
+    app = FastAPI()
+    app.include_router(router)
+    response = TestClient(app).get(
+        "/api/auth/session",
+        headers={
+            "cookie": "__Host-notebook_session=stale; __Host-notebook_csrf=csrf",
+        },
+    )
+    if status == 401:
+        assert response.status_code == 200
+        assert response.json() == {"user": None}
+        assert len(response.headers.get_list("set-cookie")) == 2
+        assert all("Max-Age=0" in c for c in response.headers.get_list("set-cookie"))
+    else:
+        assert response.status_code == status
+        assert not response.headers.get_list("set-cookie")
+
+
+@pytest.mark.parametrize("upstream_status", [None, 401, 503])
+def test_logout_always_clears_valid_local_session(monkeypatch, upstream_status):
+    async def upstream(self, *args, **kwargs):
+        if upstream_status:
+            raise HTTPException(upstream_status, detail={"code": "upstream", "message": "No"})
+        return {}
+
+    monkeypatch.setattr(SupabaseAuth, "request", upstream)
+    app = FastAPI()
+    app.include_router(router)
+    response = TestClient(app).post(
+        "/api/auth/logout",
+        headers={
+            "origin": "https://note.yokoma.de",
+            "x-csrf-token": "csrf",
+            "cookie": "__Host-notebook_session=stale; __Host-notebook_csrf=csrf",
+        },
+    )
+    assert response.status_code == (200 if upstream_status == 503 else 204)
+    cookies = response.headers.get_list("set-cookie")
+    assert len(cookies) == 2 and all("Max-Age=0" in c for c in cookies)
+    if upstream_status == 503:
+        assert response.json()["local_logout"] is True
+        assert response.json()["remote_revoked"] is False
+        assert response.json()["detail"]["code"] == "revocation_unconfirmed"
