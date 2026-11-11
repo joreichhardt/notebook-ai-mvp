@@ -2,6 +2,11 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.auth.router import router as auth_router
+from app.capabilities import router as capabilities_router
+from app.notebooks.router import router as notebooks_router
+from app.workspaces.router import router as workspaces_router
+
 app = FastAPI(title="Notebook", version="0.1.0", docs_url=None, redoc_url=None,
               openapi_url=None)
 
@@ -27,11 +32,8 @@ async def response_headers(request: Request, call_next):
 def live() -> dict[str, str]:
     return {"status": "ok"}
 
-
-from app.auth.router import router as auth_router
-from app.notebooks.router import router as notebooks_router
-from app.workspaces.router import router as workspaces_router
-
 app.include_router(auth_router)
 app.include_router(workspaces_router)
 app.include_router(notebooks_router)
+
+app.include_router(capabilities_router)
