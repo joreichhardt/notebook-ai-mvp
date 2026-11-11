@@ -2,7 +2,8 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -141,9 +142,16 @@ async def select_model(
 async def disconnect(connection_id: UUID, request: Request, user: User, db: DB):
     check_csrf(request, get_settings().public_origin)
     row = owned(db, user, connection_id)
-    # Mark inactive durably before remote deletion, so failure cannot leave it usable.
-    secret_id, row_id = row.secret_id, row.id
+    # Keep metadata inactive even if remote cleanup must be retried. The request's
+    # transaction commits normally, preserving its RLS identity until completion.
     row.status = "disconnected"
-    db.commit()
-    await run_in_threadpool(BitwardenStore(settings()).delete, secret_id, user.id, row_id)
+    db.flush()
+    try:
+        await run_in_threadpool(BitwardenStore(settings()).delete, row.secret_id, user.id, row.id)
+    except HTTPException as error:
+        if error.status_code != 503:
+            raise
+        return JSONResponse(
+            status_code=202, content={"status": "disconnected", "cleanup_pending": True}
+        )
     return Response(status_code=204)
