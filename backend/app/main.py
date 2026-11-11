@@ -26,3 +26,12 @@ async def response_headers(request: Request, call_next):
 @app.get("/api/health/live")
 def live() -> dict[str, str]:
     return {"status": "ok"}
+
+
+from app.auth.router import router as auth_router
+from app.notebooks.router import router as notebooks_router
+from app.workspaces.router import router as workspaces_router
+
+app.include_router(auth_router)
+app.include_router(workspaces_router)
+app.include_router(notebooks_router)
