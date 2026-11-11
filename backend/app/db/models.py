@@ -141,11 +141,13 @@ class DocumentVersion(Base):
         CheckConstraint("version > 0"),
         CheckConstraint("media_type IN ('text/plain','text/markdown','application/pdf')"),
         CheckConstraint("byte_count BETWEEN 1 AND 26214400"),
-        CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'"),
+        # SQLite-only unit fixtures are not schema/security evidence. Production
+        # PostgreSQL always receives these checks (and uses migration DDL).
+        CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'").ddl_if(dialect="postgresql"),
         CheckConstraint(
             "storage_key = workspace_id::text || '/' || notebook_id::text || '/' || "
             "document_id::text || '/' || id::text || '/original'"
-        ),
+        ).ddl_if(dialect="postgresql"),
     )
 
 
@@ -202,7 +204,7 @@ class Chunk(Base):
         ),
         CheckConstraint("ordinal >= 0"),
         CheckConstraint("length(text) BETWEEN 1 AND 2000000"),
-        CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'"),
+        CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'").ddl_if(dialect="postgresql"),
         CheckConstraint("page BETWEEN 1 AND 500"),
         CheckConstraint("start_offset >= 0"),
         CheckConstraint("end_offset > start_offset AND end_offset <= 2000000"),
@@ -245,12 +247,13 @@ class IngestionJob(Base):
         ForeignKeyConstraint(
             ["index_profile_id", "notebook_id", "workspace_id"],
             ["index_profiles.id", "index_profiles.notebook_id", "index_profiles.workspace_id"],
-            deferrable=True, initially="DEFERRED",
+            deferrable=True,
+            initially="DEFERRED",
         ),
         CheckConstraint("length(idempotency_key) BETWEEN 1 AND 128"),
         CheckConstraint("status IN ('queued','running','succeeded','failed','cancelled')"),
         CheckConstraint("attempts BETWEEN 0 AND 5"),
-        CheckConstraint("error_code ~ '^[a-z][a-z0-9_]{0,63}$'"),
+        CheckConstraint("error_code ~ '^[a-z][a-z0-9_]{0,63}$'").ddl_if(dialect="postgresql"),
         CheckConstraint("(connection_id IS NULL) = (index_profile_id IS NULL)"),
         CheckConstraint(
             "(status = 'running' AND lease_token IS NOT NULL AND "

@@ -1,4 +1,5 @@
--- No SECURITY DEFINER, runtime role changes, Storage schema or vector claims.
+-- No generic privileged RPC, runtime role changes, Storage schema or vector claims.
+-- The sole SECURITY DEFINER operation is narrowly scoped document tombstoning.
 CREATE TABLE public.documents (
  id uuid PRIMARY KEY,
  workspace_id uuid NOT NULL,
