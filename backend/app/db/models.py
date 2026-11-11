@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -50,6 +50,25 @@ class Invitation(Base):
     role: Mapped[str] = mapped_column(String(10))
     created_by: Mapped[UUID]
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_by: Mapped[UUID | None]
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (CheckConstraint("role IN ('owner','editor','viewer')"),)
+
+
+class PlatformAdmin(Base):
+    __tablename__ = "platform_admins"
+    user_id: Mapped[UUID] = mapped_column(primary_key=True)
+
+
+class ProviderConnection(Base):
+    __tablename__ = "user_provider_connections"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(index=True)
+    provider_id: Mapped[str] = mapped_column(String(64))
+    label: Mapped[str] = mapped_column(String(120))
+    secret_id: Mapped[UUID] = mapped_column(unique=True)
+    model: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
