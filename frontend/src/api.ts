@@ -110,7 +110,10 @@ export const api = {
       "POST",
     ),
   disconnect: (id: string) =>
-    request<void>(`/connections/${encodeURIComponent(id)}`, "DELETE"),
+    request<{ status: string; cleanup_pending: boolean } | undefined>(
+      `/connections/${encodeURIComponent(id)}`,
+      "DELETE",
+    ),
   selectModel: (id: string, model: string) =>
     request<Connection>(`/connections/${encodeURIComponent(id)}`, "PATCH", {
       model,

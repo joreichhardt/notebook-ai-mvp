@@ -239,3 +239,35 @@ describe("Sharing and capability discovery", () => {
     expect(localStorage.length).toBe(0);
   });
 });
+
+it("keeps disconnected metadata visible when credential cleanup is pending", async () => {
+  const connection = {
+    id: "c",
+    provider_id: "p",
+    label: "Mein Zugang",
+    model: null,
+    status: "active",
+    last_tested_at: null,
+  };
+  vi.mocked(api.connections)
+    .mockResolvedValueOnce({ items: [connection] })
+    .mockResolvedValue({ items: [{ ...connection, status: "disconnected" }] });
+  vi.mocked(api.disconnect).mockResolvedValue({
+    status: "disconnected",
+    cleanup_pending: true,
+  });
+  render(<App />);
+  await screen.findByText("Platz für deine nächste Idee");
+  await userEvent.click(screen.getByRole("button", { name: /Meine KI/ }));
+  await screen.findByText("Mein Zugang");
+  await userEvent.click(screen.getByRole("button", { name: "Trennen" }));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Verbindung trennen" }),
+  );
+  expect(
+    await screen.findByRole("button", { name: "Entfernen erneut versuchen" }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Verbindung testen" }),
+  ).toBeDisabled();
+});

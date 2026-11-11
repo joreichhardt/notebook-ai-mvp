@@ -100,6 +100,12 @@ export function Connections() {
                     {providers.find((p) => p.id === c.provider_id)?.label ??
                       c.provider_id}
                   </p>
+                  {c.status === "disconnected" && (
+                    <p className="notice">
+                      Getrennt. Die gespeicherten Zugangsdaten müssen noch
+                      entfernt werden.
+                    </p>
+                  )}
                   <p className="connection-meta">
                     {c.last_tested_at
                       ? "Zuletzt geprüft: " +
@@ -113,7 +119,7 @@ export function Connections() {
                   )}
                   <div className="button-row">
                     <button
-                      disabled={busy}
+                      disabled={busy || c.status === "disconnected"}
                       onClick={() =>
                         run(async () => {
                           const r = await api.testConnection(c.id);
@@ -134,14 +140,16 @@ export function Connections() {
                       Verbindung testen
                     </button>
                     <button disabled={busy} onClick={() => setRemoving(c)}>
-                      Trennen
+                      {c.status === "disconnected"
+                        ? "Entfernen erneut versuchen"
+                        : "Trennen"}
                     </button>
                   </div>
                   <p className="fine">
                     Der Test liest die Modellliste über diesen Zugang; er
                     erzeugt keine Antwort.
                   </p>
-                  {models[c.id]?.length > 0 && (
+                  {c.status !== "disconnected" && models[c.id]?.length > 0 && (
                     <label>
                       Modell auswählen
                       <select
@@ -259,12 +267,24 @@ export function Connections() {
               disabled={busy}
               onClick={() =>
                 run(async () => {
-                  await api.disconnect(removing.id);
+                  const result = await api.disconnect(removing.id);
                   setConnections((list) =>
-                    list.filter((c) => c.id !== removing.id),
+                    result?.cleanup_pending
+                      ? list.map((c) =>
+                          c.id === removing.id
+                            ? { ...c, status: "disconnected" }
+                            : c,
+                        )
+                      : list.filter((c) => c.id !== removing.id),
                   );
                   setRemoving(null);
-                  setNotice("Verbindung getrennt.");
+                  setNotice(
+                    result?.cleanup_pending
+                      ? "Verbindung getrennt. Bitte versuche das Entfernen der gespeicherten Zugangsdaten erneut."
+                      : "Verbindung getrennt.",
+                  );
+                  const list = await api.connections();
+                  setConnections(list.items);
                 })
               }
             >
