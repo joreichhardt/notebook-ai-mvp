@@ -33,3 +33,11 @@ Produktionsziel: `https://note.yokoma.de`, Docker Compose auf kube1. Bestehende 
 ## Architektur
 
 [Verträge](docs/architecture/contracts.md) · [Entscheidungen](docs/architecture/decisions.md). Normale Nutzerabfragen laufen mit eingeschränkter Datenbankrolle und transaktionslokalem Nutzerkontext. Supabase-Identität allein gewährt keinen App-Zugang. Persönliche Modell-Credentials bleiben strikt nutzergebunden; die Datenbank speichert nur Referenzen.
+
+## Lokaler Container-Stand
+
+```sh
+docker compose -p notebook-foundation-verify up -d --build --wait
+```
+
+Oberfläche: http://127.0.0.1:18080 . Dieser Stack enthält derzeit API und statisches Frontend, noch kein Supabase; er ermöglicht die Prüfung von Start, Darstellung und sicherem Verhalten bei fehlender Konfiguration. Die echte Anmeldung benötigt anschließend Supabase, Zulassung und HTTPS. Frontend separat: `npm --prefix frontend ci`, `npm --prefix frontend run dev`.
