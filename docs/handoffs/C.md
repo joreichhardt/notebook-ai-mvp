@@ -13,3 +13,5 @@ Residual release gates: real Bitwarden CRUD + account scope; DNS validation is p
 Sources: https://bitwarden.com/help/secrets-manager-cli/ ; https://github.com/bitwarden/sdk-sm/blob/main/languages/python/example.py ; https://platform.claude.com/docs/en/api/models/list ; https://docs.ollama.com/api/tags .
 
 Validation: 11 tests passed (six provider/vault boundaries and five router tests); Ruff passed. Router tests exercise other-user ownership denial, metadata without secret IDs, CSRF, unknown endpoint rejection before vault access, and failed deletion persisting disconnected metadata followed by successful retry. SQLite here is explicitly domain/HTTP verification; A owns actual PostgreSQL RLS tests. No live provider or Bitwarden requests performed.
+
+Review correction: Bitwarden deletion now requires SDK envelope success plus exactly one per-secret result with the requested ID and error=None. Missing/empty/mismatched/duplicate/error items fail closed and preserve the router's inactive retryable metadata. Verified against installed SDK2.1.0 actual schema constructors; provider suite now 18 tests passed.
