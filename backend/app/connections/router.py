@@ -53,7 +53,7 @@ def provider_config(provider_id):
 
 
 @router.get("/providers")
-def providers(user: User):
+def providers(user: User, db: DB):
     config = settings()
     return {
         "items": [
