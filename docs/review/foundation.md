@@ -19,3 +19,15 @@ These were sent to the main agent before report completion. Fix verification mus
 - CI RLS setup requires a migrated isolated database and an admin test connection permitted to SET ROLE notebook_app. Migration URL uses SQLAlchemy's `postgresql+psycopg://`; psycopg test URL uses `postgresql://`.
 
 No additional concrete implemented-scope blocker identified. Real Supabase auth, Bitwarden connectivity, full browser-auth flow and production security gates remain unverified as already documented in handoffs.
+
+## Fix verification
+
+Verified follow-up candidate: `7752e2f42fd8b181e7eaf07067477ad16a1c6b67`.
+
+- Finding 1 resolved: session 401 deletes both cookies and returns `{user: null}`, which selects the existing login form. 403/503 remain distinct failures rather than false anonymous success.
+- Finding 2 resolved: validated logout deletes both cookies on success, already-invalid session and remote outage. Outage response explicitly reports `local_logout: true`, `remote_revoked: false`; it does not claim remote revocation. Frontend accepts the successful local logout. The UI currently does not display the optional remote-revocation detail; this is a follow-up usability improvement rather than retained local credential exposure.
+- Finding 3 resolved in workflow definition: pinned disposable PostgreSQL service, explicit isolated test URL, migration before pytest, and `npm test` before frontend build. A hosted Actions run remains unverified; local code review is not a workflow execution claim.
+- `uv run pytest backend/tests/auth/test_security.py -q`: **15 passed** including six session/logout regression cases. No PostgreSQL mutation performed during this follow-up.
+- `docker compose config --quiet`: passed; tmpfs is now a single quoted mount specification and frontend is attached to both internal and edge bridge. Actual container HTTP verification is owned by the main agent, not repeated here.
+
+All three findings are closed for this foundation candidate. This does not change the documented incomplete product/release gates.
