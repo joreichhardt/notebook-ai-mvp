@@ -31,6 +31,8 @@ export default function App() {
     () => new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "",
   );
   const [config, setConfig] = useState<AuthConfig>();
+  const [configError, setConfigError] = useState("");
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (new URLSearchParams(window.location.hash.slice(1)).has("token"))
       window.history.replaceState(
@@ -39,15 +41,23 @@ export default function App() {
         window.location.pathname + window.location.search,
       );
     const c = new AbortController();
+    setConfig(undefined);
+    setConfigError("");
     api
       .authConfig(c.signal)
-      .then(setConfig)
-      .catch(() => {});
+      .then((value) => {
+        if (!c.signal.aborted) setConfig(value);
+      })
+      .catch(() => {
+        if (!c.signal.aborted)
+          setConfigError(
+            "Die Verbindung konnte nicht geprüft werden. Bitte versuche es erneut.",
+          );
+      });
     return () => c.abort();
-  }, []);
+  }, [retry]);
   const [session, setSession] = useState<Session>();
   const [sessionError, setSessionError] = useState("");
-  const [retry, setRetry] = useState(0);
   useEffect(() => {
     const c = new AbortController();
     setSessionError("");
@@ -123,15 +133,15 @@ export default function App() {
           <section className="login-card">
             <span className="eyebrow">WILLKOMMEN ZURÜCK</span>
             <h2>Dein Notebook wartet.</h2>
-            {sessionError ? (
+            {sessionError || configError ? (
               <>
-                <ErrorBox error={sessionError} />
+                <ErrorBox error={sessionError || configError} />
                 <button onClick={() => setRetry((r) => r + 1)}>
                   Verbindung erneut prüfen
                 </button>
               </>
-            ) : !session ? (
-              <p role="status">Sitzung wird geprüft …</p>
+            ) : !session || !config ? (
+              <p role="status">Zugang wird geprüft …</p>
             ) : config?.password_login ? (
               <Login onLogin={refresh} />
             ) : (
@@ -147,7 +157,25 @@ export default function App() {
         <footer>Privat organisiert. Gemeinsam weitergedacht.</footer>
       </div>
     );
-  if (inviteToken && config?.invitations)
+  if (!config || configError)
+    return (
+      <div className="welcome">
+        <Brand />
+        <section className="editor invitation">
+          {configError ? (
+            <>
+              <ErrorBox error={configError} />
+              <button onClick={() => setRetry((r) => r + 1)}>
+                Verbindung erneut prüfen
+              </button>
+            </>
+          ) : (
+            <p role="status">Zugang wird geprüft …</p>
+          )}
+        </section>
+      </div>
+    );
+  if (inviteToken && config.invitations)
     return (
       <div className="welcome">
         <Brand />
