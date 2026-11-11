@@ -18,6 +18,20 @@ def test_unconfigured_store_is_closed():
     assert "DO_NOT_LEAK" not in str(error.value.detail)
 
 
+def test_secret_store_traceback_does_not_leak_sdk_error():
+    import traceback
+    secret = "SYNTHETIC" + "_SECRET"
+    store = BitwardenStore(ProviderSettings())
+    client = SimpleNamespace(secrets=lambda: None)
+    with (
+        patch.object(store, "client", return_value=client),
+        patch.object(store, "_get", side_effect=ValueError(secret)),
+        pytest.raises(HTTPException) as error,
+    ):
+        store.read(uuid4(), uuid4(), uuid4())
+    assert secret not in "".join(traceback.format_exception(error.value))
+
+
 def test_external_provider_cannot_resolve_private_ip():
     provider = Provider(
         id="cloud", label="Cloud", kind="openai", base_url="https://models.example/v1"

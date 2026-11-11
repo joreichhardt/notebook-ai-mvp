@@ -5,10 +5,16 @@ No subprocess or CLI arguments carry personal credentials. SDK state stays in me
 
 import os
 import stat
+from typing import NoReturn
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from app.auth.security import fail
+from fastapi import HTTPException
+
+
+def fail(status: int, code: str, message: str) -> NoReturn:
+    # SDK failures may embed key/token values in chained exception messages.
+    raise HTTPException(status, detail={"code": code, "message": message}) from None
 
 
 class BitwardenStore:
