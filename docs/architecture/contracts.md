@@ -15,3 +15,14 @@ Chat SSE: delta {text}; citation {id,document_id,version_id,chunk_id,page,quote}
 ## Wave 2 discovery
 
 GET /capabilities exposes booleans only: auth.password_login, auth.registration, auth.google, auth.recovery, invitations, members, documents, chat. Unsupported methods are hidden; no roadmap/status notices in product UI. Provider catalog is authenticated GET /providers; an unconfigured secret store yields no connectable providers. Endpoint configuration is administrative JSON, never arbitrary URLs accepted from browser requests. Personal secret writes use Bitwarden SDK 2.1.0 while host bootstrap provisioning remains bws.
+
+## Invitations, membership and personal providers
+
+- GET /auth/admission: {admitted:true}; 403 means identity has no admission. Invite acceptance uses verified identity without prior admission.
+- POST /invitations {email,workspace_id|null,role}: {id,token,expires_at}. Workspace owner for workspace invites; platform administrator for app invites. No email is sent. Tokens are returned once for explicit copying into /invite#token=... and stored hashed.
+- POST /invitations/accept {token}: {workspace_id,invited_workspace_id}. Transactional verified email/current inviter/expiry/revocation checks; personal workspace exactly once.
+- GET /workspaces/{id}/members: items {user_id,role}. PATCH/DELETE /workspaces/{id}/members/{user_id}; owner only, last owner protected.
+- GET/POST /connections: metadata only / {provider_id,label,api_key}; provider IDs refer to administrator catalog.
+- POST /connections/{id}/test: {models:[{id}],status:"ok"}; this verifies model discovery, not generation.
+- PATCH /connections/{id} {model}: validates current model listing.
+- DELETE /connections/{id}: 204 confirmed cleanup; 202 cleanup_pending preserves inactive metadata for retry. Other users cannot list, read, test or revoke the connection.

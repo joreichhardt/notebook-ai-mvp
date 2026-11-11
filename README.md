@@ -4,7 +4,7 @@ Private Notebooks mit nachvollziehbaren Quellenantworten. Python/FastAPI, React/
 
 ## Entwicklungsstand
 
-Die Implementierung beginnt mit Authentifizierung, Workspace-/Notebook-Verwaltung, Oberfläche und Betriebsgrundlage. Dies ist noch kein produktionsfertiger NotebookLM-Klon. Upload, belegte Modellantworten, Graphretrieval, vollständige Einladungsregistrierung und persönliche Provider-Verbindungen folgen nach dem Fundament. Es gibt keine fingierten Antworten oder Produktions-Auth-Mocks.
+Implementiert sind Authentifizierung, Workspace-/Notebook-Verwaltung, Einladungsannahme für bestätigte Konten, Mitgliederrollen und persönliche Anbieter-Verbindungen mit Modellprüfung. Dies ist noch kein produktionsfertiger NotebookLM-Klon. Upload, belegte Modellantworten, Graphretrieval und die Registrierung neuer Konten sind noch offen. Persönliche Anbieter-Verbindungen benötigen eine konfigurierte Bitwarden-Instanz und freigegebene Endpoints. Es gibt keine fingierten Antworten oder Produktions-Auth-Mocks.
 
 Verbindliche Anforderungen: [agent.md](agent.md), [AGENTS.md](AGENTS.md), [Multi-Agent-Arbeit](multi-agent.md), [Produktspezifikation](docs/product-spec.md). Aktueller Stand: [Plan](docs/orchestration/plan.md) und [Integrationslog](docs/orchestration/integration-log.md).
 
