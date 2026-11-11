@@ -17,5 +17,5 @@ Candidate: `0469c19` (A2 invitation/membership RPCs, D2 UI, C personal credentia
 ## Verification
 
 - Actual installed SDK schema inspection and synthetic deletion-result reproduction above; no real Bitwarden access.
-- Targeted provider and auth security tests run without PostgreSQL integration (results recorded in follow-up).
+- `uv run pytest backend/tests/providers backend/tests/auth/test_security.py -q`: 26 passed; no PostgreSQL integration invoked.
 - Parent owns real PostgreSQL and integrated browser checks; this report does not claim those were rerun independently.
