@@ -13,3 +13,7 @@ The first integrated milestone is deliberately limited to session authentication
 - FastAPI ASGI/Uvicorn startup: https://fastapi.tiangolo.com/deployment/manually/
 - SQLAlchemy transaction context: https://docs.sqlalchemy.org/en/21/orm/session_transaction.html
 - Backend versions are resolved in uv.lock and installed with `uv sync --frozen`; exact versions are not copied into this document.
+
+## Product copy · 2026-11-11
+
+The user explicitly rejects development-status and future-enablement notices in the application. Hide unavailable controls; use action-specific configuration guidance only when it helps the user complete that action. Keep implementation limitations in engineering handoffs and release notes, not promotional UI cards. This does not authorize fabricated functionality or successful operations.
