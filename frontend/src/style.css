@@ -594,3 +594,76 @@ footer {
     font-size: 34px;
   }
 }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.member-list {
+  list-style: none;
+  padding: 0;
+}
+.member-list li {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 16px 0;
+  border-bottom: 1px solid #e0e5da;
+}
+.member-list li > div {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.member-list select {
+  width: 135px;
+  margin: 0;
+}
+.member-list strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+.member-list .pill {
+  margin-left: 10px;
+}
+.invite-result {
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e5da;
+}
+.invitation {
+  max-width: 720px;
+  margin: 65px auto;
+}
+.connection-meta {
+  font-size: 12px !important;
+}
+.button-row {
+  flex-wrap: wrap;
+}
+@media (max-width: 650px) {
+  .sidebar nav {
+    flex-wrap: wrap;
+  }
+  .sidebar nav .nav {
+    width: auto;
+    flex: 1 1 150px;
+  }
+  .sidebar > .text-button {
+    position: static;
+    display: block;
+    margin-top: 12px;
+  }
+  .member-list li {
+    flex-wrap: wrap;
+  }
+  .member-list li > div {
+    flex-basis: 100%;
+  }
+}

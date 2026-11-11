@@ -1,10 +1,14 @@
+import { Invitation, Sharing } from "./Sharing";
+import { Connections } from "./Connections";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   api,
+  ApiError,
   setCsrfToken,
   type Notebook,
   type Session,
   type Workspace,
+  type AuthConfig,
 } from "./api";
 const message = (e: unknown) =>
   e instanceof Error
@@ -23,6 +27,24 @@ function Brand() {
   );
 }
 export default function App() {
+  const [inviteToken, setInviteToken] = useState(
+    () => new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "",
+  );
+  const [config, setConfig] = useState<AuthConfig>();
+  useEffect(() => {
+    if (new URLSearchParams(window.location.hash.slice(1)).has("token"))
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search,
+      );
+    const c = new AbortController();
+    api
+      .authConfig(c.signal)
+      .then(setConfig)
+      .catch(() => {});
+    return () => c.abort();
+  }, []);
   const [session, setSession] = useState<Session>();
   const [sessionError, setSessionError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -42,6 +64,26 @@ export default function App() {
       });
     return () => c.abort();
   }, [retry]);
+  const [admitted, setAdmitted] = useState<boolean>();
+  const [admissionError, setAdmissionError] = useState("");
+  useEffect(() => {
+    setAdmitted(undefined);
+    setAdmissionError("");
+    if (!session?.user) return;
+    const c = new AbortController();
+    api
+      .admission(c.signal)
+      .then((r) => {
+        if (!c.signal.aborted) setAdmitted(r.admitted);
+      })
+      .catch((e) => {
+        if (!c.signal.aborted) {
+          if (e instanceof ApiError && e.status === 403) setAdmitted(false);
+          else setAdmissionError(message(e));
+        }
+      });
+    return () => c.abort();
+  }, [session]);
   async function refresh() {
     const s = await api.session();
     setSession(s);
@@ -77,9 +119,6 @@ export default function App() {
                 03 <strong>Belegt antworten</strong>
               </span>
             </div>
-            <p className="muted">
-              Die Wissensfunktionen werden schrittweise freigeschaltet.
-            </p>
           </section>
           <section className="login-card">
             <span className="eyebrow">WILLKOMMEN ZURÜCK</span>
@@ -93,21 +132,80 @@ export default function App() {
               </>
             ) : !session ? (
               <p role="status">Sitzung wird geprüft …</p>
-            ) : (
+            ) : config?.password_login ? (
               <Login onLogin={refresh} />
+            ) : (
+              <p>Bitte wende dich für deinen Zugang an den Betreiber.</p>
             )}
             <p className="fine">
-              Zugang nur mit Einladung. Registrierung, Google-Anmeldung und
-              Passwort-Wiederherstellung sind in diesem ersten Stand noch nicht
-              freigeschaltet.
+              {inviteToken
+                ? "Melde dich mit der eingeladenen E-Mail-Adresse an, um die Einladung anzunehmen."
+                : "Zugang nur mit persönlicher Einladung."}
             </p>
           </section>
         </main>
         <footer>Privat organisiert. Gemeinsam weitergedacht.</footer>
       </div>
     );
+  if (inviteToken && config?.invitations)
+    return (
+      <div className="welcome">
+        <Brand />
+        <Invitation
+          token={inviteToken}
+          onAccepted={async () => {
+            await refresh();
+            setInviteToken("");
+            window.history.replaceState(null, "", "/");
+          }}
+          onCancel={() => setInviteToken("")}
+        />
+      </div>
+    );
+  if (!admitted)
+    return (
+      <div className="welcome">
+        <Brand />
+        <section className="editor invitation">
+          {admissionError ? (
+            <>
+              <ErrorBox error={admissionError} />
+              <button onClick={() => setRetry((r) => r + 1)}>
+                Erneut prüfen
+              </button>
+            </>
+          ) : admitted === undefined ? (
+            <p role="status">Zugang wird geprüft …</p>
+          ) : (
+            <>
+              <h1>Deine Einladung ist der erste Schritt.</h1>
+              <p>
+                Öffne deinen persönlichen Einladungslink mit diesem Konto. Falls
+                du keinen Link hast, bitte einen Workspace-Owner oder den
+                Betreiber um eine Einladung.
+              </p>
+            </>
+          )}
+          <button
+            className="text-button"
+            onClick={async () => {
+              try {
+                await api.logout();
+                setSession({ user: null });
+                setCsrfToken();
+              } catch (e) {
+                setAdmissionError(message(e));
+              }
+            }}
+          >
+            Abmelden
+          </button>
+        </section>
+      </div>
+    );
   return (
     <WorkspaceApp
+      config={config}
       session={session}
       onLogout={async () => {
         await api.logout();
@@ -172,7 +270,9 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
 function WorkspaceApp({
   session,
   onLogout,
+  config,
 }: {
+  config?: AuthConfig;
   session: Session;
   onLogout: () => Promise<void>;
 }) {
@@ -180,7 +280,9 @@ function WorkspaceApp({
     [workspace, setWorkspace] = useState(""),
     [notebooks, setNotebooks] = useState<Notebook[]>([]),
     [selected, setSelected] = useState(""),
-    [settings, setSettings] = useState(false),
+    [settings, setSettings] = useState<"notebooks" | "connections" | "sharing">(
+      "notebooks",
+    ),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
@@ -278,7 +380,7 @@ function WorkspaceApp({
             disabled={busy}
             onChange={(e) => {
               setWorkspace(e.target.value);
-              setSettings(false);
+              setSettings("notebooks");
             }}
           >
             {!workspaces.length && <option value="">Kein Workspace</option>}
@@ -291,18 +393,26 @@ function WorkspaceApp({
         </label>
         <nav aria-label="Hauptnavigation">
           <button
-            className={!settings ? "nav active" : "nav"}
-            onClick={() => setSettings(false)}
+            className={settings === "notebooks" ? "nav active" : "nav"}
+            onClick={() => setSettings("notebooks")}
           >
             ▤ <span>Meine Notebooks</span>
             <span>{notebooks.length}</span>
           </button>
           <button
-            className={settings ? "nav active" : "nav"}
-            onClick={() => setSettings(true)}
+            className={settings === "connections" ? "nav active" : "nav"}
+            onClick={() => setSettings("connections")}
           >
             ✧ <span>Meine KI</span>
           </button>
+          {config?.members && current?.role === "owner" && (
+            <button
+              className={settings === "sharing" ? "nav active" : "nav"}
+              onClick={() => setSettings("sharing")}
+            >
+              ♧ <span>Mitglieder</span>
+            </button>
+          )}
         </nav>
         <div className="sidebar-note">
           <span className="status-dot" />
@@ -344,8 +454,20 @@ function WorkspaceApp({
               Erneut laden
             </button>
           )}
-          {settings ? (
-            <Settings />
+          {settings === "connections" ? (
+            <Connections />
+          ) : settings === "sharing" &&
+            config?.members &&
+            current?.role === "owner" ? (
+            <Sharing
+              key={workspace}
+              workspaceId={workspace}
+              currentUserId={session.user!.id}
+              onMembershipChange={() => {
+                setSettings("notebooks");
+                setReload((x) => x + 1);
+              }}
+            />
           ) : (
             <>
               <div className="heading">
@@ -381,7 +503,7 @@ function WorkspaceApp({
                   title="Platz für deine nächste Idee"
                   text={
                     canEdit
-                      ? "Erstelle dein erstes Notebook. Hier sammelst du später Quellen und Fragen zu einem Thema."
+                      ? "Erstelle dein erstes Notebook und gib deinem Thema einen Namen."
                       : "In diesem Workspace gibt es noch keine Notebooks. Ein Owner oder Editor kann eines erstellen."
                   }
                 />
@@ -432,22 +554,12 @@ function WorkspaceApp({
                 <section className="notebook-detail">
                   <p className="eyebrow">AUSGEWÄHLTES NOTEBOOK</p>
                   <h2>{notebook.title}</h2>
-                  <div className="detail-grid">
-                    <div>
-                      <h3>Quellen</h3>
-                      <p>
-                        Upload und Verarbeitung werden im nächsten Schritt
-                        angebunden.
-                      </p>
-                    </div>
-                    <div>
-                      <h3>Chat mit Quellenbelegen</h3>
-                      <p>
-                        Hier kannst du nach der Freischaltung Fragen zu deinen
-                        ausgewählten Quellen stellen.
-                      </p>
-                    </div>
-                  </div>
+                  <p className="muted">{current?.name}</p>
+                  {canEdit && (
+                    <button onClick={() => setEdit(notebook)}>
+                      Titel bearbeiten
+                    </button>
+                  )}
                 </section>
               )}
             </>
@@ -536,48 +648,5 @@ function Empty({ title, text }: { title: string; text: string }) {
       <h2>{title}</h2>
       <p>{text}</p>
     </section>
-  );
-}
-function Settings() {
-  return (
-    <>
-      <p className="eyebrow">EINSTELLUNGEN</p>
-      <h1>
-        Meine KI<span className="accent">.</span>
-      </h1>
-      <p className="lead">Deine Modelle. Dein persönlicher Zugang.</p>
-      <div className="notice">
-        Die Anbieter-Verbindungen sind noch nicht freigeschaltet. Es werden
-        keine Zugangsdaten abgefragt und keine Modellaufrufe ausgeführt.
-      </div>
-      <div className="provider-grid">
-        {[
-          [
-            "ChatGPT / Codex",
-            "Eine Abo-Verbindung benötigt einen offiziell unterstützten Integrationsweg.",
-          ],
-          ["Claude", "Persönliche Verbindung über einen Anthropic-API-Key."],
-          [
-            "Weitere Cloud-API",
-            "Eigener API-Zugang zu einem freigegebenen Anbieter.",
-          ],
-          [
-            "Lokales Modell",
-            "Ein vom Betreiber freigegebener, serverseitig erreichbarer Endpoint.",
-          ],
-        ].map(([title, text]) => (
-          <article className="provider" key={title}>
-            <span className="provider-icon">✧</span>
-            <h2>{title}</h2>
-            <p>{text}</p>
-            <span className="pill">Noch nicht verfügbar</span>
-          </article>
-        ))}
-      </div>
-      <p className="muted">
-        Persönliche Zugänge werden nicht mit anderen Workspace-Mitgliedern
-        geteilt.
-      </p>
-    </>
   );
 }

@@ -1,5 +1,30 @@
+export type Provider = {
+  id: string;
+  label: string;
+  kind: string;
+  requires_api_key: boolean;
+};
+export type Connection = {
+  id: string;
+  provider_id: string;
+  label: string;
+  model: string | null;
+  status: string;
+  last_tested_at: string | null;
+};
+export type Role = "owner" | "editor" | "viewer";
+export type Member = { user_id: string; role: Role; email?: string };
+export type AuthConfig = {
+  password_login: boolean;
+  invitations: boolean;
+  members: boolean;
+};
 export type User = { id: string; email: string };
-export type Session = { user: User | null; csrf_token?: string };
+export type Session = {
+  user: User | null;
+  csrf_token?: string;
+  admitted?: boolean;
+};
 export type Workspace = {
   id: string;
   name: string;
@@ -54,7 +79,7 @@ export async function request<T>(
       409: "Der Inhalt wurde inzwischen geändert. Bitte lade ihn neu.",
       422: "Bitte prüfe deine Eingaben.",
       429: "Zu viele Anfragen. Bitte warte einen Moment.",
-      503: "Der Dienst ist noch nicht eingerichtet oder vorübergehend nicht verfügbar.",
+      503: "Der Dienst ist gerade nicht erreichbar. Bitte versuche es später erneut.",
     };
     throw new ApiError(
       response.status,
@@ -67,6 +92,72 @@ export async function request<T>(
   return response.json() as Promise<T>;
 }
 export const api = {
+  admission: (signal?: AbortSignal) =>
+    request<{ admitted: boolean }>("/auth/admission", "GET", undefined, signal),
+  providers: (signal?: AbortSignal) =>
+    request<{ items: Provider[] }>("/providers", "GET", undefined, signal),
+  connections: (signal?: AbortSignal) =>
+    request<{ items: Connection[] }>("/connections", "GET", undefined, signal),
+  connect: (provider_id: string, label: string, api_key: string) =>
+    request<Connection>("/connections", "POST", {
+      provider_id,
+      label,
+      api_key,
+    }),
+  testConnection: (id: string) =>
+    request<{ models: { id: string }[]; status: string }>(
+      `/connections/${encodeURIComponent(id)}/test`,
+      "POST",
+    ),
+  disconnect: (id: string) =>
+    request<{ status: string; cleanup_pending: boolean } | undefined>(
+      `/connections/${encodeURIComponent(id)}`,
+      "DELETE",
+    ),
+  selectModel: (id: string, model: string) =>
+    request<Connection>(`/connections/${encodeURIComponent(id)}`, "PATCH", {
+      model,
+    }),
+  authConfig: (signal?: AbortSignal) =>
+    request<{
+      auth: { password_login: boolean };
+      invitations: boolean;
+      members: boolean;
+    }>("/capabilities", "GET", undefined, signal).then((c) => ({
+      password_login: c.auth.password_login,
+      invitations: c.invitations,
+      members: c.members,
+    })),
+  members: (id: string, signal?: AbortSignal) =>
+    request<{ items: Member[] }>(
+      `/workspaces/${encodeURIComponent(id)}/members`,
+      "GET",
+      undefined,
+      signal,
+    ),
+  changeRole: (workspace: string, user: string, role: Role) =>
+    request(
+      `/workspaces/${encodeURIComponent(workspace)}/members/${encodeURIComponent(user)}`,
+      "PATCH",
+      { role },
+    ),
+  removeMember: (workspace: string, user: string) =>
+    request(
+      `/workspaces/${encodeURIComponent(workspace)}/members/${encodeURIComponent(user)}`,
+      "DELETE",
+    ),
+  invite: (email: string, workspace_id: string | null, role: Role) =>
+    request<{ id: string; token: string; expires_at: string }>(
+      "/invitations",
+      "POST",
+      { email, workspace_id, role },
+    ),
+  acceptInvitation: (token: string) =>
+    request<{ workspace_id: string; invited_workspace_id: string | null }>(
+      "/invitations/accept",
+      "POST",
+      { token },
+    ),
   session: (signal?: AbortSignal) =>
     request<Session>("/auth/session", "GET", undefined, signal),
   login: (email: string, password: string) =>

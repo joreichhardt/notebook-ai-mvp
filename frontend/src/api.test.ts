@@ -32,7 +32,7 @@ describe("API security boundary", () => {
         ),
     );
     await expect(request("/auth/session")).rejects.toThrow(
-      "noch nicht eingerichtet",
+      "gerade nicht erreichbar",
     );
   });
   it("handles empty successful deletes", async () => {
