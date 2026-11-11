@@ -5,9 +5,9 @@ from pydantic import BaseModel
 
 
 def test_api_responses_are_not_cacheable():
-    response = TestClient(app).get('/api/health/live')
-    assert response.headers['cache-control'] == 'no-store'
-    assert response.headers['x-content-type-options'] == 'nosniff'
+    response = TestClient(app).get("/api/health/live")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_validation_does_not_echo_secret_input():
@@ -16,15 +16,15 @@ def test_validation_does_not_echo_secret_input():
 
     router = APIRouter()
 
-    @router.post('/_validation_test')
+    @router.post("/_validation_test")
     def validate(payload: Payload):
         return payload
 
     previous = list(app.router.routes)
     try:
         app.include_router(router)
-        response = TestClient(app).post('/_validation_test', json={'value': 'SECRET_SENTINEL'})
+        response = TestClient(app).post("/_validation_test", json={"value": "SECRET_SENTINEL"})
         assert response.status_code == 422
-        assert 'SECRET_SENTINEL' not in response.text
+        assert "SECRET_SENTINEL" not in response.text
     finally:
         app.router.routes[:] = previous
