@@ -9,6 +9,19 @@ vi.mock("./api", async (importOriginal) => {
     ...real,
     api: {
       session: vi.fn(),
+      authConfig: vi.fn(),
+      admission: vi.fn(),
+      providers: vi.fn(),
+      connections: vi.fn(),
+      acceptInvitation: vi.fn(),
+      members: vi.fn(),
+      invite: vi.fn(),
+      changeRole: vi.fn(),
+      removeMember: vi.fn(),
+      connect: vi.fn(),
+      testConnection: vi.fn(),
+      disconnect: vi.fn(),
+      selectModel: vi.fn(),
       login: vi.fn(),
       logout: vi.fn(),
       workspaces: vi.fn(),
@@ -25,6 +38,16 @@ const session = {
 };
 beforeEach(() => {
   vi.resetAllMocks();
+  window.history.replaceState(null, "", "/");
+  vi.mocked(api.authConfig).mockResolvedValue({
+    password_login: true,
+    invitations: true,
+    members: true,
+  });
+  vi.mocked(api.admission).mockResolvedValue({ admitted: true });
+  vi.mocked(api.providers).mockResolvedValue({ items: [] });
+  vi.mocked(api.connections).mockResolvedValue({ items: [] });
+  vi.mocked(api.members).mockResolvedValue({ items: [] });
   vi.mocked(api.session).mockResolvedValue(session);
   vi.mocked(api.workspaces).mockResolvedValue({
     items: [{ id: "w", name: "Mein Workspace", role: "owner" }],
@@ -72,11 +95,16 @@ describe("Notebook workspace", () => {
       screen.queryByRole("button", { name: /Neues Notebook/ }),
     ).not.toBeInTheDocument();
   });
-  it("keeps provider connections explicitly unavailable", async () => {
+  it("hides unsupported provider forms without development notices", async () => {
     render(<App />);
     await screen.findByText("Platz für deine nächste Idee");
     await userEvent.click(screen.getByRole("button", { name: /Meine KI/ }));
-    expect(screen.getAllByText("Noch nicht verfügbar")).toHaveLength(4);
+    expect(await screen.findByText("Kein Anbieter verfügbar")).toBeVisible();
+    expect(
+      screen.queryByText(
+        /freigeschaltet|nächsten Schritt|ersten Stand|Noch nicht verfügbar/,
+      ),
+    ).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/API.Key/)).not.toBeInTheDocument();
   });
   it("logs in via backend and reloads session", async () => {
@@ -96,5 +124,118 @@ describe("Notebook workspace", () => {
       expect(api.login).toHaveBeenCalledWith("person@example.test", "a-secret"),
     );
     await screen.findByText("Platz für deine nächste Idee");
+  });
+});
+
+describe("Sharing and capability discovery", () => {
+  it("hides login when password auth is unavailable", async () => {
+    vi.mocked(api.session).mockResolvedValue({ user: null });
+    vi.mocked(api.authConfig).mockResolvedValue({
+      password_login: false,
+      invitations: true,
+      members: true,
+    });
+    render(<App />);
+    await screen.findByText(
+      "Bitte wende dich für deinen Zugang an den Betreiber.",
+    );
+    expect(screen.queryByLabelText("Passwort")).not.toBeInTheDocument();
+  });
+  it("accepts a fragment invitation with explicit action and removes token from URL", async () => {
+    window.history.replaceState(null, "", "/invite#token=private-token");
+    vi.mocked(api.acceptInvitation).mockResolvedValue({
+      workspace_id: "w",
+      invited_workspace_id: null,
+    });
+    render(<App />);
+    await screen.findByRole("button", { name: "Einladung annehmen" });
+    expect(window.location.hash).toBe("");
+    expect(api.acceptInvitation).not.toHaveBeenCalled();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Einladung annehmen" }),
+    );
+    await screen.findByText("Platz für deine nächste Idee");
+    expect(api.acceptInvitation).toHaveBeenCalledWith("private-token");
+  });
+  it("creates recipient-bound workspace invitations", async () => {
+    vi.mocked(api.invite).mockResolvedValue({
+      id: "i",
+      token: "secret-token",
+      expires_at: "2026-12-01",
+    });
+    render(<App />);
+    await screen.findByText("Platz für deine nächste Idee");
+    await userEvent.click(screen.getByRole("button", { name: /Mitglieder/ }));
+    await screen.findByText("Eine Person einladen");
+    await userEvent.type(
+      screen.getByLabelText("E-Mail der eingeladenen Person"),
+      "friend@example.test",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Einladungslink erstellen" }),
+    );
+    const link = await screen.findByLabelText("Persönlicher Einladungslink");
+    expect(link).toHaveValue(
+      window.location.origin + "/invite#token=secret-token",
+    );
+    expect(api.invite).toHaveBeenCalledWith(
+      "friend@example.test",
+      "w",
+      "viewer",
+    );
+  });
+  it("does not expose owner member management to viewers", async () => {
+    vi.mocked(api.workspaces).mockResolvedValue({
+      items: [{ id: "w", name: "Team", role: "viewer" }],
+    });
+    render(<App />);
+    await screen.findByText("Platz für deine nächste Idee");
+    expect(
+      screen.queryByRole("button", { name: /Mitglieder/ }),
+    ).not.toBeInTheDocument();
+  });
+  it("stores a personal connection and clears secret input", async () => {
+    vi.mocked(api.providers).mockResolvedValue({
+      items: [
+        {
+          id: "p",
+          label: "Cloud-Anbieter",
+          kind: "openai",
+          requires_api_key: true,
+        },
+      ],
+    });
+    vi.mocked(api.connect).mockResolvedValue({
+      id: "c",
+      provider_id: "p",
+      label: "Mein Zugang",
+      model: null,
+      status: "untested",
+      last_tested_at: null,
+    });
+    render(<App />);
+    await screen.findByText("Platz für deine nächste Idee");
+    await userEvent.click(screen.getByRole("button", { name: /Meine KI/ }));
+    await screen.findByLabelText("Anbieter");
+    await userEvent.selectOptions(screen.getByLabelText("Anbieter"), "p");
+    await userEvent.type(
+      screen.getByLabelText("Name der Verbindung"),
+      "Mein Zugang",
+    );
+    await userEvent.type(
+      screen.getByLabelText("API-Schlüssel"),
+      "never-persist",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Verbindung speichern" }),
+    );
+    await screen.findByText("Mein Zugang");
+    expect(api.connect).toHaveBeenCalledWith(
+      "p",
+      "Mein Zugang",
+      "never-persist",
+    );
+    expect(screen.queryByLabelText("API-Schlüssel")).not.toBeInTheDocument();
+    expect(localStorage.length).toBe(0);
   });
 });
