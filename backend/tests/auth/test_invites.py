@@ -153,3 +153,54 @@ def test_rpc_not_public_and_role_not_inherited():
         assert not db.execute(
             "SELECT pg_has_role('notebook_app','notebook_membership','MEMBER')"
         ).fetchone()[0]
+
+
+def test_app_invites_require_platform_admin(world):
+    owner, _, _ = world
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        invite(owner, None)
+    with psycopg.connect(URL) as db:
+        db.execute("INSERT INTO platform_admins VALUES(%s)", (owner,))
+    try:
+        digest = invite(owner, None)
+        uid = uuid4()
+        personal, target = accept(uid, digest)
+        assert personal and target is None
+    finally:
+        with psycopg.connect(URL) as db:
+            db.execute("DELETE FROM platform_admins WHERE user_id=%s", (owner,))
+
+
+def test_bootstrap_verified_account_and_once():
+    from app.auth.bootstrap import bootstrap
+
+    uid = uuid4()
+    email = f"{uid}@example.test"
+    sqlalchemy_url = URL.replace("postgresql://", "postgresql+psycopg://")
+    # Minimal Supabase-owned table fixture only in the explicitly configured disposable DB.
+    with psycopg.connect(URL) as db:
+        db.execute("CREATE SCHEMA IF NOT EXISTS auth")
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY, email text, email_confirmed_at timestamptz)"
+        )
+        db.execute("INSERT INTO auth.users VALUES(%s,%s,NULL)", (uid, email))
+    try:
+        with pytest.raises(ValueError):
+            bootstrap(email, sqlalchemy_url)
+        with psycopg.connect(URL) as db:
+            db.execute("UPDATE auth.users SET email_confirmed_at=now() WHERE id=%s", (uid,))
+        assert bootstrap(email, sqlalchemy_url) == uid
+        with pytest.raises(ValueError):
+            bootstrap(email, sqlalchemy_url)
+        with psycopg.connect(URL) as db:
+            assert db.execute("SELECT 1 FROM platform_admins WHERE user_id=%s", (uid,)).fetchone()
+            assert (
+                db.execute(
+                    "SELECT count(*) FROM workspaces WHERE personal_owner_id=%s", (uid,)
+                ).fetchone()[0]
+                == 1
+            )
+    finally:
+        with psycopg.connect(URL) as db:
+            db.execute("DELETE FROM platform_admins WHERE user_id=%s", (uid,))
+            db.execute("DELETE FROM auth.users WHERE id=%s", (uid,))
