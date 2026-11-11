@@ -23,7 +23,7 @@ async def identity(request: Request) -> Identity:
     return await SupabaseAuth(get_settings()).identity(request.cookies.get(SESSION_COOKIE, ""))
 
 
-def user_session(user: Annotated[Identity, Depends(identity)]):
+def authenticated_session(user: Annotated[Identity, Depends(identity)]):
     with Session(engine()) as session, session.begin():
         # The connection role itself must be non-owner, non-superuser and NOBYPASSRLS.
         safe = session.execute(
@@ -37,6 +37,17 @@ def user_session(user: Annotated[Identity, Depends(identity)]):
         session.execute(
             text("SELECT set_config('request.jwt.claim.sub', :uid, true)"), {"uid": str(user.id)}
         )
-        if session.get(Admission, user.id) is None:
-            fail(403, "admission_required", "Eine angenommene Einladung ist erforderlich.")
+        session.execute(
+            text("SELECT set_config('request.jwt.claim.email', :email, true)"),
+            {"email": user.email},
+        )
         yield session
+
+
+def user_session(
+    session: Annotated[Session, Depends(authenticated_session)],
+    user: Annotated[Identity, Depends(identity)],
+):
+    if session.get(Admission, user.id) is None:
+        fail(403, "admission_required", "Eine angenommene Einladung ist erforderlich.")
+    yield session
