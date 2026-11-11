@@ -19,3 +19,13 @@ Candidate: `0469c19` (A2 invitation/membership RPCs, D2 UI, C personal credentia
 - Actual installed SDK schema inspection and synthetic deletion-result reproduction above; no real Bitwarden access.
 - `uv run pytest backend/tests/providers backend/tests/auth/test_security.py -q`: 26 passed; no PostgreSQL integration invoked.
 - Parent owns real PostgreSQL and integrated browser checks; this report does not claim those were rerun independently.
+
+## Fix verification
+
+Verified follow-up candidate `e228dbc788f469e518d8ed9f0f087e4c478c18f5`.
+
+- Finding 1 closed: deletion requires a successful envelope, present data, exactly one returned item matching the requested secret ID, and `error is None`. Every other outcome is redacted to 503 and therefore preserves the router's disconnected/cleanup-pending reference. Seven regression variants use actual installed SDK response types, including per-item failure, missing data, wrong ID, duplicate items and success.
+- Finding 2 closed: capability discovery has explicit pending/error state and reruns with the shared retry counter. Both anonymous and authenticated paths show a recoverable discovery error, rather than treating failure as disabled login. Aborted responses do not overwrite current state.
+- `uv run pytest backend/tests/providers -q`: **18 passed**.
+- `npm test --prefix frontend`: **17 passed**, including transient capability failure/retry and pending-discovery states.
+- No PostgreSQL mutations or external provider/Bitwarden calls performed. The documented product and production release gates remain unchanged.
