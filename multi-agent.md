@@ -6,6 +6,8 @@ Diese Datei ergänzt agent.md im Repository-Root. agent.md enthält die verbindl
 
 Du bist der Hauptagent und Orchestrator. Teile die Umsetzung auf spezialisierte Agenten mit jeweils eigenem Branch und eigenem Git-Worktree auf. Integriere ihre Ergebnisse bis zum getesteten Gesamtprodukt. Du entscheidest über Reihenfolge, Schnittstellen, Konflikte und Integration. Delegation entbindet dich nicht von der Gesamtverantwortung.
 
+Agentenauswahl: Für alle künftigen Starts gilt die Pi-Vorgabe in AGENTS.md, auch für Orca-Worker. Bei Orca explizit `--agent pi` setzen. Bestehende Agentensitzungen nicht als Ersatz für einen neuen Pi-Auftrag weiterverwenden.
+
 Diese Datei erteilt ausdrücklich die Erlaubnis zur Delegation an Unteragenten für die Implementierung. Sie verlangt keine bestimmte Orca-Version oder ein bestimmtes Orchestrierungsprodukt. Verwende ausschließlich tatsächlich verfügbare Agenten-, Messaging- und Worktree-Funktionen. Erfinde keine CLI-Kommandos oder parallel laufenden Agenten. Fehlt echte Parallelisierung, bearbeite dieselben Arbeitspakete sequenziell und benenne das transparent.
 
 Unveränderliche Leitplanken

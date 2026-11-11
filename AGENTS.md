@@ -2,6 +2,7 @@
 
 ## Auftrag und Vorgehen
 
+- Für künftig gestartete Arbeits- und Teilagenten immer Pi verwenden, einschließlich aller durch Orca gestarteten Agents (`--agent pi`). Ist Pi nicht verfügbar, die konkrete Lücke melden statt still auf einen anderen Agenten auszuweichen. Diese Vorgabe wählt den Agenten, nicht ein bestimmtes Modell.
 - Der aktuelle Nutzerauftrag bestimmt den Arbeitsumfang. Die [Produktspezifikation](docs/product-spec.md) beschreibt das Zielprodukt; ein Dokumentationsauftrag startet nicht automatisch Implementierung oder Deployment.
 - Vor Implementierungsarbeiten die Spezifikation lesen, insbesondere die betroffenen Abnahmekriterien. Abschnitte 11–13 konkretisieren frühere Anforderungen. Für die Wahl des Secret-Speichers gilt die Präzisierung unten.
 - Zuerst Bestand und Git-Status prüfen; Nutzeränderungen erhalten. In kleinen vertikalen Schritten arbeiten und passende Prüfungen ausführen. Versionen und Befehle aus dem Projekt ableiten, externe APIs anhand offizieller Dokumentation prüfen.
