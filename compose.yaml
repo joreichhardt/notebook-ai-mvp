@@ -1,0 +1,33 @@
+# Development/integration foundation only; Supabase and release wiring remain separate gates.
+name: notebook-foundation
+x-runtime: &runtime
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: [/tmp:rw,noexec,nosuid,size=32m]
+  pids_limit: 128
+  mem_limit: 512m
+  cpus: 1.0
+  restart: unless-stopped
+  networks: [internal]
+services:
+  api:
+    <<: *runtime
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    environment:
+      NOTEBOOK_PUBLIC_ORIGIN: ${NOTEBOOK_PUBLIC_ORIGIN:-https://note.yokoma.de}
+    # No secrets or host ports in the unconfigured foundation.
+  frontend:
+    <<: *runtime
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    ports: [127.0.0.1:18080:8080]
+networks:
+  internal:
+    internal: true
