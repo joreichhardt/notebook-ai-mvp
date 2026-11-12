@@ -88,7 +88,9 @@ def test_failed_revocation_preserves_inactive_retryable_record(api):
     assert response.status_code == 202
     assert "private SDK" not in response.text
     with Session(engine) as db:
-        assert db.get(ProviderConnection, ids[0]).status == "disconnected"
+        row = db.get(ProviderConnection, ids[0])
+        assert row is not None
+        assert row.status == "disconnected"
     with patch("app.connections.router.BitwardenStore") as store:
         response = client.delete(
             f"/api/connections/{ids[0]}",

@@ -34,14 +34,16 @@ def metadata(row):
     }
 
 
-def owned(db, user, connection_id):
+def owned(db, user, connection_id) -> ProviderConnection:
     row = db.scalar(
         select(ProviderConnection).where(
             ProviderConnection.id == connection_id, ProviderConnection.user_id == user.id
         )
     )
     if row is None:
-        fail(404, "connection_not_found", "Verbindung nicht gefunden.")
+        raise HTTPException(
+            404, detail={"code": "connection_not_found", "message": "Verbindung nicht gefunden."}
+        )
     return row
 
 
