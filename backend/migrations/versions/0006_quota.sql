@@ -4,14 +4,16 @@ SET LOCAL lock_timeout='5s';
 LOCK TABLE public.workspaces,public.notebooks,public.app_admissions,
  public.workspace_members,public.documents,public.document_versions,
  public.ingestion_jobs,public.upload_intents IN SHARE ROW EXCLUSIVE MODE;
-DO $$ BEGIN
+-- Sample fresh database time only after the old-writer locks are held.
+DO $$ DECLARE t timestamptz:=clock_timestamp(); BEGIN
  IF EXISTS(SELECT 1 FROM public.ingestion_jobs j
   LEFT JOIN public.upload_intents i ON i.job_id=j.id
   WHERE (i.id IS NULL AND (j.status IN ('queued','running') OR j.lease_token IS NOT NULL OR j.lease_expires_at IS NOT NULL))
   OR (i.id IS NOT NULL AND ((j.document_version_id,j.workspace_id,j.notebook_id,j.actor_user_id,j.idempotency_key)
    IS DISTINCT FROM (i.version_id,i.workspace_id,i.notebook_id,i.actor_user_id,i.idempotency_key)
    OR j.connection_id IS NOT NULL OR j.index_profile_id IS NOT NULL
-   OR (j.status='running' AND (j.lease_token IS NULL OR j.lease_expires_at IS NULL OR j.attempts NOT BETWEEN 1 AND 5))
+   OR (j.status='running' AND (j.lease_token IS NULL OR j.lease_expires_at IS NULL
+    OR j.attempts NOT BETWEEN 1 AND 5 OR j.lease_expires_at>t+interval '300 seconds'))
    OR (j.status<>'running' AND (j.lease_token IS NOT NULL OR j.lease_expires_at IS NOT NULL))
    OR (j.status='queued' AND j.attempts<>0))))
  OR EXISTS(SELECT 1 FROM public.ingestion_jobs j JOIN public.upload_intents i ON i.version_id=j.document_version_id WHERE j.id<>i.job_id)
