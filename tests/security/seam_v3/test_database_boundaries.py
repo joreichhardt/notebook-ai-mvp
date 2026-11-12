@@ -32,15 +32,26 @@ def runtime(actor):
 
 @pytest.fixture
 def corpus():
-    c = {name: uuid4() for name in ("owner", "editor", "ws", "note", "doc", "version",
-                                   "profile", "connection", "job")}
+    c = {
+        name: uuid4()
+        for name in (
+            "owner",
+            "editor",
+            "ws",
+            "note",
+            "doc",
+            "version",
+            "profile",
+            "connection",
+            "job",
+        )
+    }
     with psycopg.connect(URL) as db:
         for actor in (c["owner"], c["editor"]):
             db.execute("INSERT INTO app_admissions VALUES (%s)", (actor,))
         db.execute("INSERT INTO workspaces(id,name) VALUES (%s,'F3a synthetic')", (c["ws"],))
         for name in ("owner", "editor"):
-            db.execute("INSERT INTO workspace_members VALUES (%s,%s,%s)",
-                       (c["ws"], c[name], name))
+            db.execute("INSERT INTO workspace_members VALUES (%s,%s,%s)", (c["ws"], c[name], name))
         db.execute("INSERT INTO notebooks VALUES (%s,%s,'F3a synthetic')", (c["note"], c["ws"]))
         db.execute(
             "INSERT INTO documents(id,workspace_id,notebook_id,created_by,filename,current_version_id) "
@@ -50,8 +61,14 @@ def corpus():
         db.execute(
             "INSERT INTO document_versions(id,document_id,notebook_id,workspace_id,version,"
             "media_type,byte_count,sha256,storage_key) VALUES (%s,%s,%s,%s,1,'text/plain',5,%s,%s)",
-            (c["version"], c["doc"], c["note"], c["ws"], "a" * 64,
-             f"{c['ws']}/{c['note']}/{c['doc']}/{c['version']}/original"),
+            (
+                c["version"],
+                c["doc"],
+                c["note"],
+                c["ws"],
+                "a" * 64,
+                f"{c['ws']}/{c['note']}/{c['doc']}/{c['version']}/original",
+            ),
         )
         db.execute(
             "INSERT INTO index_profiles(id,workspace_id,notebook_id,provider,model,revision,dimensions) "
@@ -75,11 +92,14 @@ def corpus():
         with psycopg.connect(URL) as db:
             db.execute("DELETE FROM workspaces WHERE id=%s", (c["ws"],))
             db.execute("DELETE FROM user_provider_connections WHERE id=%s", (c["connection"],))
-            db.execute("DELETE FROM app_admissions WHERE user_id IN (%s,%s)",
-                       (c["owner"], c["editor"]))
+            db.execute(
+                "DELETE FROM app_admissions WHERE user_id IN (%s,%s)", (c["owner"], c["editor"])
+            )
 
 
-@pytest.mark.xfail(strict=True, reason="F3a-01: DELETE/reinsert changes another actor's job profile")
+@pytest.mark.xfail(
+    strict=True, reason="F3a-01: DELETE/reinsert changes another actor's job profile"
+)
 def test_referenced_profile_identity_cannot_be_replaced(corpus):
     c = corpus
     # An editor cannot even read this other member's job or connection.
@@ -100,9 +120,12 @@ def test_referenced_profile_identity_cannot_be_replaced(corpus):
     with runtime(c["owner"]) as db:
         row = db.execute(
             "SELECT p.model,p.revision,p.dimensions FROM ingestion_jobs j "
-            "JOIN index_profiles p ON p.id=j.index_profile_id WHERE j.id=%s", (c["job"],)
+            "JOIN index_profiles p ON p.id=j.index_profile_id WHERE j.id=%s",
+            (c["job"],),
         ).fetchone()
-        assert row == ("original", "v1", 3), "Existing private job now resolves changed shared metadata"
+        assert row == ("original", "v1", 3), (
+            "Existing private job now resolves changed shared metadata"
+        )
 
 
 def test_tombstone_definer_grants_do_not_confer_generic_privileges(corpus):
@@ -135,7 +158,9 @@ def test_inflight_execution_rechecks_real_database_and_cancels(corpus, monkeypat
     c = corpus
     engine = create_engine(
         make_url(URL).set(drivername="postgresql+psycopg", username="notebook_app"),
-        pool_size=1, max_overflow=0, hide_parameters=True,
+        pool_size=1,
+        max_overflow=0,
+        hide_parameters=True,
     )
     monkeypatch.setattr(execution, "engine", lambda: engine)
 
@@ -155,20 +180,26 @@ def test_inflight_execution_rechecks_real_database_and_cancels(corpus, monkeypat
                     closed.set()
 
         service = execution.ExecutionService(
-            read_secret=secret, resolve_provider=lambda p: p,
-            adapter_factory=lambda p, k: Source(), poll_interval=0.01,
+            read_secret=secret,
+            resolve_provider=lambda p: p,
+            adapter_factory=lambda p, k: Source(),
+            poll_interval=0.01,
         )
-        task = asyncio.create_task(service.embed(
-            actor_id=c["owner"], connection_id=c["connection"], model="fixture", texts=["hi"]
-        ))
+        task = asyncio.create_task(
+            service.embed(
+                actor_id=c["owner"], connection_id=c["connection"], model="fixture", texts=["hi"]
+            )
+        )
         try:
             await asyncio.wait_for(started.wait(), 2)
             with psycopg.connect(URL) as db:
                 if revoke == "admission":
                     db.execute("DELETE FROM app_admissions WHERE user_id=%s", (c["owner"],))
                 else:
-                    db.execute("UPDATE user_provider_connections SET status='disconnected' WHERE id=%s",
-                               (c["connection"],))
+                    db.execute(
+                        "UPDATE user_provider_connections SET status='disconnected' WHERE id=%s",
+                        (c["connection"],),
+                    )
             with pytest.raises(HTTPException) as error:
                 await asyncio.wait_for(task, 2)
             assert error.value.status_code == (403 if revoke == "admission" else 409)
@@ -185,12 +216,17 @@ def test_inflight_execution_rechecks_real_database_and_cancels(corpus, monkeypat
 
 def test_publish_document_lock_serializes_tombstone_and_stale_publication(corpus):
     c = corpus
-    engine = create_engine(make_url(URL).set(drivername="postgresql+psycopg", username="notebook_app"))
+    engine = create_engine(
+        make_url(URL).set(drivername="postgresql+psycopg", username="notebook_app")
+    )
     try:
         with Session(engine) as session:
+
             def identity():
-                session.execute(text("SELECT set_config('request.jwt.claim.sub',:uid,true)"),
-                                {"uid": str(c["owner"])})
+                session.execute(
+                    text("SELECT set_config('request.jwt.claim.sub',:uid,true)"),
+                    {"uid": str(c["owner"])},
+                )
 
             identity()
             token = claim_job(session, c["job"])
@@ -205,7 +241,9 @@ def test_publish_document_lock_serializes_tombstone_and_stale_publication(corpus
                     db.execute("SELECT notebook_delete_document(%s)", (c["doc"],))
             session.rollback()
             with runtime(c["editor"]) as db:
-                assert db.execute("SELECT notebook_delete_document(%s)", (c["doc"],)).fetchone() == (True,)
+                assert db.execute(
+                    "SELECT notebook_delete_document(%s)", (c["doc"],)
+                ).fetchone() == (True,)
             identity()
             assert not lock_job_for_publish(session, c["job"], token)
             assert not finish_job(session, c["job"], token, status="succeeded")
