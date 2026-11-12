@@ -1,6 +1,10 @@
 # Handoff · Notebook · Wave 3 / Pi-Konfigurationsreload
 
-## Aktueller Wiederaufnahmestand (ersetzt den historischen Einstieg unten)
+## Neuester Stand nach ausdrücklicher Fortsetzung
+
+A3 und C3 sind inzwischen kontrolliert integriert: Candidate `f0937b1528b4903657fedc447c44afedfdb35a9f` (C3 final `bb00822`, A3 `eae387e`). Zentrale Ergänzungen in `06c56b6`. Zusätzlicher DB-Integrationstest prüft den echten restricted-role ExecutionService-Lookup und Widerruf während synthetischer Secret-Auflösung. 154 Backendtests mit isoliertem PostgreSQL, 17 Frontendtests, Build, Ruff und 9 Provisionertests bestanden. Test-DB gelöscht, Cluster auf 55439 wieder gestoppt. Keine Live-Provider-/Supabase-/Bitwarden-Abnahme, keine Container neu gebaut, kein Deployment. Details und verbleibende Grenzen in Plan/Integrationslog und A3/C3-Handoffs. Beide Workeraufträge erfolgreich beendet. Nächster Schritt: B3/E3 für echten Upload/private Storage/isoliertes Parsing, sicheren Actor-Dispatch und fenced Publish koordinieren; danach Chat/UI und unabhängige Abnahme. Die folgenden Reload-/Pauseabschnitte sind historisch und überholt, kein neuer Reload als Voraussetzung angeordnet.
+
+## Historischer Wiederaufnahmestand vor Integration
 
 Nutzerauftrag: sofort Handoff sichern, Pi wegen Konfigurationsänderungen reloaden, danach weiterarbeiten. Keine weitere Integration vor Reload. Ein Reload ist noch nicht nachgewiesen; in der Pi-Oberfläche `/reload` ausführen. Anschließend diesen Abschnitt und die referenzierten Worker-Handoffs lesen, Git-Status erneut prüfen.
 

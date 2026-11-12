@@ -1,5 +1,13 @@
 # Integration log
 
+## Wave 3 persistence / execution seam · 2026-11-12
+
+- A3 HEAD `eae387ef523d7fdb7a705f7c0c99e0fcc5a449f6` merged first; C3 HEAD `bb00822d722d153e7346179fec295401e43aa959` merged into candidate `f0937b1528b4903657fedc447c44afedfdb35a9f`. Both merges clean; worker changes respected assigned paths. Central dependency `httpcore>=1,<2` and `fail -> NoReturn` supplied by main `06c56b6`.
+- Reviewed scoped DDL/RLS/lease and personal execution/egress/protocol boundaries. Added main-owned `backend/tests/integration/test_execution_database.py`: real notebook_app connection with single pooled connection verifies foreign same-workspace denial, fresh admission revocation, and disconnect during synthetic secret resolution preventing adapter construction. Vault/provider calls in these tests remain synthetic.
+- Integrated suite: **154 backend tests passed** against real isolated PostgreSQL16, including fresh database migration regression through 0003; **17 frontend tests**, TypeScript/Vite build, **9 provisioner tests** and full backend Ruff passed. Existing upstream Starlette/httpx deprecation warning remains. Active LSP on seven core/new test files confirmed zero errors; initial timed-out probe was rerun successfully. Auxiliary numeric-conversion warning reviewed: elements are type/finite-checked and the enclosing adapter response catches conversion errors; German-copy spellcheck suggestions are not Python errors.
+- Isolated retained cluster `/tmp/notebook-auth-pg` on 55439 restarted only after verifying stopped/free. First startup failed due default socket directory permissions; explicit socket directory inside the private cluster fixed startup. New `notebook_wave3_verify` migrated/tested and dropped; cluster stopped afterward. System 5432 and A3 55440 untouched.
+- This milestone is persistence and execution only, NOT upload/chat/product acceptance. No document/chat capabilities enabled. Trusted job dispatch, fenced publish composition, private Storage/policies/cleanup, isolated parser runtime, aggregate quotas, actual index model compatibility, UI wiring and independent full-flow review remain. No live Supabase/Bitwarden/provider, container rebuild, kube1 mutation or production release performed.
+
 Initial baseline prepared from requested project instructions. Existing diagram backups preserved outside implementation baseline. No remote configured; no production rollout performed.
 
 ## Integrated foundation · 2026-11-11

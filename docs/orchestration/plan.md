@@ -23,20 +23,20 @@ Remaining implementation: A invitation/bootstrap/OAuth/recovery/membership, B up
 
 External release prerequisites: repository remote/Actions; confirmed rootless runtime; app-specific Bitwarden project and machine account mapping; SMTP/Google OAuth and provider authorization; note.yokoma.de routing. No secret values requested in chat.
 
-## Wave 3 · preparation
+## Wave 3 · persistence and provider seam integrated
 
 Resume baseline: `1fe389732d59acaaddcb1463b1ab726fd30805a9` (clean). Contract preparation commit follows this baseline. New Pi agents only; leave previous worker worktrees/sessions untouched. Start at most two independent workers initially, in new sibling worktrees based on the contract commit.
 
 | Task | Owner / worktree | Scope | Status / dependency |
 |---|---|---|---|
-| A3 | Pi data / notebook-data-v3 | ORM + migration 0003 for documents, versions, chunks, profiles, fenced jobs; RLS/integrity tests | prepared |
-| C3 | Pi providers / notebook-provider-v3 | Typed generation/streaming, embeddings, owned execution boundary, cancellation and egress tests | prepared |
+| A3 | Pi data / notebook-data-v3 | ORM + migration 0003 for documents, versions, chunks, profiles, fenced jobs; RLS/integrity tests | integrated / verified; HEAD eae387e |
+| C3 | Pi providers / notebook-provider-v3 | Typed generation/streaming, embeddings, owned execution boundary, cancellation and egress tests | integrated / verified; HEAD bb00822 |
 | B3 | Pi RAG / assigned after A3 | Upload/storage, isolated parsing, durable worker and scoped text retrieval/chat | todo; A3, C3 |
 | D3 | Pi frontend / assigned after backend seam | Working upload/status/source/chat flow, no development notices | todo; B3 |
 | E3 | Pi deployment / assigned separately | Actual Supabase/storage and isolated parser runtime, local integration evidence | todo; parser requirements |
 | F3 | Independent Pi review | Cross-workspace/credential attacks, deleted/versioned sources, leases, streaming cancellation | todo; integrated candidate |
 
-Main owns contracts, app registration, root dependencies/lock, integration and orchestration records. A3 exclusively owns all ORM/migrations; C3 exclusively providers/connections plus provider tests. Workers may write their named handoff only. No production work, live credentials or nested delegation. A3 reserves isolated PostgreSQL port 55440 and a unique temporary data directory; existing 5432 and retained 55439 are untouched. C3 uses protocol fixtures and no database server. Tests using fixtures are not live-provider proof. Worker receipt IDs/branches are recorded after launch.
+Main owns contracts, app registration, root dependencies/lock, integration and orchestration records. A3 exclusively owns all ORM/migrations; C3 exclusively providers/connections plus provider tests. Workers may write their named handoff only. No production work, live credentials or nested delegation. A3 reserves isolated PostgreSQL port 55440 and a unique temporary data directory; existing 5432 and retained 55439 are untouched. C3 uses protocol fixtures and no database server. Tests using fixtures are not live-provider proof. Orca Run `run_a6efa1e8f690`: A3 dispatch `ctx_9dd83404d0a4` succeeded; C3 final dispatch `ctx_8c55888c9a53` succeeded after user-requested pauses. Branches `notebook-data-v3` and `notebook-provider-v3` preserved. Integration candidate f0937b1 plus main DB execution tests passes 154 backend, 17 frontend, 9 provisioner tests; build/Ruff pass. See integration log. B3/E3 must settle trusted dispatch, storage cleanup and parser isolation before enabling any capability.
 
 ## Wave 2 · integrated
 
