@@ -1,4 +1,4 @@
-"""Real0005/PostgreSQL roles + injected SYNTHETIC Storage, not Storage-policy proof."""
+"""Real head0006/PostgreSQL roles + SYNTHETIC Storage, not Storage-policy proof."""
 
 import asyncio
 import os
@@ -123,12 +123,7 @@ def upload_scene(tmp_path):
             assert not active
             self.actions.append("read")
             if self.mode == "expired":
-                with psycopg.connect(URL) as admin:
-                    admin.execute(
-                        "UPDATE upload_intents SET write_expires_at=clock_timestamp()-interval '1s' "
-                        "WHERE version_id=%s",
-                        (scope.version_id,),
-                    )
+                await asyncio.sleep(1.05)  # Real short RPC lease expires; no clock rewrite.
             return b"wrong" if self.mode == "corrupt" else self.values[scope.key]
 
     store = SyntheticStore()
@@ -199,8 +194,17 @@ def test_idempotency_mismatch_rejected_without_second_external_write(upload_scen
 
 
 @pytest.mark.parametrize("mode", ["ambiguous_put", "corrupt", "revoke", "expired"])
-def test_partial_external_failure_never_creates_visible_document_or_job(upload_scene, mode):
+def test_partial_external_failure_never_creates_visible_document_or_job(
+    upload_scene, mode, monkeypatch
+):
     c = upload_scene
+    if mode == "expired":
+        from app.db.uploads import claim_upload_io
+
+        monkeypatch.setattr(
+            "app.documents.service.claim_upload_io",
+            lambda db, intent_id, **kwargs: claim_upload_io(db, intent_id, lease_seconds=1),
+        )
     c["store"].mode = mode
     with pytest.raises(DocumentError):
         perform(c)

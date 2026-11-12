@@ -15,6 +15,19 @@ pytest_plugins = ["test_service"]
 pytestmark = pytest.mark.skipif(not URL, reason="isolated migrated PostgreSQL required")
 
 
+@pytest.fixture(autouse=True)
+def backoff_has_no_transaction(upload_scene, monkeypatch):
+    from time import sleep
+
+    def checked_sleep(delay):
+        assert not upload_scene["active"]
+        assert upload_scene["actor_engine"].pool.checkedout() == 0
+        assert upload_scene["io_engine"].pool.checkedout() == 0
+        sleep(delay)
+
+    monkeypatch.setattr("app.documents.transactions.sleep", checked_sleep)
+
+
 @contextmanager
 def contend(engine, *, target=1, marker="SELECT public.quota_gate()", exhaust=False):
     """Acquire real competing gate immediately before a chosen statement.
@@ -168,6 +181,82 @@ def test_worker_busy_is_bounded_without_repeating_io_or_losing_fence(
     else:
         assert row == ("cancelled" if phase == "cancel" else "succeeded", 1, None)
         assert chunks == (0 if phase == "cancel" else 1)
+
+
+@pytest.mark.parametrize(
+    "code,message,expected",
+    [
+        ("P0001", "other_error", "database_unavailable"),
+        ("42501", "quota_capacity", "database_unavailable"),
+        ("55P03", "other_error", "database_unavailable"),
+        ("P0001", "quota_legacy_unsupported", "quota_legacy_unsupported"),
+        ("P0001", "quota_preflight_required", "quota_preflight_required"),
+        ("P0001", "quota_isolation_unsupported", "quota_isolation_unsupported"),
+    ],
+)
+def test_service_nearby_or_unsupported_errors_never_retry(upload_scene, code, message, expected):
+    c = upload_scene
+    original = c["service"].actor_tx
+    invocations = []
+
+    @contextmanager
+    def failing(actor):
+        invocations.append(actor)
+        with original(actor) as db:
+            db.execute(
+                text(
+                    "SELECT set_config('test.quota_code',:c,true),set_config('test.quota_message',:m,true)"
+                ),
+                {"c": code, "m": message},
+            )
+            db.execute(
+                text(
+                    "DO $$ BEGIN RAISE EXCEPTION USING MESSAGE=current_setting('test.quota_message'), ERRCODE=current_setting('test.quota_code'); END $$"
+                )
+            )
+            yield db
+
+    c["service"].actor_tx = failing
+    with pytest.raises(DocumentError) as caught:
+        perform(c)
+    assert (caught.value.status_code, caught.value.code) == (503, expected)
+    assert len(invocations) == 1 and c["store"].actions == []
+
+
+def test_finalize_exit_busy_rolls_back_all_rows_and_retries_no_storage(upload_scene):
+    # Server-injected exact error at factory exit AFTER writes, distinct from
+    # real gate-contention tests: proves commit-context errors aren't sanitized early.
+    c = upload_scene
+    original = c["service"].actor_tx
+    exits = []
+
+    @contextmanager
+    def exit_busy(actor):
+        with original(actor) as db:
+            yield db
+            state = db.execute(
+                text("SELECT state FROM upload_intents WHERE notebook_id=:n"), {"n": c["notebook"]}
+            ).scalar_one_or_none()
+            if state == "finalized":
+                exits.append(db.execute(text("SELECT txid_current()")).scalar_one())
+                if len(exits) == 1:
+                    db.execute(
+                        text(
+                            "DO $$ BEGIN RAISE EXCEPTION 'quota_gate_busy' USING ERRCODE='55P03'; END $$"
+                        )
+                    )
+
+    c["service"].actor_tx = exit_busy
+    assert perform(c).job.status == "queued"
+    assert len(exits) == 2 and len(set(exits)) == 2
+    assert c["store"].actions == ["put", "read"]
+    with psycopg.connect(URL) as db:
+        assert db.execute(
+            "SELECT count(*) FROM documents WHERE notebook_id=%s", (c["notebook"],)
+        ).fetchone() == (1,)
+        assert db.execute(
+            "SELECT count(*) FROM ingestion_jobs WHERE notebook_id=%s", (c["notebook"],)
+        ).fetchone() == (1,)
 
 
 def test_head_pdf_is_rejected_before_intent_job_or_storage(upload_scene):
