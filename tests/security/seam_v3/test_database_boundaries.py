@@ -6,13 +6,13 @@ F3a-01 is retained as an ordinary regression after independent fix verification.
 
 import asyncio
 import os
+import sys
 from contextlib import contextmanager
 from uuid import uuid4
 
 import psycopg
 import pytest
 from app.connections import execution
-from app.db.leases import claim_job, finish_job, lock_job_for_publish
 from fastapi import HTTPException
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
@@ -29,8 +29,25 @@ def runtime(actor):
         yield db
 
 
+@pytest.fixture(autouse=True)
+def database_version(request, monkeypatch):
+    # Original provider-bound publication/fencing regression runs at0005;
+    # head canonical publication is tested independently by A5.
+    if (
+        request.node.originalname
+        != "test_publish_document_lock_serializes_tombstone_and_stale_publication"
+    ):
+        yield
+        return
+    from backend.tests.auth.database_versions import isolated_database
+
+    with isolated_database(URL, "0005") as url:
+        monkeypatch.setattr(sys.modules[__name__], "URL", url)
+        yield
+
+
 @pytest.fixture
-def corpus():
+def corpus(request):
     c = {
         name: uuid4()
         for name in (
@@ -81,9 +98,21 @@ def corpus():
         )
         db.execute(
             "INSERT INTO ingestion_jobs(id,document_version_id,notebook_id,workspace_id,"
-            "actor_user_id,connection_id,index_profile_id,idempotency_key) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,'synthetic')",
-            (c["job"], c["version"], c["note"], c["ws"], c["owner"], c["connection"], c["profile"]),
+            "actor_user_id,connection_id,index_profile_id,idempotency_key,status) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,'synthetic',%s)",
+            (
+                c["job"],
+                c["version"],
+                c["note"],
+                c["ws"],
+                c["owner"],
+                c["connection"],
+                c["profile"],
+                "queued"
+                if request.node.originalname
+                == "test_publish_document_lock_serializes_tombstone_and_stale_publication"
+                else "failed",
+            ),
         )
     try:
         yield c
@@ -211,6 +240,8 @@ def test_inflight_execution_rechecks_real_database_and_cancels(corpus, monkeypat
 
 
 def test_publish_document_lock_serializes_tombstone_and_stale_publication(corpus):
+    from backend.tests.auth.leases_0005 import claim_job, finish_job, lock_job_for_publish
+
     c = corpus
     engine = create_engine(
         make_url(URL).set(drivername="postgresql+psycopg", username="notebook_app")
