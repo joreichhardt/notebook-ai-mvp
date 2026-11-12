@@ -1,5 +1,14 @@
 # Integration log
 
+## Docker-Testbetrieb nach kube1 verlagert
+
+- Nutzer verlangt keine Docker-Testmaschinen/-builds auf dem schwachen Laptop. Regel in AGENTS.md, README und [Runbook](../operations/testing-kube1.md) verbindlich dokumentiert; aktive B3/A5-Worker informiert und eigene private Serverbereiche `/home/jre/notebook-tests/{main,b3,a5}` mit Modus0700 sowie explizite Projektgrenzen zugewiesen. Stilllegung eigener nativer lokaler Worker-DBs angewiesen, Belege im jeweiligen Handoff nachverfolgen.
+- SSH BatchMode zu kube1, Docker29.1.3 und Compose2.40.3 geprüft; 12 logische CPUs, rund31GiB RAM. Keine existierenden kube1-Dienste/Produktions-Secrets verändert. Lokale Notebook-Foundation-Container waren schon gestoppt; fremde lokale Container erhalten.
+- Konfigurationscommit `e6d8063`: `compose.test.yaml` (keine automatischen Restarts, Testorigin), explizite Loopback-Portvariable, isoliertes Projekt `notebook-test-main`, Port18190 statt belegtem Shop-Port18080. **Erster Remote-Build erfolgreich, Start fehlgeschlagen:** `umask077` beim Entpacken erzeugte root-only Code-Dateien, API-UID10001 scheiterte an PermissionError. Ursache Transfer-Metadaten, kein Credential-/Auth-Fallback; Snapshot bleibt als fehlgeschlagener Nachweis erhalten.
+- Runbookkorrektur `c121495`, vollständig geprüfter Snapshot **`c1214957df79`** unter `/home/jre/notebook-tests/main/c1214957df79`: private0700 Snapshot-Wurzel, beim tar-Entpacken umask022 für Git-Code-Dateimodi. Kein Worktree-/Secret-Sync. Beide Images ausschließlich auf kube1 gebaut; `docker compose --env-file /dev/null -p notebook-test-main -f compose.yaml -f compose.test.yaml config --quiet` und `up -d --build --wait --wait-timeout 120` erfolgreich.
+- Remote-Smokes über `http://127.0.0.1:18190`: `/api/health/live`200 mit status ok, `/`200; `/api/capabilities` liefert documents=false/chat=false. Selektive Docker-Metadaten verifiziert: API10001:10001, Frontend101:101; beide read-only, je1CPU/512MiB/pids128; API keine Hostports, Frontend nur127.0.0.1:18190.
+- Danach ausschließlich eigenes `notebook-test-main` mit denselben Compose-Dateien/Portvariable per `down` beendet, keine Volumes/globalen Images gelöscht. Snapshots und begrenzte Buildlogs verbleiben im privaten Main-Testbereich. Kein neuer öffentlicher Endpunkt/Tunnel/DNS und kein Produktionsrollout. Keine neue Backend-Testzählung: dies ist Foundation-Build-/Start-/HTTP-/Runtime-Metadaten-Evidenz, nicht Supabase-/Storage-/Auth-/Worker-/Upload- oder Rootless-Abnahme.
+
 ## F3a closure and default security regression gate · 2026-11-12
 
 - Independent review found F3a-01 (Medium): DELETE/reinsert of a shared immutable profile could change another actor's private job options. Review/repro merged in `229e670`; A4 fix `6db2122` plus handoff `ae30cd5` merged in candidate `f46054b`. Migration 0004 revokes direct runtime profile DELETE; notebook cascade remains authorized. No historical migration rewritten.
