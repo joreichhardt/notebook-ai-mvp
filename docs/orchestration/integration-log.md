@@ -1,5 +1,13 @@
 # Integration log
 
+## c4430a9: Callbackintegration, echte HTTP-RED/GREENs, kombinierter Lauf noch rot
+
+- B3 b02b1bd/1e0b54c gelesen und normal als8c596d1 übernommen; Worker394grün bleibt eigenerWorkerbeleg. Main ergänzte ActorMutations sowie sieben bestehende DB-onlySchreibpfade, keine Netzwerk-/WholeHTTPretries, DTO erst nachCommit. HTTPcreate29ffbca RED500→4ff32ba GREEN1; erweitertff57a62 sechsRED/eineKontrolle→14ba445 GREEN7. PrivilegierterOriginalLogin hinterSETROLE75e23fa RED201statt503/8Kontrollen→c4430a9 direkterCurrent=Session=notebook_app/nonSuper/nonBYPASS-Guard.
+- **Eigener frischer immutableMain-kube1/SCRAM-Volltest exaktc4430a9:1failed/402passed/1Warnung/174.99s.** Alle9RootHTTPfälle darin bestanden; kein separater9-Testlauf. Privileged2/WatchdoghistorischerScratchRED→committedGREEN1/Afixture1/Service12 bestanden. RemoteRuff nachDefaultfehler nicht erreicht. RUN_EXIT1/CLEANUP_EXIT0/0eigeneContainer-Netze-Volumes/Bootstrapentfernt. Log `/home/jre/notebook-tests/main/.runtime-c4430a9/run.log`, Operator `.launch-combined-c4430a9.py`; nurcommittedArchive, private0700/022Extraktion, keinLaptopcontainer/fremdesCleanup.
+- EinzigerFehler `test_watchdog_busy_closes_unfinished_io_but_keeps_live_lease[False]`: checked_sleep verlangt globalactorpool.checkedout()==0, beobachtet1. UnabhängigeSibling-Tx versus eigenerLeak offen, nicht als bloßeFlake abtun. B3-Folgeauftragctx_b902a1569312/task_7836f4ec5ac8 verlangt deterministischeRED/GREENs und eigeneRollback-/Close-Grenze bei erhaltenerNebenläufigkeit/Fences/keinzweitesI/O; keine produktiveAssertionunterdrückung oder globaleSerialisierung.
+- A5-Readonlyreviewaf763fb aufpinnedc4430a9 vollständig gelesen: kein zusätzlicher bestätigter Auth/RLS/Replay-/Commitfehler. ExpliziteEngine-/Pool-/SQLbudgets, Latecommit-/ASGI-/perAttemptRevocation-/Negativtests bleiben offen. A5 bisher nurHandoff/keinTest- oderStackstart; optionaleHelperverlagerung ist keinDefekt. Main hält Task15 inArbeit und koordiniert abgegrenzteBudgetfolgearbeit; B3Diagnose alsTodo16, Gesamtgate8weiteroffen. KeinRollout/Storage-/Dispatcher-/Quieszenzbeleg, CapabilitiesOFF.
+
+
 ## Main bestätigt0006-Auth/Securityscope unabhängig:200grün, Fullcaller weiter offen
 
 - Exakter committed Maincode **`41d60aa802887674a4ad9b10b227da01296f8c9f`**, gitarchive in eigenem0700Snapshot/022Extraktion, nonrootUID1001, ausschließlichkube1/notebook-test-main. Externer Operator verwendet unverändert den Bootstrap des committed B3runners, aber explizite Auswahl `pytest backend/tests/auth tests/security`; Snapshot/Produktcode unverändert. **200passed/1bestehendeWarnung/142.98s**, Ruffgrün, **RUN_EXIT0/CLEANUP_EXIT0/0Container/Netze/Volumes**, externe synthetische Credentialdatei entfernt.

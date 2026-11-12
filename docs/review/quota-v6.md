@@ -14,6 +14,12 @@
 - Exakte SQLSTATE+message_primary-Whitelist, ausschließlich echte Psycopg-Errors/optional SQLAlchemy-DBAPIError.orig; keine Klassifikation nach beliebigem Fehlertext und kein I/O-/Commit-/Retry im DBhelper.
 - Alte Ausführungs-/Fencingregressionen bleiben teils ausdrücklich0005-version-pinned, weil0006 ungebundene aktive/providergebundene Fixtures absichtlich ablehnt. Neue Headfälle müssen die kanonischen Rollen-/Fencing-/Quotaassertions separat belegen; nicht als unveränderte Head-Kompatibilität beschreiben.
 
+## Neuer Callerstand c4430a9: integriert, kombinierte Abnahme weiterhin offen
+
+B3-Callbackdelivery1e0b54c als8c596d1 integriert; Main hat sieben HTTP-DBmutationen auf frische ganze Actorcallbacks mit Commit-vor-Response umgestellt und direktenCurrent-/Sessionlogin abgesichert. AuthentischeHTTP-RED/GREENs im [Integrationslog](../orchestration/integration-log.md). Eigener vollständiger immutablekube1-Lauf exaktc4430a9 **402passed/1failed**, darin9grüneRootHTTPfälle; keine separate9erSuite oder volleAbnahme. EinzigerFehler: Watchdogbackoff-Test globalePool-Leerstandsassertion sieht1. B3ctx_b902a1569312 diagnostiziert deterministisch, keine abgeschwächtenRollback-/I/O-/Fence-Nachweise. Cleanup0/0Ressourcen/Bootstrapentfernt; RemoteRuff nachDefaultfehler nicht erreicht.
+
+A5-Readonlyreview **af763fb** gelesen: keine zusätzliche bestätigte Auth-/RLS-/Replay-/Commitverletzung imneuenRootadapter; bekanntoffen bleiben finiteFactory-/SQLbudgets und dedizierteLatecommit-/Widerrufs-/Negativtests. 250ms ist Retryadmission, kein gesamtesAntwortlimit. MainTask15 undB3Todo16 blockieren Gesamtgate8. Die älterenCallerbefunde unten beschreiben die Ausgangslage vor8c596d1/Rootumbau, nicht unverändertenaktuellenCode. Quoten-DBscope/Q6-R1 bleibt wie unten unabhängig200grün bestätigt; keinRollout/Featureenablement.
+
 ## Q6-R1 · Preflight akzeptiert inkompatibel lange Altlease
 
 **Status: Q6-R1 geschlossen für DB-/Migrationsscope durch eigene Mainprüfung200Tests. Gesamte B3-/HTTP-Callerabnahme weiterhin offen. Historische Severity: mittel.**
