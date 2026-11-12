@@ -53,13 +53,18 @@ def test_invitation_random_hash():
 
 def test_membership_blocks_foreign_and_viewer_write():
     engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine)
+    # This unit test exercises membership(), not PostgreSQL-specific document DDL.
+    # Full schema and RLS are verified against migrated PostgreSQL in test_documents.
+    Base.metadata.create_all(
+        engine, tables=[Base.metadata.tables[name] for name in ("workspaces", "workspace_members")]
+    )
     with Session(engine) as db:
         uid, wid = uuid4(), uuid4()
         db.add(Workspace(id=wid, name="Private"))
         db.add(Member(workspace_id=wid, user_id=uid, role="viewer"))
         db.flush()
-        assert membership(db, wid, uid).role == "viewer"
+        member = membership(db, wid, uid)
+        assert member is not None and member.role == "viewer"
         for user, write in [(uuid4(), False), (uid, True)]:
             with pytest.raises(HTTPException):
                 membership(db, wid, user, write)
