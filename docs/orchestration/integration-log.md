@@ -1,5 +1,10 @@
 # Integration log
 
+## 4d58f6f: echte Deferred-COMMIT-/ASGI-Nachweise und Enginebudgets17grün
+
+A5d9f0d646/d7393037 vollständiggelesen, enginbcd04f1 übernommen; BasisBudget-/RootPrincipalverhalten erhalten. Main4d58f6f ergänzt fixture-onlyDEFERRABLE-CONSTRAINT-TRIGGER für tatsächlichenCOMMITfehler undASGIresponse.start-Observer: exaktesBusy503/unknownP0001500 erstnachRollback/Close/Pool0, keinErfolgsheader/keineRows, unknown genau1Versuch, boundedbusyfrischeSessions. ProbeDDLentferntimfinally, keinebestehendenGuards deaktiviert. Eigener immutablekube1/SCRAM-Lauf **HTTP11+Factory6=17passed/1Warnung/12.39s+remoteRuff/RUN_EXIT0/CLEANUP_EXIT0/0Ressourcen/Credentialentfernt**; `.runtime-http-budget-4d58f6f/run.log`/`.launch-http-budget-4d58f6f.py` unterMain-Testbereich. Todo17geschlossen. Worker215Auth-Securitygrün istseparaterScope, keineAddition/keineeigeneFullabnahme. AktiveLSP3:1bestätigt/2Timeouts; Cache-SQLfehlalarme einzelnbegründet, keineInlineSuppressions. Root15/Gate8weiteroffenfürRevocation/Negativmatrix/schedulerawareAdmissionundfinalFull. ServerSQL-/proHostConnectbudgets sindkein250msTotal-/DNS-/Netzpartition-/Produktions-TLSnachweis. KeinRollout.
+
+
 ## c1c48e0: unabhängige35erFehlernachprüfung bestätigt Test-onlyOwnershipfix
 
 - B3-83e4f299/Docs81e5970 gelesen, GitdiffApp/Migrationenzuc443 leer, normalgemergtalsc1c48e0. Worker deterministischerBarriereRED2failed/31passed→35gezielt/full406grün; eigene immutableMain-kube1/SCRAM-Nachprüfung **35passed/9.76s+remoteRuff/RUN_EXIT0/CLEANUP_EXIT0/0eigeneRessourcen/Credentialentfernt**. NurBoundarysuite, kein eigenerFull406lauf. Log `.runtime-watchdog-c1c48e0/run.log`, Operator `.launch-watchdog-c1c48e0.py` unterMain-Testbereich.

@@ -14,7 +14,11 @@
 - Exakte SQLSTATE+message_primary-Whitelist, ausschließlich echte Psycopg-Errors/optional SQLAlchemy-DBAPIError.orig; keine Klassifikation nach beliebigem Fehlertext und kein I/O-/Commit-/Retry im DBhelper.
 - Alte Ausführungs-/Fencingregressionen bleiben teils ausdrücklich0005-version-pinned, weil0006 ungebundene aktive/providergebundene Fixtures absichtlich ablehnt. Neue Headfälle müssen die kanonischen Rollen-/Fencing-/Quotaassertions separat belegen; nicht als unveränderte Head-Kompatibilität beschreiben.
 
-## Aktueller Test-onlyFix c1c48e0:35erMainnachprüfung grün
+## Aktueller4d58f6f-Scope: Enginebudgets und echteHTTP-Commitgrenze bestätigt
+
+EngerA5-Enginecode nachReviewalsbcd04f1 übernommen. Main4d58f6f testet zusätzlichrealePostgreSQL-Deferred-COMMITfehler gegenASGIresponse.start: Busy503/unknownP0001500 nachgeschlossenenConnections/keinemSession-Tx/Pool0, kein2xx/keineRows; unknownCommitgenau1Versuch. Eigenes immutablekube1/SCRAM **HTTP11+Factory6=17grün/1Warnung/12.39s+remoteRuff/Run0/Cleanup0/0Ressourcen/Credentialentfernt**. Todo17geschlossen; ersterLSP3batch1bestätigt/2Timeouts,nichtglobalclean. Root15/Gate8offenfürWiderrufs-/NegativmatrixundRetryadmissionnachBackoff, dannFullDefault. Kein250msTotal-/DNS-/Netzpartition-/TLS-Handshake-/Produktionsquieszenzbeleg, keineFeaturefreigabe.
+
+## Historischer Test-onlyFix c1c48e0:35erMainnachprüfung grün
 
 B3-Ownershipkorrektur81e5970 gelesen undalsc1c48e0 integriert, produktiverApp-/Migrationscode zuc443 unverändert. Eigener immutablerkube1/SCRAM-Lauf35Boundaryfälle/9.76s+remoteRuff/RUN_EXIT0/CLEANUP_EXIT0/0Ressourcen/Credentialentfernt bestätigt den Scope. DeterministischeSibling-Barriere und2Own-Leak-Negativkontrollen erhaltenechteCaller-Rollback/IDLEcheckin/Closed-/NoTx-Grenze, stattlegitimeSiblingcheckouts alsLeak auszulegen. Todo16geschlossen, **keine eigeneFull406abnahme**. Root15/engeA5Factorybudgets17offen; keinFeatureenablement. A5sHARD-Fehlalarm wirdnichtumgangen: tatsächlicheCredentialretentiondurchURL.set(None) wurdezusätzlichbewiesen undsemantischepasswordlessFixturekorrektur angewiesen; Guardunverändert.
 
