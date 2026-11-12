@@ -47,7 +47,7 @@ services:
     mem_limit: 1g
     pids_limit: 128
     tmpfs:
-      - /work:mode=1777,size=536870912
+      - /work:exec,mode=1777,size=536870912
       - /tmp:mode=1777,size=67108864
     networks: [database, dependencies]
 networks:
