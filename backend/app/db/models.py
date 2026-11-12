@@ -186,6 +186,15 @@ class UploadIntentRecord(Base):
     reconcile_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.clock_timestamp()
     )
+    # Privileged mirror metadata is excluded from ordinary ORM SELECTs. Even
+    # explicit undefer cannot bypass the database's app column allowlist.
+    job_state: Mapped[str | None] = mapped_column(String(16), deferred=True)
+    job_attempts: Mapped[int | None] = mapped_column(deferred=True)
+    job_lease_token: Mapped[UUID | None] = mapped_column(deferred=True)
+    job_lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), deferred=True
+    )
+    work_cancelled: Mapped[bool] = mapped_column(server_default="false", deferred=True)
     __table_args__ = (UniqueConstraint("actor_user_id", "notebook_id", "idempotency_key"),)
 
 

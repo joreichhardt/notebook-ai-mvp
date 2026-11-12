@@ -16,12 +16,13 @@
 - [Architekturentscheidungen](architecture/decisions.md): Gründe und verbindliche Präzisierungen.
 - [Bestandsaufnahme](architecture/inventory.md): ermittelter Infrastrukturstand; kein Ersatz für aktuelle Live-Prüfungen.
 - [Sicherheitsregeln und Betriebsgrenzen](../SECURITY.md).
+- [Mainreview Quoten0006/B3](review/quota-v6.md): Rollen-/RLS-/Gateprüfung, Altlease-Preflightkorrektur, getrennte Quieszenzgrenze und noch offene kombinierte Callertests.
 - [Review des Daten-/Provider-Durchstichs](review/seam-v3.md): Befund, Reproduktion und unabhängige Nachprüfung. Weitere Reviews unter `review/` beziehen sich auf ihre jeweiligen Kandidaten.
 
 ## Entwicklung und Betrieb
 
 - [Docker-Tests auf kube1](operations/testing-kube1.md): verbindlicher Testhost, isolierte Worker-Projekte, Snapshot-Übertragung und Aufräumen. Keine Containerbuilds/-teststacks auf dem Laptop.
-
+- [Agent-Betrieb: Pi, Orca und Secret-Guard](operations/agent-runtime.md): Diagnosen, autorisierte lokale Patches, Regressionstests, Aktivierung und Rollback. Installierte Runtime-Artefakte liegen außerhalb des App-Repos; Nachweis und Grenzen stehen hier.
 - [Arbeitsregeln](../AGENTS.md) und [Zuständigkeiten/Integration](../multi-agent.md).
 - [Lokale Konfigurationsvorlage](../.env.example): ausschließlich Platzhalter; keine echten Werte in Dokumente, Chat oder Git übernehmen.
 - [Betriebsgrundlage](operations/foundation.md): vorhandenes Setup und Prüfkommandos. Fehlende Live-, Restore-, Rootless- und Release-Nachweise bleiben im Plan und Integrationslog sichtbar.

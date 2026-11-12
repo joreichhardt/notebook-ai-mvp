@@ -5,7 +5,7 @@ from uuid import uuid4
 import psycopg
 import pytest
 
-URL = os.getenv("NOTEBOOK_TEST_POSTGRES_URL")
+URL = os.getenv("NOTEBOOK_TEST_POSTGRES_URL", "")
 pytestmark = pytest.mark.skipif(not URL, reason="Isolated PostgreSQL URL not configured")
 
 
@@ -42,7 +42,9 @@ def invite(owner, ws, email="recipient@example.test"):
 
 def accept(uid, digest, email="recipient@example.test"):
     with actor(uid, email) as db:
-        return db.execute("SELECT * FROM notebook_accept_invite(%s)", (digest,)).fetchone()
+        row = db.execute("SELECT * FROM notebook_accept_invite(%s)", (digest,)).fetchone()
+        assert row is not None
+        return row
 
 
 def test_accept_one_time_personal_workspace_and_roles(world):
@@ -56,13 +58,13 @@ def test_accept_one_time_personal_workspace_and_roles(world):
         assert (
             db.execute(
                 "SELECT count(*) FROM workspaces WHERE personal_owner_id=%s", (uid,)
-            ).fetchone()[0]
+            ).fetchall()[0][0]
             == 1
         )
         assert (
             db.execute(
                 "SELECT role FROM workspace_members WHERE workspace_id=%s AND user_id=%s", (ws, uid)
-            ).fetchone()[0]
+            ).fetchall()[0][0]
             == "viewer"
         )
     with pytest.raises(psycopg.errors.InvalidParameterValue):
@@ -114,8 +116,22 @@ def test_parallel_accept_same_identity_is_idempotent(world):
     owner, _, ws = world
     digest = invite(owner, ws)
     uid = uuid4()
+    from time import sleep
+
+    from app.db.quota import classify_quota_error
+
+    def accept_with_bounded_whole_transaction_retry(_):
+        for _attempt in range(20):
+            try:
+                return accept(uid, digest)
+            except psycopg.Error as error:
+                assert classify_quota_error(error) == "quota_gate_busy"
+            # accept's entire transaction/connection has exited and rolled back.
+            sleep(0.02)
+        pytest.fail("bounded invitation retry exhausted")
+
     with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(lambda _: accept(uid, digest), range(2)))
+        results = list(executor.map(accept_with_bounded_whole_transaction_retry, range(2)))
     assert results[0] == results[1]
 
 
@@ -146,13 +162,14 @@ def test_rpc_not_public_and_role_not_inherited():
         row = db.execute(
             "SELECT proconfig,proacl::text FROM pg_proc WHERE proname='notebook_accept_invite'"
         ).fetchone()
+        assert row is not None
         assert "search_path=pg_catalog" in row[0]
         assert "=X/" not in row[1].replace("notebook_membership=X/", "").replace(
             "notebook_app=X/", ""
         )
         assert not db.execute(
             "SELECT pg_has_role('notebook_app','notebook_membership','MEMBER')"
-        ).fetchone()[0]
+        ).fetchall()[0][0]
 
 
 def test_app_invites_require_platform_admin(world):
@@ -197,7 +214,7 @@ def test_bootstrap_verified_account_and_once():
             assert (
                 db.execute(
                     "SELECT count(*) FROM workspaces WHERE personal_owner_id=%s", (uid,)
-                ).fetchone()[0]
+                ).fetchall()[0][0]
                 == 1
             )
     finally:

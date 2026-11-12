@@ -389,9 +389,12 @@ def finalized(scope):
 def test_concurrent_identical_requests_return_same_ids(scope, operation):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
+    from time import sleep
 
+    from app.db.quota import classify_quota_error
     from app.db.uploads import finalize_upload
     from sqlalchemy import event
+    from sqlalchemy.exc import DBAPIError
 
     intent = None
     if operation == "finalize":
@@ -401,24 +404,29 @@ def test_concurrent_identical_requests_return_same_ids(scope, operation):
     barrier = Barrier(2)
 
     def run():
-        with app(scope[0]) as session:
+        rendezvous = False
+        for _ in range(20):
+            try:
+                with app(scope[0]) as session:
 
-            def before(_conn, _cursor, statement, _parameters, _context, _many):
-                target = (
-                    "SELECT id FROM public.notebooks"
-                    if operation == "finalize"
-                    else "SELECT n.workspace_id"
-                )
-                if target in statement:
-                    barrier.wait(timeout=10)
+                    def before(_conn, _cursor, statement, _parameters, _context, _many):
+                        nonlocal rendezvous
+                        if "SELECT public.quota_gate()" in statement and not rendezvous:
+                            rendezvous = True
+                            barrier.wait(timeout=10)
 
-            event.listen(session.get_bind(), "before_cursor_execute", before)
-            if operation == "finalize":
-                assert intent is not None
-                result = finalize_upload(session, intent.id)
-                return result.document_id, result.version_id, result.job_id
-            reserved = reserve(session, scope[5])
-            return reserved.document_id, reserved.version_id, reserved.job_id
+                    event.listen(session.get_bind(), "before_cursor_execute", before)
+                    if operation == "finalize":
+                        assert intent is not None
+                        result = finalize_upload(session, intent.id)
+                        return result.document_id, result.version_id, result.job_id
+                    reserved = reserve(session, scope[5])
+                    return reserved.document_id, reserved.version_id, reserved.job_id
+            except DBAPIError as error:
+                assert classify_quota_error(error) == "quota_gate_busy"
+            # Entire context rolled back/disposed, no I/O to replay.
+            sleep(0.02)
+        pytest.fail("bounded whole-transaction retries exhausted")
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         a, b = list(pool.map(lambda _: run(), range(2)))
@@ -443,8 +451,12 @@ def test_job_not_claimable_until_finalization_commit(scope):
     confirm(intent)
     with app(scope[0]) as session:
         finalize_upload(session, intent.id)
-        with app(scope[0]) as other:
-            assert claim_job(other, intent.job_id) is None
+        from app.db.quota import classify_quota_error
+        from sqlalchemy.exc import DBAPIError
+
+        with pytest.raises(DBAPIError) as caught, app(scope[0]) as other:
+            claim_job(other, intent.job_id)
+        assert classify_quota_error(caught.value) == "quota_gate_busy"
     with app(scope[0]) as session:
         assert claim_job(session, intent.job_id) is not None
     with app(scope[1]) as session:
@@ -881,16 +893,15 @@ def test_timeout_reconciler_cannot_turn_committing_finalized_source_into_cleanup
             started.set()
             return db.execute("SELECT * FROM list_cleanup(100)").fetchall()
 
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        with app(scope[0]) as session:
-            finalize_upload(session, intent.id)
-            session.execute(text("SELECT pg_sleep(1.1)"))
-            future = pool.submit(reconcile)
-            assert started.wait(3)
-            # Expiry discovery uses SKIP LOCKED: the locked precommit stored
-            # row is skipped, NOT converted to cleanup or remotely deleted.
-            assert (intent.id,) not in future.result(timeout=3)
-        assert (intent.id,) not in future.result(timeout=5)
+    with ThreadPoolExecutor(max_workers=1) as pool, app(scope[0]) as session:
+        finalize_upload(session, intent.id)
+        session.execute(text("SELECT pg_sleep(1.1)"))
+        future = pool.submit(reconcile)
+        assert started.wait(3)
+        # Nonblocking gate now refuses before SKIP LOCKED discovery. The
+        # entire contender rolls back, never marks a committing source.
+        with pytest.raises(psycopg.errors.LockNotAvailable, match="quota_gate_busy"):
+            future.result(timeout=3)
     with io() as db:
         assert (intent.id,) not in db.execute("SELECT * FROM list_cleanup(100)").fetchall()
         assert db.execute("SELECT * FROM claim_cleanup(%s,60)", (intent.id,)).fetchone() is None

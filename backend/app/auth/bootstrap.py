@@ -23,6 +23,9 @@ def bootstrap(email: str, database_url: str):
             raise ValueError("Exactly one verified Supabase account must exist for the email.")
         if db.execute(text("SELECT EXISTS(SELECT 1 FROM public.platform_admins)")).scalar():
             raise ValueError("Bootstrap already completed; use a reviewed administrator procedure.")
+        # Verified account/privileged configuration precede the quota gate; gate
+        # must precede the platform-admin lock and all admission mutations.
+        db.execute(text("SELECT public.quota_gate()"))
         # Serialize competing bootstrap commands before rechecking the empty-admin condition.
         db.execute(text("LOCK TABLE public.platform_admins IN EXCLUSIVE MODE"))
         if db.execute(text("SELECT EXISTS(SELECT 1 FROM public.platform_admins)")).scalar():
