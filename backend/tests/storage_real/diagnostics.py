@@ -11,7 +11,7 @@ import selectors
 import signal
 import subprocess
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 PHASES = {
@@ -66,7 +66,9 @@ def classify(chunks: Iterable[object], *, seconds: float = 120) -> tuple[str, ..
         elif raw in PHASES:
             emit(PHASES[raw])
         elif ERROR_PREFIX.match(raw):
-            if re.search(rb'role "[^"\n]{1,256}" does not exist$', raw):
+            if raw.endswith(b'role "supabase_functions_admin" does not exist'):
+                emit("error_functions_admin_missing")
+            elif re.search(rb'role "[^"\n]{1,256}" does not exist$', raw):
                 emit("error_missing_role")
             elif b"permission denied" in raw:
                 emit("error_permission")
@@ -118,6 +120,8 @@ TOKENS = frozenset(PHASES.values()) | {
     "limit_bytes",
     "limit_time",
     "spawn_failure",
+    "health_ready",
+    "error_functions_admin_missing",
 }
 
 
@@ -146,7 +150,13 @@ def selected_state(raw: bytes) -> tuple[str, ...]:
         state = json.loads(raw)
     except (ValueError, UnicodeError, RecursionError):
         return ("metadata_unknown",)
-    if type(state) is not dict or set(state) - {"ExitCode", "OOMKilled", "Health", "Error"}:
+    if type(state) is not dict or set(state) - {
+        "ExitCode",
+        "OOMKilled",
+        "Health",
+        "Error",
+        "Running",
+    }:
         return ("metadata_unknown",)
     if not state:
         return ("metadata_unknown",)
@@ -160,6 +170,10 @@ def selected_state(raw: bytes) -> tuple[str, ...]:
         if type(state["OOMKilled"]) is not bool:
             return ("metadata_unknown",)
         output.append("oom_true" if state["OOMKilled"] else "oom_false")
+    if "Running" in state:
+        if type(state["Running"]) is not bool:
+            return ("metadata_unknown",)
+        output.append("running_true" if state["Running"] else "running_false")
     if "Health" in state:
         health = state["Health"]
         if type(health) is not str or health not in {"healthy", "unhealthy", "starting", "absent"}:
@@ -185,7 +199,14 @@ class Outcome:
     events: tuple[str, ...]
 
 
-def supervise(argv: list[str], *, seconds: float = 120) -> Outcome:
+def supervise(
+    argv: list[str],
+    *,
+    seconds: float = 120,
+    ready: Callable[[], bool] | None = None,
+    detach: bool = False,
+    environment: dict[str, str] | None = None,
+) -> Outcome:
     """Trusted-caller child stream seam; NO CLI and no command parsed from input.
 
     Not wired to the DB: requires separately reviewed image dependency/mount
@@ -200,7 +221,7 @@ def supervise(argv: list[str], *, seconds: float = 120) -> Outcome:
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
-            env={"PATH": os.defpath},  # No inherited application credentials.
+            env={"PATH": os.defpath, **(environment or {})},  # Explicit caller env only.
         )
     except (OSError, ValueError):
         return Outcome(None, ("spawn_failure",))
@@ -219,8 +240,11 @@ def supervise(argv: list[str], *, seconds: float = 120) -> Outcome:
             if remaining <= 0:
                 terminal_events.append("limit_time")
                 return
-            ready = poller.select(min(remaining, 0.1))
-            if not ready:
+            if ready is not None and ready():
+                terminal_events.append("health_ready")
+                return
+            readable = poller.select(min(remaining, 0.1))
+            if not readable:
                 continue
             chunk = os.read(descriptor, MAX_CHUNK)
             if not chunk:
@@ -248,7 +272,7 @@ def supervise(argv: list[str], *, seconds: float = 120) -> Outcome:
             pass
         # Also terminate descendants retaining the pipe after their parent exited.
         try:
-            os.killpg(child.pid, signal.SIGTERM)
+            os.killpg(child.pid, signal.SIGKILL if detach else signal.SIGTERM)
         except ProcessLookupError:
             pass
         except OSError:

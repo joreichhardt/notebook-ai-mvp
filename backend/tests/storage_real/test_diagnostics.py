@@ -8,6 +8,48 @@ import pytest
 CANARY = "SYNTHETIC_STREAM_CANARY_74a"
 
 
+def test_native_start_detach_seam_preserves_container_client_boundary():
+    import signal
+
+    from backend.tests.storage_real.diagnostics import selected_state, supervise
+
+    assert selected_state(b'{"ExitCode":0,"Running":true,"Health":"healthy"}') == (
+        "exit_0",
+        "running_true",
+        "health_healthy",
+    )
+    result = supervise(
+        [sys.executable, "-c", "import time; time.sleep(10)"],
+        seconds=1,
+        ready=lambda: True,
+        detach=True,
+    )
+    assert result.exit_code == -signal.SIGKILL
+    assert "health_ready" in result.events
+
+
+def test_known_missing_native_role_has_fixed_nonsecret_category():
+    from backend.tests.storage_real.diagnostics import classify
+
+    assert classify(
+        [b'psql:99-roles.sql:7: ERROR:  role "supabase_functions_admin" does not exist\n']
+    ) == ("error_functions_admin_missing",)
+
+
+def test_start_wiring_never_requests_raw_state_or_enables_docker_logs():
+    from pathlib import Path
+
+    from backend.tests.storage_real.launch import STATE_FORMAT
+
+    assert ".Config" not in STATE_FORMAT and ".Env" not in STATE_FORMAT
+    assert ".State.Health.Log" not in STATE_FORMAT
+    assert "{{.State.Error}}" not in STATE_FORMAT
+    assert "{{if .State.Error}}present{{end}}" in STATE_FORMAT
+    compose = Path(__file__).with_name("compose.yaml").read_text()
+    assert "driver: none" in compose
+    assert ">/dev/null 2>&1" not in compose
+
+
 def test_stream_split_phase_and_error_never_exposes_canary(capsys):
     from backend.tests.storage_real.diagnostics import classify
 
