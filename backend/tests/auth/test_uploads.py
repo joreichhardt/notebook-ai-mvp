@@ -915,3 +915,65 @@ def test_finalized_version_content_cannot_be_recycled_under_same_bound_id(scope)
                 "k": intent.storage_key,
             },
         )
+
+
+def test_other_uploader_cannot_forge_current_version_processing_status(scope):
+    from sqlalchemy.exc import IntegrityError
+
+    intent = finalized(scope)
+    with app(scope[1]) as session:
+        assert (
+            session.execute(
+                text("SELECT id FROM ingestion_jobs WHERE id=:j"), {"j": intent.job_id}
+            ).first()
+            is None
+        )
+    with (
+        pytest.raises(IntegrityError, match="processing_projection_mismatch"),
+        app(scope[1]) as session,
+    ):
+        session.execute(
+            text(
+                "UPDATE document_versions SET processing_status='ready',error_code=NULL WHERE id=:v"
+            ),
+            {"v": intent.version_id},
+        )
+    with app(scope[1]) as session:
+        assert (
+            session.execute(
+                text("SELECT processing_status FROM document_versions WHERE id=:v"),
+                {"v": intent.version_id},
+            ).scalar_one()
+            == "queued"
+        )
+
+
+@pytest.mark.parametrize("status", ["queued", "processing", "ready"])
+def test_version_insert_cannot_claim_processing_without_job(scope, status):
+    from sqlalchemy.exc import IntegrityError
+
+    document, version = uuid4(), uuid4()
+    with (
+        pytest.raises(IntegrityError, match="processing_projection_mismatch"),
+        app(scope[1]) as session,
+    ):
+        session.execute(
+            text(
+                "INSERT INTO documents(id,workspace_id,notebook_id,created_by,filename,current_version_id) VALUES(:d,:w,:n,:a,'manual.txt',:v)"
+            ),
+            {"d": document, "w": scope[4], "n": scope[5], "a": scope[1], "v": version},
+        )
+        session.execute(
+            text(
+                "INSERT INTO document_versions(id,document_id,workspace_id,notebook_id,version,media_type,byte_count,sha256,storage_key,processing_status,error_code) VALUES(:v,:d,:w,:n,1,'text/plain',5,:h,:k,:s,NULL)"
+            ),
+            {
+                "v": version,
+                "d": document,
+                "w": scope[4],
+                "n": scope[5],
+                "h": "a" * 64,
+                "k": f"{scope[4]}/{scope[5]}/{document}/{version}/original",
+                "s": status,
+            },
+        )

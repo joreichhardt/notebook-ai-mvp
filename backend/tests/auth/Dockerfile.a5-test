@@ -8,4 +8,4 @@ RUN uv sync --frozen --no-install-project --no-cache
 COPY . .
 ENV PATH="/workspace/.venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 USER 10001:10001
-CMD ["/bin/sh", "-ec", "alembic -c backend/migrations/alembic.ini upgrade head && python -m pytest -p no:cacheprovider -q --tb=short && ruff check backend tests/security"]
+CMD ["/bin/sh", "-ec", "alembic -c backend/migrations/alembic.ini upgrade head && python -m pytest -p no:cacheprovider -q --tb=short && ruff check --no-cache backend tests/security"]
