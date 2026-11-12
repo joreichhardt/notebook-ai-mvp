@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+from typing import NoReturn
 
 from fastapi import HTTPException, Request
 
@@ -9,7 +10,7 @@ SESSION_COOKIE = "__Host-notebook_session"
 CSRF_COOKIE = "__Host-notebook_csrf"
 
 
-def fail(status: int, code: str, message: str):
+def fail(status: int, code: str, message: str) -> NoReturn:
     raise HTTPException(status, detail={"code": code, "message": message})
 
 

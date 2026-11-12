@@ -10,6 +10,7 @@ dependencies = [
     "alembic>=1.15,<2",
     "psycopg[binary]>=3.2,<4",
     "httpx>=0.28,<1",
+    "httpcore>=1,<2",
     "pyjwt[crypto]>=2.10,<3",
     "bitwarden-sdk>=2.1.0",
 ]
