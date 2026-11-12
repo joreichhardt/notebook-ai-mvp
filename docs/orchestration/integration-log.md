@@ -1,5 +1,13 @@
 # Integration log
 
+## A5 integriert und durch Main auf kube1 verifiziert
+
+- Finales worker_done: Implementierung `47f3d6b`, dokumentierte Delivery **`da6b4c00184bec1289173cc5503c2aab7c6847cd`**. Main prüfte Pfadumfang, finalen Handoff und Guards; letzter Deliverydelta nur Dokumentation. Sauberer Merge in Integration als **`8862a1e2636d`**, keine Nutzer-/Worker-Dateien überschrieben.
+- Main archivierte genau diesen kombinierten Snapshot in `/home/jre/notebook-tests/main/8862a1e2636d`, baute ausschließlich auf kube1 den A5-Testrunner und nutzte dessen Compose-Datei explizit mit eigenem Projekt `notebook-test-main`/`--env-file /dev/null`. Frische synthetische PostgreSQL16-DB: Migration durch0005, **238 Defaulttests in28.27s**, eine bestehende Starlette/httpx-Warnung; Ruff Backend/Security ohne Cache erfolgreich. Dieser Lauf enthält auch die Migration-/RLS-/Sicherheitsregressionen der normalen Suche, keine Live-Storage-/Providercalls.
+- Aktive LSP-Prüfung auf Main: models/leases/uploads/0005-Pythonmigration und zwei geänderte Auth-Testdateien, **6 clean,0 diagnostics,0 inconclusive**. Remote DB-Metadaten selektiv verifiziert: 1CPU/512MiB/pids128 und keine Hostports. Anschließend ausschließlich eigenes Main-Testprojekt per scoped `down --volumes` entfernt; labelbasierte Nachkontrolle für Container/Volumes/Netze jeweils leer. Private Snapshots/Build-/Testlogs erhalten; A5/B3/fremde Dienste unverändert.
+- B3 erhielt Main`8862a1e2636d` als autorisierte Merge-/Lifecyclebasis im bestehenden Worktree und den nächsten UploadService-/Current-Version-DTO-Schritt mit injizierten kurzen ActorTx/IoTx-Factories. Keine Mainrouterregistrierung oder Capabilityfreigabe; Rootenv/Engines/Role-Provisioning Main. Eigene laufende Testarbeit vor Merge gezielt sichern; shared Konflikte melden.
+- A5-Lifecycle-Slice ist damit integrated/verified, **nicht** gesamte Uploadfunktion. Separater reiner Quoten-/Claim-Entwurf im selben A5-Worktree als Follow-up `ctx_0fb83cbe05e6` / `task_183b435b51cc` beauftragt: genaue globale Lock-/Privilegegrenzen und Testmatrix, noch keine DDL/Grants/Implementierung. Unverändert nur zwei Worker/Worktrees. Tatsächliche Storage-/Policy-/Cleanup-Quieszenz-/Trusted-Dispatch-/Quotengates bleiben vor Enablement offen.
+
 ## Main Multipart-Abhängigkeit und laufende Kandidatenprüfung
 
 - `bac1ad6` pinnt main-owned `python-multipart==0.0.33`, ohne andere Lockversionen zu ändern. Quelle `https://pypi.org/pypi/python-multipart/0.0.33/json` tatsächlich abgefragt: Python>=3.11, nicht zurückgezogen; Wheel-SHA stimmt mit uv.lock überein. Keine Uploadroute registriert.

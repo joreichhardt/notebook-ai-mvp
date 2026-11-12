@@ -8,7 +8,7 @@ SSH-Zugang `ssh kube1` wurde nichtinteraktiv geprüft: Docker 29.1.3, Compose 2.
 
 | Bereich | Ausschließlich eigener Serverpfad | Compose-Projekt | Host-Port |
 | --- | --- | --- | --- |
-| Main Foundation | `/home/jre/notebook-tests/main/<commit>` | `notebook-test-main` | `127.0.0.1:18190` |
+| Main Integration | `/home/jre/notebook-tests/main/<commit>` | `notebook-test-main` | Foundation: `127.0.0.1:18190`; DB/Runner: keine |
 | B3 | `/home/jre/notebook-tests/b3/<commit>` | `notebook-test-b3` | keiner für DB/Runner; weitere Ports erst abstimmen |
 | A5 | `/home/jre/notebook-tests/a5/<commit>` | `notebook-test-a5` | keiner für DB/Runner; weitere Ports erst abstimmen |
 
@@ -53,6 +53,29 @@ ssh -N -L 18190:127.0.0.1:18190 kube1
 ```
 
 Dann `http://127.0.0.1:18190` öffnen. Kein neuer DNS-Eintrag, Tunnel oder Firewall-Port. HTTP-Vorschau ersetzt den HTTPS-Auth-Test nicht.
+
+## Datenbank-/Backend-Integration
+
+Seit A5 ist zusätzlich ein isolierter PostgreSQL16-/Python-Teststack vorhanden. Nach obiger Snapshot-Übertragung auf **kube1** ausführen, wenn im eigenen Main-Projekt kein anderer Stack läuft:
+
+```sh
+cd /home/jre/notebook-tests/main/<commit>
+docker compose --env-file /dev/null -p notebook-test-main \
+  -f backend/tests/auth/compose.a5-test.yaml build runner
+docker compose --env-file /dev/null -p notebook-test-main \
+  -f backend/tests/auth/compose.a5-test.yaml up -d --wait db
+docker compose --env-file /dev/null -p notebook-test-main \
+  -f backend/tests/auth/compose.a5-test.yaml run --rm -T runner
+```
+
+Der Runner migriert die eigene synthetische DB, führt die normale Pytest-Suche und Ruff ohne Schreibcache aus. DB/Runner haben keine Hostports, ein eigenes internes Netz, 1 CPU und 512 MiB/1 GiB sowie je 128 Prozesse. Fixture-Adminzugang ist nur für dieses isolierte Testnetz; Anwendungstests prüfen separat `notebook_app`/RLS. Nach Abschluss ausschließlich dieses Testprojekt inklusive **synthetischem** DB-Volume entfernen und Projektlabels nachkontrollieren:
+
+```sh
+docker compose --env-file /dev/null -p notebook-test-main \
+  -f backend/tests/auth/compose.a5-test.yaml down --volumes
+```
+
+Main-Snapshot `8862a1e2636d` wurde so frisch durch Migration0005, 238 Defaulttests und Ruff geprüft; keine vollständige Upload-/Storage-Abnahme. Befehle/Ergebnisse und Cleanup stehen im Integrationslog.
 
 ## Nachweis und Aufräumen
 
