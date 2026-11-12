@@ -917,7 +917,8 @@ def test_finalized_version_content_cannot_be_recycled_under_same_bound_id(scope)
         )
 
 
-def test_other_uploader_cannot_forge_current_version_processing_status(scope):
+@pytest.mark.parametrize("actor_index", [0, 1])
+def test_other_uploader_cannot_forge_current_version_processing_status(scope, actor_index):
     from sqlalchemy.exc import IntegrityError
 
     intent = finalized(scope)
@@ -930,7 +931,7 @@ def test_other_uploader_cannot_forge_current_version_processing_status(scope):
         )
     with (
         pytest.raises(IntegrityError, match="processing_projection_mismatch"),
-        app(scope[1]) as session,
+        app(scope[actor_index]) as session,
     ):
         session.execute(
             text(
@@ -948,7 +949,7 @@ def test_other_uploader_cannot_forge_current_version_processing_status(scope):
         )
 
 
-@pytest.mark.parametrize("status", ["queued", "processing", "ready"])
+@pytest.mark.parametrize("status", ["queued", "processing", "ready", "failed"])
 def test_version_insert_cannot_claim_processing_without_job(scope, status):
     from sqlalchemy.exc import IntegrityError
 
@@ -977,3 +978,44 @@ def test_version_insert_cannot_claim_processing_without_job(scope, status):
                 "s": status,
             },
         )
+
+
+@pytest.mark.parametrize("actor_index", [0, 1])
+def test_bound_version_rejects_own_and_foreign_second_job_at_commit(scope, actor_index):
+    from app.db.leases import claim_job, finish_job
+    from sqlalchemy.exc import IntegrityError
+
+    intent = finalized(scope)
+    with app(scope[0]) as session:
+        token = claim_job(session, intent.job_id)
+        assert token is not None
+        assert finish_job(session, intent.job_id, token, status="succeeded")
+    second = uuid4()
+    with (
+        pytest.raises(IntegrityError, match="upload_identity_mismatch"),
+        app(scope[actor_index]) as session,
+    ):
+        session.execute(
+            text(
+                "INSERT INTO ingestion_jobs(id,document_version_id,workspace_id,notebook_id,actor_user_id,idempotency_key) VALUES(:j,:v,:w,:n,:a,'second')"
+            ),
+            {
+                "j": second,
+                "v": intent.version_id,
+                "w": intent.workspace_id,
+                "n": intent.notebook_id,
+                "a": scope[actor_index],
+            },
+        )
+        # Intentionally no RPC and no explicit rollback; assert commit-time guard.
+    with app(scope[actor_index]) as session:
+        assert (
+            session.execute(
+                text("SELECT id FROM ingestion_jobs WHERE id=:j"), {"j": second}
+            ).first()
+            is None
+        )
+        assert session.execute(
+            text("SELECT processing_status,error_code FROM document_versions WHERE id=:v"),
+            {"v": intent.version_id},
+        ).one() == ("ready", None)

@@ -210,8 +210,36 @@ CREATE POLICY version_status_write ON public.document_versions FOR UPDATE TO not
  AND m.user_id=nullif(current_setting('request.jwt.claim.sub',true),'')::uuid AND m.role IN ('owner','editor'))
  AND EXISTS(SELECT 1 FROM public.documents d WHERE d.id=document_id AND d.current_version_id=document_versions.id))
  WITH CHECK(EXISTS(SELECT 1 FROM public.documents d WHERE d.id=document_id AND d.current_version_id=document_versions.id));
+-- Invoker-only validation closes both direct foreign-uploader UPDATE and the
+-- existing table-wide INSERT grant. It reads only the actor's already-visible
+-- raw jobs; no new privileged status role or cross-actor query is introduced.
+CREATE FUNCTION public.version_processing_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$
+BEGIN
+ IF TG_OP='INSERT' THEN
+  IF NEW.processing_status<>'failed' OR NEW.error_code IS DISTINCT FROM 'not_processed' THEN
+   RAISE EXCEPTION 'processing_projection_mismatch' USING ERRCODE='23514'; END IF;
+  RETURN NEW;
+ END IF;
+ IF (NEW.processing_status,NEW.error_code) IS NOT DISTINCT FROM (OLD.processing_status,OLD.error_code)
+ THEN RETURN NEW; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.ingestion_jobs j
+ WHERE j.document_version_id=NEW.id
+ AND j.actor_user_id=nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
+ AND NEW.processing_status=CASE j.status WHEN 'queued' THEN 'queued' WHEN 'running' THEN 'processing'
+ WHEN 'succeeded' THEN 'ready' ELSE 'failed' END
+ AND NEW.error_code IS NOT DISTINCT FROM CASE j.status WHEN 'failed' THEN 'processing_failed'
+ WHEN 'cancelled' THEN 'processing_cancelled' ELSE NULL END) THEN
+  RAISE EXCEPTION 'processing_projection_mismatch' USING ERRCODE='23514'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER version_processing_guard BEFORE INSERT OR UPDATE OF processing_status,error_code
+ ON public.document_versions FOR EACH ROW EXECUTE FUNCTION public.version_processing_guard();
+REVOKE ALL ON FUNCTION public.version_processing_guard() FROM PUBLIC;
 CREATE FUNCTION public.job_processing_status() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$
 BEGIN
+ -- Privileged no-context fixture/manual setup has no actor-authorized execution
+ -- evidence; retain failed/not_processed instead of manufacturing a projection.
+ IF nullif(current_setting('request.jwt.claim.sub',true),'') IS NULL THEN RETURN NEW; END IF;
  UPDATE public.document_versions SET processing_status=CASE NEW.status
  WHEN 'queued' THEN 'queued' WHEN 'running' THEN 'processing' WHEN 'succeeded' THEN 'ready' ELSE 'failed' END,
  error_code=CASE NEW.status WHEN 'failed' THEN 'processing_failed' WHEN 'cancelled' THEN 'processing_cancelled' ELSE NULL END
