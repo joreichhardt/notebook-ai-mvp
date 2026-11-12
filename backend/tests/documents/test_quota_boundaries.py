@@ -575,6 +575,210 @@ def test_watchdog_busy_closes_unfinished_io_but_keeps_live_lease(upload_scene, e
         ).scalar_one() == (0 if exhaust else 1)
 
 
+@pytest.mark.parametrize("hold_second_work", [False, True])
+def test_watchdog_legacy_transient_assertion_second_work_red(
+    upload_scene, monkeypatch, hold_second_work
+):
+    """Diagnostic RED, NOT a new accepted result or a replacement assertion.
+
+    Invoke the unchanged old test. After its real injected gate holder releases,
+    another real actor-bound heartbeat transaction owns that same gate. The RED
+    branch keeps it until the watcher exhausts three attempts; control releases
+    it before retry. Events keep original I/O unfinished and park later watchdog
+    invocations OUTSIDE transactions, isolating precisely this second episode.
+    No budget/clock/error fabrication; the old succeeded assertion must fail in
+    the RED branch. Main must approve a fixture diff before changing that test.
+    """
+    import json
+    from threading import Event, Thread, get_ident, local
+    from time import monotonic
+
+    from app.db.leases import heartbeat_job
+    from app.documents.transactions import QuotaUnavailable
+    from psycopg.pq import TransactionStatus
+    from sqlalchemy.exc import SQLAlchemyError
+
+    c = upload_scene
+    real_contend, real_init = contend, TextWorker.__init__
+    real_claim, real_pulse, real_run = TextWorker._claim, TextWorker._pulse, TextWorker.run_one
+    real_to_thread = asyncio.to_thread
+    terminal, sibling_acquired, sibling_release = Event(), Event(), Event()
+    watcher_ready = asyncio.Event()
+    thread_state = local()
+    state = {"watch_calls": 0, "owned": [], "sibling_errors": []}
+
+    async def tagged_to_thread(func, *args, **kwargs):
+        task = asyncio.current_task()
+        watching = task is not None and task.get_coro().__qualname__.endswith(".watch")
+
+        def invoke():
+            thread_state.watching = watching
+            return func(*args, **kwargs)
+
+        return await real_to_thread(invoke)
+
+    def init(worker, *args, **kwargs):
+        factory = kwargs["store_factory"]
+
+        def observed_store(auth):
+            original = factory(auth)
+
+            class Original:
+                async def read(self, actor_id, scope) -> bytes:
+                    state["loop"] = asyncio.get_running_loop()
+                    source = asyncio.create_task(original.read(actor_id, scope))
+                    try:
+                        await watcher_ready.wait()
+                        return await source
+                    finally:
+                        source.cancel()
+                        await asyncio.gather(source, return_exceptions=True)
+                        state["io_closed"] = True
+
+            return Original()
+
+        kwargs["store_factory"] = observed_store
+        real_init(worker, *args, **kwargs)
+
+    def claim(worker, actor, job):
+        result = real_claim(worker, actor, job)
+        assert result is not None
+        state.update(actor=actor, job=job, token=result[0])
+        return result
+
+    def pulse(worker, *args):
+        if not getattr(thread_state, "watching", False):
+            return real_pulse(worker, *args)
+        state["watch_calls"] += 1
+        if state["watch_calls"] > 1:
+            assert terminal.wait(3), "later watchdog did not leave its pre-transaction barrier"
+            return real_pulse(worker, *args)
+        state["watch_thread"] = get_ident()
+        started = monotonic()
+        try:
+            result = real_pulse(worker, *args)
+        except QuotaUnavailable as exc:
+            elapsed = monotonic() - started
+            owned = state["owned"]
+            assert len(owned) == 3 and exc.code == "quota_gate_busy"
+            assert elapsed < 0.25, "diagnostic hit deadline, not the intended attempt-cap RED"
+            assert all(item["rolled"] and item["idle"] for item in owned)
+            assert all(
+                item["connection"].closed and not item["connection"].in_transaction()
+                for item in owned
+            )
+            state["cap"] = {
+                "attempts": len(owned),
+                "elapsed_ms": round(elapsed * 1000, 3),
+                "deadline_ms": 250,
+                "own_rollback_idle_closed": True,
+            }
+            raise
+        else:
+            state["loop"].call_soon_threadsafe(watcher_ready.set)
+            return result
+
+    async def run(worker, **kwargs):
+        try:
+            result = await real_run(worker, **kwargs)
+            state["result"] = result
+            return result
+        finally:
+            terminal.set()
+
+    def sibling():
+        try:
+            with c["actor_tx"](state["actor"]) as db:
+                assert heartbeat_job(db, state["job"], state["token"], lease_seconds=30)
+                sibling_acquired.set()
+                assert sibling_release.wait(3), "independent heartbeat was not released"
+        except (AssertionError, SQLAlchemyError, psycopg.Error, RuntimeError) as exc:
+            state["sibling_errors"].append(type(exc).__name__)
+            sibling_acquired.set()
+
+    @contextmanager
+    def second_contend(db_engine, **kwargs):
+        with real_contend(db_engine, **kwargs) as evidence:
+
+            def before(connection, cursor, statement, parameters, context, many):
+                if "SELECT public.quota_gate()" not in statement:
+                    return
+                if get_ident() == state.get("watch_thread"):
+                    state["owned"].append(
+                        {
+                            "connection": connection,
+                            "raw": connection.connection.dbapi_connection,
+                            "rolled": False,
+                            "idle": False,
+                        }
+                    )
+
+            def rollback(connection):
+                for item in state["owned"]:
+                    if item["connection"] is connection:
+                        item["rolled"] = True
+
+            def checkin(raw, record):
+                for item in state["owned"]:
+                    if item["raw"] is raw:
+                        item["idle"] = raw.info.transaction_status == TransactionStatus.IDLE
+                # Registered AFTER real_contend: it has already rolled back its
+                # holder for this exact rejected callback before we acquire work.
+                if (
+                    len(state["owned"]) == 1
+                    and state["owned"][0]["raw"] is raw
+                    and "thread" not in state
+                ):
+                    state["thread"] = Thread(target=sibling, name="b3-independent-heartbeat")
+                    state["thread"].start()
+                    assert sibling_acquired.wait(3), "second real heartbeat never acquired gate"
+                    assert not state["sibling_errors"]
+                    if not hold_second_work:
+                        sibling_release.set()
+                        state["thread"].join(3)
+                        assert not state["thread"].is_alive()
+
+            listeners = [
+                ("before_cursor_execute", before),
+                ("rollback", rollback),
+                ("checkin", checkin),
+            ]
+            for name, fn in listeners:
+                event.listen(db_engine, name, fn)
+            try:
+                yield evidence
+            finally:
+                sibling_release.set()
+                if "thread" in state:
+                    state["thread"].join(3)
+                    assert not state["thread"].is_alive()
+                for name, fn in listeners:
+                    event.remove(db_engine, name, fn)
+                assert not state["sibling_errors"]
+
+    monkeypatch.setattr(asyncio, "to_thread", tagged_to_thread)
+    monkeypatch.setattr(TextWorker, "__init__", init)
+    monkeypatch.setattr(TextWorker, "_claim", claim)
+    monkeypatch.setattr(TextWorker, "_pulse", pulse)
+    monkeypatch.setattr(TextWorker, "run_one", run)
+    monkeypatch.setitem(globals(), "contend", second_contend)
+    try:
+        test_watchdog_busy_closes_unfinished_io_but_keeps_live_lease(c, exhaust=False)
+    finally:
+        print(
+            "B3_SYNC_RED "
+            + json.dumps(
+                {
+                    "hold_second_work": hold_second_work,
+                    "result": state.get("result"),
+                    "cap": state.get("cap"),
+                    "io_closed": state.get("io_closed", False),
+                    "sibling_errors": state["sibling_errors"],
+                }
+            )
+        )
+
+
 @pytest.mark.parametrize(
     "code,message",
     [("P0001", "other_error"), ("42501", "quota_capacity"), ("55P03", "other_error")],
