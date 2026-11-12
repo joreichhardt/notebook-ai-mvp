@@ -26,6 +26,10 @@ class QuotaUnavailable(RuntimeError):
 def short_transaction[T](operation: Callable[[], T]) -> T:
     deadline = monotonic() + 0.25
     for attempt in range(3):
+        # Backoff may oversleep (or this thread may be suspended). Check start
+        # admission again; never interrupt an already admitted callback.
+        if attempt and monotonic() >= deadline:
+            raise QuotaUnavailable("quota_gate_busy") from None
         try:
             return operation()
         except (SQLAlchemyError, psycopg.Error) as exc:
