@@ -14,6 +14,8 @@
 - Vor Kontextkompaktierung [CONTINUE.md](docs/handoffs/CONTINUE.md) mit Arbeitsbranch/Commit, aktiven Worktrees/Dispatch-IDs, letztem belastbaren Prüfnachweis, offenen Entscheidungen und konkretem nächsten Schritt aktualisieren. Nach Kompaktierung diesen Einstieg und die betroffenen Regeln lesen, tatsächlichen Git-/Arbeitsstand prüfen und den bereits freigegebenen Auftrag ohne erneute Startaufforderung fortsetzen.
 - Orca-Rückmeldungen gemäß Wakeup bearbeiten. Während Worker laufen unabhängige Hauptagentenarbeit fortsetzen; ist alles andere blockiert, Kontrolle abgeben und Wakeup abwarten statt Nachrichten zu pollen oder zusätzliche Ersatzworker zu starten.
 
+Bei Kompaktierungs-/Fortsetzungsstörungen zuerst [Pi-/Orca-Betriebsdiagnose](docs/operations/agent-runtime.md) lesen: Router-Settings, automatische Kompaktierung, bewusste Abbrüche und Orca-Dispatch-Identität getrennt prüfen. Einen lokalen Core-Patch erst nach kontrolliertem Prozesswechsel als aktiv betrachten; `/reload` allein genügt dafür nicht.
+
 ## Testinfrastruktur
 
 - Docker-Testmaschinen, Compose-Teststacks und Containerbuilds ausschließlich auf `kube1` ausführen; der lokale Laptop ist dafür zu schwach. Lokal nur leichte Entwicklungsprüfungen ohne Containerlast. Vorgehen und isolierte Namensräume: [kube1-Testbetrieb](docs/operations/testing-kube1.md).

@@ -21,7 +21,7 @@
 ## Entwicklung und Betrieb
 
 - [Docker-Tests auf kube1](operations/testing-kube1.md): verbindlicher Testhost, isolierte Worker-Projekte, Snapshot-Übertragung und Aufräumen. Keine Containerbuilds/-teststacks auf dem Laptop.
-
+- [Pi-Kompaktierung und Orca-Fortsetzung](operations/agent-runtime.md): Diagnose, autorisierter lokaler Runtime-Patch, Tests und sichere Aktivierungsgrenzen.
 - [Arbeitsregeln](../AGENTS.md) und [Zuständigkeiten/Integration](../multi-agent.md).
 - [Lokale Konfigurationsvorlage](../.env.example): ausschließlich Platzhalter; keine echten Werte in Dokumente, Chat oder Git übernehmen.
 - [Betriebsgrundlage](operations/foundation.md): vorhandenes Setup und Prüfkommandos. Fehlende Live-, Restore-, Rootless- und Release-Nachweise bleiben im Plan und Integrationslog sichtbar.
