@@ -1,5 +1,23 @@
 # Fortsetzung · Notebook
 
+## Aktueller Einstieg nach ausdrücklicher Wiederaufnahme
+
+Die Neustart-Pause ist vom Nutzer ausdrücklich aufgehoben. Sicherungsstand: [RESTART-PAUSE.md](RESTART-PAUSE.md). HEAD bei Wiederaufnahme **d872c8b490dc59dcf8bc8beac5f1a78b9703d74a**, Arbeitsbaum ausschließlich mit diesem untracked Sicherungsdokument; keine Nutzeränderungen überschrieben.
+
+- **Aktuelle unabhängige kombinierte Abnahme:** exakt d872c8b, immutable kube1/SCRAM, **467 passed / 1 bestehende Warnung / 187.20s**, Ruff bestanden; RUN_EXIT0/CLEANUP_EXIT0, null eigene Container/Netze/Volumes, Credential entfernt. Log `/home/jre/notebook-tests/main/.runtime-d872c8b/run.log`. Zusatzläufe nicht addieren. Kein Produktions-/Storage-/Full-flow-Nachweis.
+- A5 HTTP-Negativmatrix c5383cfc in **2c7f7ad**, B3 Retry-Start-Deadline a0bada01 in **10fbcb3** integriert. d872c8b ergänzt echte Admission-/Membership-Widerrufe zwischen Busyversuchen: zweite frische Session verweigert403 ohne neue Zeile. Tasks15–19 abgeschlossen (16/17 zuvor); Todo8 hinsichtlich restlicher Enablementgates prüfen.
+- Aktive LSP6:3clean,2nur deutsche Typo-Hinweise,1Timeout; nicht vollständig bestätigt. Details und getrennte Worker-RED/GREENs im Sicherungsstand und Integrationslog.
+- **Prozesskontinuität bestätigt:** Main Pi weiterhin PID714713, Start `Thu Nov 12 12:26:00 2026`; der aktuelle Toolprozess hat PPID714713. Orca jetzt PID818551, Start15:20:44, neue Runtime laut Nutzer44c613c4-d416-4887-82e4-46c0d95c5328. Terminal-incarnation unverändert fc9106aa-2a02-44e1-9c42-67b089302257. Also kein neuer Pi-Core-Import durch diesen Orca-Neustart. Session01a1ccca-ce97-702d-b0c7-565081ed2d9f bleibt erhalten.
+- Task14 bleibt offen: Kompaktierung mit Fortsetzung allein belegt **nicht** die zuverlässige37%-Schwelle; manuelles Compact zählt nicht. Kein weiterer Restart/Patch/Burnerrequest.
+- Bestehende Worker behalten: A5 `../notebook-upload-data-v3`, letzter Pausen-Dispatchctx_012f247ff5ad; B3 `../notebook-upload-v3`, letzter Pausen-Dispatchctx_1b201994560d. Beide Lieferungen und sichere Pause bestätigt, keine gefährdete Operation. Keine Ersatzagents.
+- Readonly-Folgeaufträge an dieselben Worker versandt: A5 **ctx_d469a0e7db1b/task_00e0fa86dcab** untersucht Storage-/Policy-/Quieszenzgates; B3 **ctx_897d5b6c9c96/task_0e520806c302** untersucht trustedActor-Dispatcher/yielded/Reconciliation. Jeweils kleinsten vertikalen Slice mit Nachweisplan vorschlagen, keine Implementierung/Tests/Produktionszugriffe; optional nur eigener Handoff. Wakeups abwarten, nicht pollen.
+- Separater ausdrücklich genehmigter Readonly-Kompaktierungsbeobachter: **ctx_0c0f445dc727/task_e8e9e7b8d486**, neuer Pi im Mainworkspace ohne Repo-Schreibrechte, Bericht ausschließlich `/tmp/notebook-compaction-observer-report.md`. Bis30Minuten oder3vollständige Zyklen, möglichst beide physischen Modelle; strikte Schwellen Sol>185000/500000, Astra>100640/272000, automatische Auslösung/vor nächstem Modellaufruf/Speicherung/Reduktion/Fortsetzung belegen. Keine Eingriffe/Provider-Testlast; Fehler sofort melden, ungenügende Belege unvollständig. Kein Beleg aus Dateihash allein.
+- Gemeinsame Nachweise konsolidiert; nachfolgende Vorschläge gegen Spezifikation/Verträge prüfen. A5-Readonlyreview geliefert: echter isolierter Supabase-Storage-Nachweis empfohlen, noch keine Implementierung freigegeben oder Produktionsbelege. Keine Router-/Capabilityaktivierung oder Produktion.
+
+## Historischer Verlauf bis370b387 — keine aktuellen Startaufträge
+
+Die nachfolgenden damaligen offenen Caller-/Budget-/Fullsuite-Aufträge sind durch den obigen467er-Nachweis ersetzt. Releasegates und Sicherheitsregeln bleiben bindend.
+
 ## Einstieg und verbindliche Grenzen
 
 1. Main: `/home/jre/orca/workspaces/gemini-nb-clone/notebook-integration`, Branch `integration/notebooklm`. Git-/Worktree-Status zuerst prüfen; Nutzeränderungen erhalten. Letzter unabhängig geprüfter integrierter Anwendungscode: **`5c4164103664`**, B3-Merge mit frischer Migration0005/**314Defaulttests auf kube1/SCRAM**, eigener RUN_EXIT0/CLEANUP_EXIT0/0Projektressourcen. Main-Testfixturefix `9d5a9d0` enthalten.0006 wird als überprüfter Quellkandidat aus A5`4440804d8b79` seriell zur kombinierten Callerprüfung übernommen; **noch keine kombinierte Laufzeitabnahme**. Dokumentationscommits sind kein neuer Anwendungs-/Integrationsprüfstand; aktuellen HEAD und lokale Änderungen mit Git prüfen.

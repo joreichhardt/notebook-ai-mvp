@@ -1,6 +1,10 @@
 # Pi-Kompaktierung und Orca-Fortsetzung
 
-## Aktuelle Hauptsitzung: Aktivierung bestätigt, Autoereignis noch offen
+## Orca-Neustart: Pi-Prozess unverändert,37%-Schwellennachweis offen
+
+Nach ausdrücklicher Wiederaufnahme per `ps` geprüft: **Pi714713 seit Thu Nov12 12:26:00 2026**, aktueller Toolprozess mit PPID714713. Orca818551 seit15:20:44 ersetzt laut Nutzer35873; neue Runtime44c613c4-d416-4887-82e4-46c0d95c5328 stattac09448b-e609-4e4b-831f-050aa4cb0dd0. Hauptterminal-incarnationfc9106aa-2a02-44e1-9c42-67b089302257 unverändert. Dieser Orca-Neustart hat also **keinen neuen Pi-Prozess/Coreimport** bewiesen. Die frühere kontrollierte Aktivierung unten ist davon getrennt. Task14 bleibt offen: beobachtete Kompaktierung und Fortsetzung beweist weder automatische Auslösung noch die richtige37%-Schwelle. Kein weiterer Runtimeeingriff oder künstlicher Kontextverbrauch.
+
+## Frühere Hauptsitzungsaktivierung: Live-Schwellennachweis weiterhin offen
 
 Nach direkter Nutzerklärung beziehen sich45,9% vor manuellem Compact und anschließend12,2%/500k auf **Main**, nicht A5. Der frühere A5-Replay von138352Tokens/27,7% war eine andere Sitzung und erklärt den Mainfehler nicht.
 

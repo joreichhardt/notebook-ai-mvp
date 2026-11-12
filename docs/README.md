@@ -7,7 +7,7 @@
 | Was soll das Produkt können? | [Produktspezifikation](product-spec.md) |
 | Wie starte und prüfe ich lokal? | [Repository-README](../README.md), [Betriebsgrundlage](operations/foundation.md) |
 | Was ist fertig, was läuft, was blockiert? | [Aktueller Aufgabenplan](orchestration/plan.md) |
-| Wo setze ich nach einer Pause fort? | [Aktueller Handoff](handoffs/CONTINUE.md) |
+| Wo setze ich nach einer Pause fort? | [Aktueller Handoff](handoffs/CONTINUE.md), [gesicherter Neustartstand](handoffs/RESTART-PAUSE.md) |
 | Welche Prüfungen wurden auf welchem Stand ausgeführt? | [Integrations- und Prüfprotokoll](orchestration/integration-log.md) |
 
 ## Architektur und Sicherheit

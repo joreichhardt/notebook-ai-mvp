@@ -1,4 +1,10 @@
-# Mainreview · Quoten0006 vor Kombination mit B3
+# Mainreview · Quoten0006 und Callerintegration
+
+## Aktueller Abschluss des Caller-Prüfscopes
+
+Exakt Main **d872c8b** unabhängig auf kube1/SCRAM: **467passed/1Warnung/187.20s und Ruff**, RUN_EXIT0/CLEANUP_EXIT0, null eigene Restressourcen, Credential entfernt. A5-Negativmatrix und B3-Deadlineguard seriell integriert; echte Deferred-COMMIT-/ASGI-Grenze, direkte Current-/Originalprincipal-Prüfung, Enginebudgets und Autorisierungswiderruf zwischen frischen Versuchen enthalten. Log `.runtime-d872c8b/run.log` im Main-Testbereich. Tasks15–19 geschlossen. AktiveLSP6:3clean,2nurTypohinweise,1Timeout; keine vollständigeLSP-clean-Behauptung.
+
+250ms begrenzt Folgeversuch-Startadmission, nicht Gesamtlaufzeit. Produktionsprovisionierung, echte Storage-Policies/I/O, vertrauenswürdiger yielded-Dispatcher, physische Remote-Quieszenz und historische UNKNOWN-Belegung bleiben eigenständige Freischaltungsgates. Router/Capabilities bleiben aus. Nachfolgende Zwischenstände sind historisch, keine weiterhin offenen Callerimplementierungsaufträge.
 
 ## Umfang und Nachweisstand
 

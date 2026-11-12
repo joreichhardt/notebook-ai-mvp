@@ -2,6 +2,14 @@
 
 ## Aktueller Arbeitsstand
 
+**d872c8b unabhängig kombiniert bestätigt:** Main kube1/SCRAM default467passed/1Warnung/187.20s plus Ruff, RUN_EXIT0/CLEANUP_EXIT0, keine eigenen Restressourcen, Credential entfernt. A5-Negativtests in2c7f7ad, B3-Retrydeadline in10fbcb3; Admission-/Membership-Widerruf nach Busy mit frischer Session in d872c8b nachgewiesen. Tasks15–19 abgeschlossen. Keine Addition separater Zusatzläufe; kein Produktions-/Storage-/Full-flow-Nachweis. AktiveLSP6:3clean,2nurTypohinweise,1Timeout.
+
+Neustart-Pause ausdrücklich aufgehoben. MainPi714713 seit12.11.2026 12:26 unverändert trotz neuer OrcaPID818551/Runtime; kein neuer Coreimport daraus ableitbar. Task14 zur zuverlässigen37%-Schwelle bleibt offen. Bestehende zwei Worker erhalten. Nächste Arbeit: verbleibende privateStorage-/Dispatcher-/physischeQuieszenz-Gates konkretisieren; Router/Capabilities bleiben aus. [Aktueller Einstieg](../handoffs/CONTINUE.md), [Sicherung](../handoffs/RESTART-PAUSE.md).
+
+## Historische Arbeitsstände bis370b387
+
+Die folgenden damaligen offenen Implementierungs-/Prüfaufträge sind durch den aktuellen Stand oben ersetzt; sie sind keine erneuten Startaufträge.
+
 **Aktueller Fortsetzungspunkt4d58f6f:** A5-Budgetcode d9f0d646 nachReviewinbcd04f1 integriert; Main ergänzt realeDeferred-COMMIT-/ASGI-Negativnachweise. Eigener immutablekube1-SCRAM-Lauf HTTP11+Factory6=17grün/1Warnung/12.39s+Ruff/RUN_EXIT0/CLEANUP_EXIT0/0Ressourcen. Budgettask17undWatchdogtask16geschlossen; Root15/Gesamtgate8noch offenfürperAttemptRevocation, negativeHTTPverträge undschedulerbewussteRetryadmission, anschließendFullDefault. ErsteaktiveLSP3:1bestätigt/2Timeouts,nicht3clean. Siehe[Handoff](../handoffs/CONTINUE.md); keinRollout/Featureenablement.
 
 **Historischer Fortsetzungspunkt c1c48e0:** B3-Test-onlyFix81e5970 seriell integriert, App/Migrationscode zuc443 bytegleich. Eigene immutableMain-SCRAM-Nachprüfung35grün/9.76s+Ruff/RUN_EXIT0/CLEANUP_EXIT0/0Ressourcen, Todo16 geschlossen; keine eigeneFull406abnahme. A5engineBudgettaskctx_682779396274/task_7410b9c5c931 arbeitet eng nuranengine/neuenFactorytests/Handoff; HARD-FehlalarmBoolean und tatsächlicherURL.set(None)-Credentialretentionfehler reviewed, semantischeFixtureabsicherung freigegeben stattGuardbypass. MainRootTask15/17 und Gesamtgate8offen; dedizierteASGI/Latecommit-/Revocation-/Negativtests danachFullsuite. Details im[Handoff](../handoffs/CONTINUE.md).
