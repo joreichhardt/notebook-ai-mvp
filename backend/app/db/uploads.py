@@ -6,6 +6,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.db.quota import quota_gate
+
 
 class UploadConflict(ValueError):
     """Idempotency key refers to different immutable request content/options (HTTP409)."""
@@ -63,7 +65,8 @@ def reserve_upload(
         raise ValueError("upload_options_unsupported")
     if media_type not in ("text/plain", "text/markdown"):
         raise ValueError("upload_media_unsupported")
-    # Notebook lock serializes reservations and parent teardown; no global job scans.
+    quota_gate(session)
+    # Gate precedes notebook locks; triggers remain authoritative for direct SQL.
     workspace = session.execute(
         text("""
         SELECT n.workspace_id FROM public.notebooks n
@@ -129,6 +132,7 @@ def finalize_upload(session: Session, intent_id: UUID) -> UploadResult:
     """
     from app.db.models import Document, DocumentVersion, IngestionJob
 
+    quota_gate(session)
     row = session.execute(_INTENT_BY_ID, {"i": intent_id}).mappings().one_or_none()
     if row is None or row["state"] not in ("stored", "finalized"):
         raise UploadUnavailable("upload_unavailable")

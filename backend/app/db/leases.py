@@ -14,6 +14,8 @@ from uuid import UUID, uuid4
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.db.quota import quota_gate
+
 
 def _duration(seconds: int) -> int:
     if not 1 <= seconds <= 300:
@@ -39,6 +41,7 @@ def _lock_source(session: Session, job_id: UUID) -> bool:
 def claim_job(session: Session, job_id: UUID, *, lease_seconds: int = 60) -> UUID | None:
     """Claim a specific actor-owned job, or recover an expired lease, at most 5 times."""
     _duration(lease_seconds)
+    quota_gate(session)
     if not _lock_source(session, job_id):
         return None
     token = uuid4()
@@ -62,12 +65,14 @@ def claim_job(session: Session, job_id: UUID, *, lease_seconds: int = 60) -> UUI
 
 def heartbeat_job(session: Session, job_id: UUID, token: UUID, *, lease_seconds: int = 60) -> bool:
     """An expired or reassigned token can never renew a lease."""
+    _duration(lease_seconds)
+    quota_gate(session)
     return (
         session.execute(
             text("""
         UPDATE public.ingestion_jobs
         SET heartbeat_at=clock_timestamp(), updated_at=clock_timestamp(),
-            lease_expires_at=clock_timestamp()+make_interval(secs => :seconds)
+            lease_expires_at=greatest(lease_expires_at,clock_timestamp()+make_interval(secs => :seconds))
         WHERE id=:job AND status='running' AND lease_token=:token
           AND lease_expires_at>clock_timestamp()
         RETURNING id
@@ -84,6 +89,7 @@ def lock_job_for_publish(session: Session, job_id: UUID, token: UUID) -> bool:
     False means rollback. Call finish_job last, after all chunk writes, to recheck
     the clock and current authorization; if false, rollback those writes too.
     """
+    quota_gate(session)
     document = session.execute(
         text("""
         SELECT d.id FROM public.documents d

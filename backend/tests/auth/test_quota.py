@@ -4,7 +4,9 @@ import psycopg
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-from test_uploads import app, reserve, scope  # noqa: F401
+from test_uploads import app, reserve
+
+pytest_plugins = ["test_uploads"]
 
 
 def test_actor_notebook_capacity_rolls_back_statement(scope):
@@ -14,11 +16,16 @@ def test_actor_notebook_capacity_rolls_back_statement(scope):
             reserve(db, notebook, idempotency_key=f"quota-{n}")
     with pytest.raises(DBAPIError) as caught, app(actor) as db:
         reserve(db, notebook, idempotency_key="eleventh")
+    assert isinstance(caught.value.orig, psycopg.Error)
     assert caught.value.orig.sqlstate == "P0001"
     assert caught.value.orig.diag.message_primary == "quota_capacity"
     with app(actor) as db:
-        assert db.execute(text("SELECT count(*) FROM upload_intents WHERE notebook_id=:n"),
-                          {"n": notebook}).scalar_one() == 10
+        assert (
+            db.execute(
+                text("SELECT count(*) FROM upload_intents WHERE notebook_id=:n"), {"n": notebook}
+            ).scalar_one()
+            == 10
+        )
         assert reserve(db, notebook, idempotency_key="quota-0").id
 
 
