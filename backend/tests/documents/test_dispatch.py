@@ -134,9 +134,11 @@ def test_dispatch_principal_subject_and_factory_contract_fail_closed(upload_scen
     perform(c)
     c["store"].actions.clear()
     with pytest.raises(ValueError):
-        SelectionFactory(lambda _: None, pool_timeout=float("inf"), connect_timeout=3)
+        SelectionFactory(
+            lambda user: c["actor_tx"](user.id), pool_timeout=float("inf"), connect_timeout=3
+        )
     with pytest.raises(ValueError):
-        SelectionFactory(lambda _: None, pool_timeout=1, connect_timeout=0)
+        SelectionFactory(lambda user: c["actor_tx"](user.id), pool_timeout=1, connect_timeout=0)
 
     @contextmanager
     def wrong_subject(actor):
@@ -154,3 +156,134 @@ def test_dispatch_principal_subject_and_factory_contract_fail_closed(upload_scen
     with pytest.raises(DispatchUnavailable, match="unsafe_database_role"):
         asyncio.run(dispatcher(c, actor_tx=wrong_role)(c["actor"]))
     assert c["store"].actions == []
+
+
+def test_dispatch_default_uses_existing_identity_session_binding(upload_scene, monkeypatch):
+    from app.workers.dispatch import dispatch_one
+
+    c = upload_scene
+    perform(c)
+    monkeypatch.setattr("app.db.session.engine", lambda: c["actor_engine"])
+    worker = TextWorker(c["actor_engine"], store_factory=lambda auth: c["store"])
+    assert (
+        asyncio.run(dispatch_one(Identity(c["actor"], "verified@example.invalid"), worker=worker))
+        == "succeeded"
+    )
+
+
+@pytest.mark.parametrize("mode", ["demoted", "deleted", "readmitted"])
+def test_dispatch_current_authorization_and_sticky_cancellation(upload_scene, mode):
+    c = upload_scene
+    receipt = perform(c)
+    if mode == "deleted":
+        with c["actor_tx"](c["actor"]) as db:
+            db.execute(text("SELECT notebook_delete_document(:d)"), {"d": receipt.document.id})
+    else:
+        with psycopg.connect(URL) as setup:
+            if mode == "demoted":
+                setup.execute(
+                    "UPDATE workspace_members SET role='viewer' WHERE user_id=%s", (c["actor"],)
+                )
+            else:
+                setup.execute("DELETE FROM app_admissions WHERE user_id=%s", (c["actor"],))
+                setup.execute("INSERT INTO app_admissions VALUES (%s)", (c["actor"],))
+    c["store"].actions.clear()
+    assert asyncio.run(dispatcher(c)(c["actor"])) == (
+        "not_claimed" if mode == "readmitted" else "idle"
+    )
+    assert c["store"].actions == []
+
+
+@pytest.mark.parametrize("exhaust", [False, True])
+def test_dispatch_selection_busy_retries_only_closed_selection_tx(upload_scene, exhaust):
+    from test_quota_boundaries import contend
+
+    c = upload_scene
+    receipt = perform(c)
+    connections = []
+
+    @contextmanager
+    def selection_tx(actor):
+        with c["actor_tx"](actor) as db:
+            connections.append(db.connection())
+            db.execute(text("SELECT public.quota_gate()"))
+            yield db
+
+    c["store"].actions.clear()
+    with contend(c["actor_engine"], exhaust=exhaust) as (_, xids, rollbacks):
+        result = asyncio.run(dispatcher(c, actor_tx=selection_tx)(c["actor"]))
+    assert result == ("not_claimed" if exhaust else "succeeded")
+    assert len(connections) == (3 if exhaust else 2)
+    assert all(conn.closed and not conn.in_transaction() for conn in connections)
+    assert rollbacks and len(set(xids[: len(connections)])) == len(connections)
+    assert c["store"].actions == ([] if exhaust else ["read"])
+    with c["actor_tx"](c["actor"]) as db:
+        assert db.execute(
+            text("SELECT attempts FROM ingestion_jobs WHERE id=:j"), {"j": receipt.job.id}
+        ).scalar_one() == (0 if exhaust else 1)
+
+
+def test_dispatch_preserves_postclaim_yield_without_redispatch(upload_scene):
+    from test_quota_boundaries import contend
+
+    c = upload_scene
+    receipt = perform(c)
+    c["store"].actions.clear()
+    with contend(c["actor_engine"], target=3, exhaust=True):
+        assert asyncio.run(dispatcher(c)(c["actor"])) == "yielded"
+    assert asyncio.run(dispatcher(c)(c["actor"])) == "idle"
+    assert c["store"].actions == ["read"]
+    with c["actor_tx"](c["actor"]) as db:
+        row = db.execute(
+            text("SELECT status,attempts,lease_token FROM ingestion_jobs WHERE id=:j"),
+            {"j": receipt.job.id},
+        ).one()
+        assert row[:2] == ("running", 1) and row[2] is not None
+
+
+def test_dispatch_original_cancellation_propagates(upload_scene):
+    c = upload_scene
+    perform(c)
+
+    async def run():
+        entered, closed = asyncio.Event(), asyncio.Event()
+
+        class Original:
+            async def read(self, actor_id, scope) -> bytes:
+                assert not c["active"]
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                    raise AssertionError("unreleased synthetic original unexpectedly resumed")
+                finally:
+                    closed.set()
+
+        worker = TextWorker(c["actor_engine"], store_factory=lambda auth: Original())
+        task = asyncio.create_task(dispatcher(c, worker=worker)(c["actor"]))
+        await asyncio.wait_for(entered.wait(), 3)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert closed.is_set()
+
+    asyncio.run(run())
+
+
+def test_dispatch_selection_commit_failure_never_invokes_worker(upload_scene):
+    from app.workers.dispatch import DispatchUnavailable
+    from sqlalchemy.exc import SQLAlchemyError
+
+    c = upload_scene
+    perform(c)
+    c["store"].actions.clear()
+
+    @contextmanager
+    def fail_commit(actor):
+        with c["actor_tx"](actor) as db:
+            yield db
+            raise SQLAlchemyError("synthetic pre-commit failure")
+
+    with pytest.raises(DispatchUnavailable, match="database_unavailable"):
+        asyncio.run(dispatcher(c, actor_tx=fail_commit)(c["actor"]))
+    assert c["store"].actions == []
+    assert asyncio.run(dispatcher(c)(c["actor"])) == "succeeded"
