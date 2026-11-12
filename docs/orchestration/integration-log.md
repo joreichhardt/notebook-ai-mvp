@@ -1,5 +1,11 @@
 # Integration log
 
+## Quotenruling freigegeben, Orca-Follow-up beim Readiness-Start fehlgeschlagen
+
+- A5 lieferte nur Handoff-Präzisierung `84ab1f7` (Legacy-Preflight, tatsächliche Rollen,429/503) und worker_done; Main übernahm diesen Dokumentationscommit. Main genehmigte danach eng begrenzte0006-Implementierung im selben Worktree: feste fünf Gate-EXECUTE-Rollen, ledger-only Mirrorrechte/App-SELECT-Allowlist, migration-blocking Bestandsprüfung, neue unboundnonterminal-Arbeit fail-closed, keine stille Bestandsreparatur/fakeReceipt. Kapazitätsprüfung erst nach RLS/WITHCHECK; BEFOREgate ohne fremdeCapacityqueries. Logische Leasequoten bleiben von physischer Remoteparallelität getrennt. Bootstrap-Gateentry und eine Reviewer-Fixturedatei eng delegiert, deren Assertions/sonstige Authlogik erhalten.
+- Das zustellende `orchestration send --to dispatch:ctx_d0b9c18fc7d3` lief nach30s in Timeout. **Nicht wiederholt.** Read-only worker-list identifizierte neuen Follow-up`ctx_19d0c7a4c97e` / Task`task_7890065e88b5`; worker-show danach: **failed, stage=agent_readiness, liveness=unverifiable, lastError=timeout**, bestehendes Terminal`term_23f9c166-af30-4c24-8ef2-648f1cc67585`/A5-Worktree. Physischer Zustand/Auftragserhalt unklar, kein Exit bewiesen. Recoveryguide geladen; keine automatischen Stop-/Retry-/Ersatzaktionen. Nutzer über den Startfehler informiert;0006 ist nicht integriert/verifiziert und wird nicht als laufender Erfolg behauptet.
+- Unabhängige B3-Statusmeldung: Mainbasis`8862a1e` sauber als`1d4e351` übernommen. Eigener vorheriger kube1-Checkpoint`d337022` mit ReportingRED/GREEN1passed und29Multipart/body/text-Tests samt Cleanup gemeldet. UploadService nutzt kurze injizierte ActorTx(UUID)/separate IoTx, strenge aktuelle/session-Rollenprüfung,120sSingleWriteLease/90sOuterDeadline; Main/E liefern später dedizierte I/O-Login-/Enginekonfiguration. Kein Root-/Quota-/Router-/Capabilitywiring oder B3-Integrationsnachweis aus dieser Meldung.
+
 ## Quotenentwurf geprüft, Präzisierungsauftrag ohne Implementierung
 
 - A5-Folgeauftrag lieferte ausschließlich `docs/handoffs/A5.md` als `2a5b206`; Main übernahm diesen Dokumentationscommit. Frühere238Tests belegen weiterhin nur die0005-Basis, **nicht** den nicht implementierten Quotenentwurf.
