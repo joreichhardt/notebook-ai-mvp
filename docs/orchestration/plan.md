@@ -2,6 +2,14 @@
 
 ## Aktueller Arbeitsstand
 
+**dc34927 unabhängig bestätigt:** neuer interner queued-onlyActorDispatcher plus genehmigteTestfixture-Synchronisierung/echteCapregression ausB3 b3710366/ed1a888d integriert. Eigener immutablekube1/SCRAM-Default **490passed/1Warnung/194.39s + Ruff**, RUN_EXIT0/CLEANUP_EXIT0/0Restressourcen/Credentialentfernt; aktiveLSP3clean/0inconclusive. Task22 geschlossen. ProduktiveActorissuance/Registry/FairnessbeiStickyCancel/Storage/physischeQuieszenz bleiben Gates, keineFreischaltung. Historische437+1Fehler nicht rückwirkend exakt erklärt.
+
+Task23Research abgeschlossen: A5fa77390d konkretisiert echtenStorage-Fixtureplan, Repo hat aber keinenSupabase-/Storage-/Gatewaypin. Offizieller6205145/Storage1.89.12/PG17/Envoy-Kandidat ungenehmigt; vorUmsetzung genaueVersions-/Gateway-/Initialisierungsentscheidung undDigest-/Ressourcenprüfung nötig, keinProduktionsrollout.
+
+Task14priorisiert und offen: realeAstra- sowiejetztMainSol-FolgeaufrufeüberSollschwelle ohneKompaktierung belegt (SolInput235893–236641>185000). BegrenztesReadonlyfenster15:46:42–16:16:42CET mit98Antworten/beidenModellen/0Autozyklen beendet, ErgebnisUNVOLLSTÄNDIG; keineHintergrundbeobachtungmehr. AktuellgeladenerCore/Settings/Hookpfad unbestätigt; keineReparatur/Neustarts autorisiert. [Nachweise](../operations/agent-runtime.md).
+
+## Historischer d872c8b-Abschluss
+
 **d872c8b unabhängig kombiniert bestätigt:** Main kube1/SCRAM default467passed/1Warnung/187.20s plus Ruff, RUN_EXIT0/CLEANUP_EXIT0, keine eigenen Restressourcen, Credential entfernt. A5-Negativtests in2c7f7ad, B3-Retrydeadline in10fbcb3; Admission-/Membership-Widerruf nach Busy mit frischer Session in d872c8b nachgewiesen. Tasks15–19 abgeschlossen. Keine Addition separater Zusatzläufe; kein Produktions-/Storage-/Full-flow-Nachweis. AktiveLSP6:3clean,2nurTypohinweise,1Timeout.
 
 Neustart-Pause ausdrücklich aufgehoben. MainPi714713 seit12.11.2026 12:26 unverändert trotz neuer OrcaPID818551/Runtime; kein neuer Coreimport daraus ableitbar. Task14 zur zuverlässigen37%-Schwelle bleibt offen. Bestehende zwei Worker erhalten. Nächste Arbeit: verbleibende privateStorage-/Dispatcher-/physischeQuieszenz-Gates konkretisieren; Router/Capabilities bleiben aus. [Aktueller Einstieg](../handoffs/CONTINUE.md), [Sicherung](../handoffs/RESTART-PAUSE.md).

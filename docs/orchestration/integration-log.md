@@ -1,5 +1,17 @@
 # Integration log
 
+## dc34927: Main490 und getrennte Runtime-/Storagegrenzen
+
+B3b3710366/ed1a888d Quellreview:147ZeileninternerDispatcher,392Dispatchtests undgenehmigte288ZeilenTestfixture-/Capdiff. Native Auswahl prüft direktePrincipals/Subject/Admission/READCOMMITTED, bindetActorparameter, wählt höchstens eigenenaktuellenkanonischenqueued/attempts0TXT/MDJob; Commit/Close vor1Workeraufruf, keinWorker/I/O-Replay. Produktionsworker/Retry/DB/Router unangetastet. Test-onlyWatcherTaskidentität/ContextVar/Events trennt transientenRetry von unbeabsichtigterPublikationskonkurrenz; echteHeld-Heartbeat-Regression behält exaktesyielded/attempt1/liveLease/noChunks/noRepeatIO. Historische437+1Läufe undRED0cf9f61 bleiben Belege, keineBehauptungderexaktenhistorischenUrsache.
+
+SeriellerNormalguardmerge **dc34927**. Softreview gekürzt; restlicherStagedDiff separat vollständig gelesen `/tmp/notebook-main-dispatch-staged.diff`; keineSecrets/Bypässe. VorbereitendeMehrfach-Gitkommandoform wurde vomKontextvalidator vorAusführung abgewiesen, danachzulässigerliteralerEinzelmerge; keinSchutzdeaktivieren. `.pi/` undunstagedCONTINUE erhalten.
+
+**Eigener exakter immutablekube1/SCRAM-Defaultdc34927:490passed/1Warnung/194.39s undremoteRuff**, RUN_EXIT0/CLEANUP_EXIT0/0Container-Netze-Volumes/Credentialentfernt. Log `/home/jre/notebook-tests/main/.runtime-dc34927/run.log`, Launcher `.launch-dispatch-dc34927.py`; Zusatzläufeprivileged2/reportingScratchREDerwartet→GREEN1/Afixture1/service12 separat. AktiveLSP3clean/0inconclusive;27konstante/gebundeneSQL- und1Sessioncallback-Fehlalarme einzeln begründet, keineSourceSuppressions. Worker28/40/440 sind separateBelege, nicht addiert.
+
+ReadonlyKompaktierungsbeobachtung30Minuten/98Antworten/beideModelle/0Autozyklen:UNVOLLSTÄNDIG, Watcher beendet. Ready/input_accepted war zunächstfälschlichalsAusführung gemeldet; erstDispatchmailRecovery aufgleichemAgent undStatus15:46:42CET/activityworking belegtenStart. HistorischeAstraSchwellengaps undneuepassiveMainSolInputs235893–236641>185000 ohnegespeicherteKompaktierung bleibenungeklärt; keineCore-/Configänderung/Restart. Details imRuntime-Runbook und/tmp-Berichten.
+
+A5fa77390dResearch gelesen: keinRepoSupabase/Storage/Gatewaypin; aktuelleroffizieller6205145/Storage1.89.12/PG17/Envoy-Kandidat ist ungenehmigt/ohneDigests/ohneHostkapazitätsprüfung. KeinRealStorage-/Produktionsbeleg. Actorissuer/Registry/cancelledTombstoneFairness/echteStorage/Reconciliation/physischeQuieszenz bleiben Gates; Router/Capabilities aus.
+
 ## d872c8b: unabhängige kombinierte Main-Abnahme und Wiederaufnahme
 
 A5-Testdelivery b19a5f61/c5383cfc gelesen und als2c7f7ad integriert (48 negative HTTP-Verträge, worker265Auth/Security separat). B3-Delivery061b6b38/a0bada01 gelesen und als10fbcb3 integriert: vier Helperzeilen verhindern Folgecallback bei/nach Deadline nach Backoff; echte Worker-RED05163d89 mit2failed/36passed, GREEN38fokussiert/417default. Keine250ms-Gesamtwallclock-Garantie. Main d872c8b ergänzt zwei echte Gate-Busy/Widerrufstests, jeweils frische zweite Session403/keine neue Zeile; direkt grün, keine erfundene RED-Phase.
