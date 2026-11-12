@@ -720,21 +720,51 @@ def test_processing_error_is_sanitized_not_private_job_error(scope):
         ).one() == ("failed", "processing_failed")
 
 
-def test_fresh_admission_check_and_python_storage_helpers(scope):
+def test_fresh_admission_check_and_python_storage_helpers(scope, tmp_path):
+    from secrets import token_urlsafe
+
     from app.db.uploads import check_upload_admission, claim_upload_io, confirm_upload_io
     from sqlalchemy.engine import make_url
 
     with app(scope[0]) as session:
         intent = reserve(session, scope[5])
-    # Dedicated test-only login proves capability without superuser SET ROLE.
-    with psycopg.connect(URL, autocommit=True) as db:
-        db.execute("CREATE ROLE a5_storage_fixture LOGIN INHERIT NOSUPERUSER NOBYPASSRLS")
-        db.execute("GRANT notebook_storage_io TO a5_storage_fixture")
-    engine = create_engine(
-        make_url(URL).set(drivername="postgresql+psycopg", username="a5_storage_fixture")
+    # Dedicated synthetic credentials; do not inherit the setup user's password/passfile.
+    password = token_urlsafe(32)
+    login_url = (
+        make_url(URL)
+        ._replace(drivername="postgresql+psycopg", username="a5_storage_fixture", password=None)
+        .difference_update_query(["password", "passfile", "user"])
     )
+    fields = (
+        login_url.host or "localhost",
+        str(login_url.port or 5432),
+        login_url.database or "*",
+        "a5_storage_fixture",
+        password,
+    )
+    passfile = tmp_path / "a5-storage.pgpass"
+    engine = None
+    role_created = False
     try:
+        with os.fdopen(os.open(passfile, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as out:
+            out.write(
+                ":".join(value.replace("\\", "\\\\").replace(":", "\\:") for value in fields) + "\n"
+            )
+        assert passfile.stat().st_mode & 0o777 == 0o600
+        # Direct login proves capability without superuser SET ROLE or relaxed HBA.
+        with psycopg.connect(URL, autocommit=True) as db:
+            # DDL needs client-side parameter binding, not PostgreSQL's $1 binding.
+            with psycopg.ClientCursor(db) as cursor:
+                cursor.execute(
+                    "CREATE ROLE a5_storage_fixture LOGIN INHERIT NOSUPERUSER NOBYPASSRLS PASSWORD %s",
+                    (password,),
+                )
+            role_created = True
+            db.execute("GRANT notebook_storage_io TO a5_storage_fixture")
+        engine = create_engine(login_url, connect_args={"passfile": str(passfile)})
+        assert engine.url.password is None
         with Session(engine) as session, session.begin():
+            assert session.execute(text("SELECT current_user")).scalar_one() == "a5_storage_fixture"
             claim = claim_upload_io(session, intent.id)
             assert claim is not None
             assert claim.storage_key == intent.storage_key
@@ -751,9 +781,14 @@ def test_fresh_admission_check_and_python_storage_helpers(scope):
                 session, intent.id, claim.token, sha256="a" * 64, byte_count=5
             )
     finally:
-        engine.dispose()
-        with psycopg.connect(URL, autocommit=True) as db:
-            db.execute("DROP ROLE a5_storage_fixture")
+        try:
+            if engine is not None:
+                engine.dispose()
+            if role_created:
+                with psycopg.connect(URL, autocommit=True) as db:
+                    db.execute("DROP ROLE a5_storage_fixture")
+        finally:
+            passfile.unlink(missing_ok=True)
 
 
 @pytest.mark.parametrize("limit", [None, 0, 101])

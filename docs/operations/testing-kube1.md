@@ -77,6 +77,12 @@ docker compose --env-file /dev/null -p notebook-test-main \
 
 Main-Snapshot `8862a1e2636d` wurde so frisch durch Migration0005, 238 Defaulttests und Ruff geprüft; keine vollständige Upload-/Storage-Abnahme. Befehle/Ergebnisse und Cleanup stehen im Integrationslog.
 
+### Zusätzliche synthetische Test-Logins
+
+Bei SCRAM mit rollenbezogenen `0600`-pgpass-Dateien übernimmt ein nachträglich angelegter Login nicht das Passwort oder die pgpass-Zeile des Setup-Admins. Solche Fixtures erzeugen ein eigenes zufälliges Testpasswort, übergeben es ohne Ausgabe an die Rolle und verwenden eine **ab Erstellung `0600`** geschützte, korrekt escapte eigene pgpass-Datei. Die SQLAlchemy-URL enthält kein Passwort; `connect_args.passfile` wählt die Datei explizit. Direkten `current_user`, Dateirechte und Rollenbeschränkungen prüfen; Datei/Engine/Rolle auch im Fehlerpfad bereinigen. Kein `trust`-Fallback und keine Produktionszugänge.
+
+Main korrigiert so ausschließlich `test_fresh_admission_check_and_python_storage_helpers`; echte kube1-RED/GREEN-/Full-Suite-Evidenz wird erst nach dem Worker-Rerun im Integrationslog eingetragen. Für den parametrisierten DDL-Aufruf nutzt die Fixture den offiziellen [Psycopg-ClientCursor](https://www.psycopg.org/psycopg3/docs/advanced/cursors.html#client-side-binding-cursors), da PostgreSQL DDL nicht serverseitig mit `$1` bindet. Offizielle Quellreferenz: `psycopg/psycopg`, `docs/advanced/cursors.rst` (Dokumentationswebsite beim Prüfen HTTP403, offizielles GitHub-Original erfolgreich gelesen).
+
 ## Nachweis und Aufräumen
 
 Snapshot-SHA, Compose-Projekt, Prüfkommandos, Resultate und Grenzen im [Integrationslog](../orchestration/integration-log.md) bzw. Worker-Handoff festhalten. Container nach dem Test stoppen; Volumes nur nach geprüftem Bedarf und explizit im eigenen Projekt entfernen. Kein `docker system prune`, kein pauschales Containerstoppen und kein fremdes `compose down`.
