@@ -137,6 +137,15 @@ def main() -> None:
         python,
         "-m",
         "pytest",
+        "backend/tests/auth/test_uploads.py::test_fresh_admission_check_and_python_storage_helpers",
+        "-q",
+        "--tb=short",
+        env=env,
+    )
+    run(
+        python,
+        "-m",
+        "pytest",
         "backend/tests/documents/test_service.py",
         "-q",
         "--tb=short",
