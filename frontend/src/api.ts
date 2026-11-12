@@ -18,6 +18,7 @@ export type AuthConfig = {
   password_login: boolean;
   invitations: boolean;
   members: boolean;
+  documents?: boolean;
 };
 export type User = { id: string; email: string };
 export type Session = {
@@ -31,6 +32,14 @@ export type Workspace = {
   role: "owner" | "editor" | "viewer";
 };
 export type Notebook = { id: string; workspace_id: string; title: string };
+export type SourceDocument = {
+  id: string;
+  notebook_id: string;
+  filename: string;
+  version_id: string;
+  status: "queued" | "processing" | "ready" | "failed";
+  error_code: string | null;
+};
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -123,10 +132,12 @@ export const api = {
       auth: { password_login: boolean };
       invitations: boolean;
       members: boolean;
+      documents?: boolean;
     }>("/capabilities", "GET", undefined, signal).then((c) => ({
       password_login: c.auth.password_login,
       invitations: c.invitations,
       members: c.members,
+      documents: c.documents === true,
     })),
   members: (id: string, signal?: AbortSignal) =>
     request<{ items: Member[] }>(
@@ -168,6 +179,13 @@ export const api = {
   notebooks: (id: string, signal?: AbortSignal) =>
     request<{ items: Notebook[] }>(
       `/workspaces/${encodeURIComponent(id)}/notebooks`,
+      "GET",
+      undefined,
+      signal,
+    ),
+  documents: (id: string, signal?: AbortSignal) =>
+    request<{ items: SourceDocument[] }>(
+      `/notebooks/${encodeURIComponent(id)}/documents`,
       "GET",
       undefined,
       signal,

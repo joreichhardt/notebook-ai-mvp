@@ -447,6 +447,24 @@ footer {
   grid-template-columns: 1fr 2fr;
   gap: 25px;
 }
+.source-list {
+  list-style: none;
+  padding: 0;
+}
+.source-list li {
+  padding: 14px 0;
+  border-bottom: 1px solid #e1e4d8;
+}
+.source-filename {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.source-status {
+  display: inline-block;
+  font-weight: 600;
+  margin-top: 6px;
+}
 .detail-grid > div {
   padding: 22px;
   background: #f3f4ed;

@@ -5,6 +5,22 @@ afterEach(() => {
   setCsrfToken();
 });
 describe("API security boundary", () => {
+  it.each([true, false, undefined])("consumes only explicit documents capability %s", async (documents) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      auth: { password_login: true }, invitations: true, members: true, documents,
+    }))));
+    expect((await api.authConfig()).documents).toBe(documents === true);
+  });
+  it("fetches only the contracted document list with cancellation and no mutation headers", async () => {
+    const signal = new AbortController().signal;
+    const fetch = vi.fn().mockResolvedValue(new Response('{"items":[]}'));
+    vi.stubGlobal("fetch", fetch);
+    setCsrfToken("csrf-test");
+    await expect(api.documents("notebook/id", signal)).resolves.toEqual({ items: [] });
+    expect(fetch).toHaveBeenCalledWith("/api/notebooks/notebook%2Fid/documents", expect.objectContaining({
+      method: "GET", credentials: "same-origin", signal, headers: { Accept: "application/json" },
+    }));
+  });
   it("sends CSRF on mutations and keeps credentials same-origin", async () => {
     const fetch = vi
       .fn()

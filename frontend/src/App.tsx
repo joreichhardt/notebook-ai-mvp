@@ -1,5 +1,6 @@
 import { Invitation, Sharing } from "./Sharing";
 import { Connections } from "./Connections";
+import { Sources } from "./Sources";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   api,
@@ -233,6 +234,7 @@ export default function App() {
     );
   return (
     <WorkspaceApp
+      key={session.user.id}
       config={config}
       session={session}
       onLogout={async () => {
@@ -407,6 +409,7 @@ function WorkspaceApp({
             value={workspace}
             disabled={busy}
             onChange={(e) => {
+              setSelected("");
               setWorkspace(e.target.value);
               setSettings("notebooks");
             }}
@@ -456,7 +459,10 @@ function WorkspaceApp({
         <button
           className="text-button"
           disabled={busy}
-          onClick={() => action(onLogout)}
+          onClick={() => {
+            setSelected("");
+            return action(onLogout);
+          }}
         >
           Abmelden
         </button>
@@ -583,6 +589,9 @@ function WorkspaceApp({
                   <p className="eyebrow">AUSGEWÄHLTES NOTEBOOK</p>
                   <h2>{notebook.title}</h2>
                   <p className="muted">{current?.name}</p>
+                  {config?.documents === true && (
+                    <Sources notebookId={notebook.id} userId={session.user!.id} />
+                  )}
                   {canEdit && (
                     <button onClick={() => setEdit(notebook)}>
                       Titel bearbeiten
