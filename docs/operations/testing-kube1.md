@@ -77,6 +77,14 @@ docker compose --env-file /dev/null -p notebook-test-main \
 
 Main-Snapshot `8862a1e2636d` wurde so frisch durch Migration0005, 238 Defaulttests und Ruff geprüft; keine vollständige Upload-/Storage-Abnahme. Befehle/Ergebnisse und Cleanup stehen im Integrationslog.
 
+### Main-Verifikation des integrierten B3-Stands unter SCRAM
+
+Main prüfte den committed Snapshot **`5c4164103664`** unabhängig mit `backend/tests/documents/compose.b3.yaml` und dem darin enthaltenen Runner. Explizit `--env-file /dev/null -p notebook-test-main` verwenden; der Projektname in der wiederverwendeten Datei darf nicht zur Übernahme des Worker-Projekts führen. `B3_TEST_SNAPSHOT` zeigt auf den eigenen Main-Snapshot, UID/GID auf den eigenen Non-root-Runner, `B3_TEST_PASSWORD_FILE` ausschließlich auf eine neu erzeugte synthetische Datei im eigenen privaten Laufzeitverzeichnis. Diese Variablen enthalten nur Pfade/IDs, keine Passwortwerte.
+
+Vorher eigene Container/Netze/Volumes per Projektlabel auf leer prüfen. Operatorverzeichnis0700, Logs ab Erstellung0600; synthetisches Material ohne Ausgabe erzeugen. Die gemeinsam nur in DB/Runner eingebundene Testdatei ist für deren unterschiedliche UIDs lesbar, auf dem Host aber durch ihr privates0700Elternverzeichnis geschützt. Keine Produktions-Secret-Dateikonvention daraus ableiten. Runner schreibt eigene rollenbezogene pgpass-Dateien0600 im flüchtigen Containerbereich. Kein Hostport, keine Produktionsmounts oder Docker-Socket.
+
+Exakter Operatoraufruf und geschützter Laufnachweis liegen unter `/home/jre/notebook-tests/main/.runtime-5c4164103664/{launch.py,run.log,cleanup.log}`; Snapshot separat unverändert. Ergebnis: gezielt2, Watchdog erwartetesRED/GREEN1, A-Fixture1, Service12, **314Defaulttests/Ruff grün**, RUN_EXIT0/CLEANUP_EXIT0, anschließend0eigeneContainer/Netze/Volumes und externe Credentialdatei entfernt. Wiederholungen benötigen einen neuen expliziten Snapshot/Laufpfad; bestehende Nachweise nicht überschreiben. Dies ist Backend-/Synthetic-Storage-Integration, keine reale Storagepolicy-, HTTP-/Produktions- oder0006-Abnahme.
+
 ### Zusätzliche synthetische Test-Logins
 
 Bei SCRAM mit rollenbezogenen `0600`-pgpass-Dateien übernimmt ein nachträglich angelegter Login nicht das Passwort oder die pgpass-Zeile des Setup-Admins. Solche Fixtures erzeugen ein eigenes zufälliges Testpasswort, übergeben es ohne Ausgabe an die Rolle und verwenden eine **ab Erstellung `0600`** geschützte, korrekt escapte eigene pgpass-Datei. Die SQLAlchemy-URL enthält kein Passwort; `connect_args.passfile` wählt die Datei explizit. Direkten `current_user`, Dateirechte und Rollenbeschränkungen prüfen; Datei/Engine/Rolle auch im Fehlerpfad bereinigen. Kein `trust`-Fallback und keine Produktionszugänge.

@@ -1,5 +1,13 @@
 # Integration log
 
+## Main bestätigt B3-Merge unabhängig:314grün auf frischem SCRAM-Stack
+
+- Geprüfter Main-Commit **`5c4164103664`**: committed Archiv unverändert nach `/home/jre/notebook-tests/main/5c4164103664`, privater Snapshot0700/Extraktion022. Preflight eigener Projektlabels leer, Remote-UID1001/Last geprüft. Wiederverwendete gepinnte B3-Compose-Datei ausdrücklich mit `-p notebook-test-main`, keine Hostports/Fremdservices/Produktionszugänge.
+- Eigener frischer PostgreSQL16/SCRAM-Stack und synthetischer Storage: privilegierterSessionGuard gezielt **2passed**, historischer Reporting-RED erwartet und committedWatchdog **1passed**, Main-A5-Fixture **1passed**, UploadService **12passed**, vollständige normale Backend-/Securitysuche **314passed/1bestehendeWarnung/38.62s**, Ruff grün. **RUN_EXIT0**, nicht bloß geparstes Teilresultat.
+- **CLEANUP_EXIT0**, Labelkontrolle **0Container/0Netze/0Volumes**, externe synthetische Credentialdatei entfernt. Geschützter Laufnachweis/Operatorquelle `/home/jre/notebook-tests/main/.runtime-5c4164103664/{run.log,cleanup.log,launch.py}`; Snapshot nicht verändert. Keine globalen Prunes, lokalen Containerbuilds oder Fremddiensteingriffe.
+- Lokales frozenSync ergänzte nur bereits gepinntes `python-multipart0.0.33` in `.venv`, nachdem aktive LSP-Probe den fehlenden lokalen Import zeigte. Erneute aktive Prüfung8Pfade: **keine primären Fehler,0inconclusive**,5präzise Auxbefunde (4absichtliche Protocol-Ellipsen/1bestehender Kommentar-Typo), keine Suppression. Lokales Backend-/Security-Ruff und Diffprüfungen ebenfalls grün.
+-0006 noch nicht übernommen: A5final`b02d7793468b`/`e513db812bde` mit281/38Workerbelegen wird separat geprüft. B3 erhielt read-only Schnittstellenreviewauftrag `ctx_e8320279b407` im bestehenden Worktree, nur eigener Handoff, keine Code-/Root-/A5-Änderungen; Main prüft DDL/RLS/Grants/Preflight unabhängig. HTTP-/Storagepolicy-/Dispatcher-/Quieszenz-/Provisionierungs- und Produktionsgates bleiben unverändert.
+
 ## B3-Merge-Kandidat in Main, eigener Prüflauf folgt
 
 - Inzwischen A5-Finalmeldung empfangen: getesteter Code`b02d7793468b15d82ef6d5a68e16b88e85211ddd`, Docs-HEAD`e513db812bde1294aa813a0f5205c0ae315facb4`; frische kube1-DB/default281Tests+Ruff/FINAL_EXIT0, Quoten-/Migrationsmatrix38/QUOTA_EXIT0,15aktivePythonLSPclean, CleanupExit0/0eigeneRessourcen. Das ist ein Workerbeleg, keine Mainreview oder kombinierte B3/0006-Freigabe.0006 wird erst seriell nach dem B3-Mainprüflauf geprüft/übernommen.
