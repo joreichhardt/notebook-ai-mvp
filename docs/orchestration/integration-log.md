@@ -1,5 +1,11 @@
 # Integration log
 
+## Hauptcore aktiviert; geprüfter0006-Quellkandidat zur Callerprüfung übernommen
+
+- Nutzer nahm dieselbe Hauptsession nach `/quit` frisch auf: MainPID714713, alter235860 tatsächlich weg, unveränderterCWD, gepatchterCoreSHA `c76f9585431ac2f58b66ae9213cf2dc41f1b2a796873f052c74441f5084b14e9`. Checkpointbbffa58 sauber vorgefunden. Kein erneuter Workerrestart/Providerburner; echtes natürliches Auto-Compact-Ereignis steht weiterhin aus.
+- A5-Q6-R1-Regression zusätzlich direkt gelesen:3600s erwartet atomareVerweigerung/snapshotgleich,300/200/1/-1 erlauben exakteMirrorseedparität, expiredbehältoutstanding1/active0. Danach A5Delivery`4440804d8b7937dead34124cd67829991ea5ddac` konfliktfrei mit no-commitMerge seriell vorbereitet; SQL/Classifier/Migrationstest identisch zum geprüftenA5Stand, bestehenderB3-Code und sichereMainfixture erhalten. Rootdocs bleibenMain-autoritativ.
+- Lokales frozenRuff komplett backend/app+backend/tests+tests/security grün;10aktivePythonLSP-Pfade clean/0inconclusive. Keine DBtests auf dem Laptop. Kandidat ist **noch nicht kombiniert laufzeitgeprüft**; letzter unabhängig gesamter geprüfter Maincode bleibt5c4164103664. B3-Caller-/Fixtureanpassung und eigener frischer/Upgrade-SCRAM-kube1-Nachweis folgen, bevor neue Abnahme behauptet wird. Router/Capabilities weiter aus.
+
 ## Quota-Mainreview/Q6-R1 geliefert; Hauptcoreaktivierung vor weiterer Integration
 
 - Vollständiger Main-Quellreview von A5b02: feste Gate-/Rollen-/RLS-/Mirror-/Grants-/Classifiergrenzen nachvollzogen. B3-Readonlybericht Docs`532b4e522b87` bestätigt separates Caller429/503/whole-short-Tx-Retry-/Fixturegate; keine Codefreigabe erteilt. [Review](../review/quota-v6.md).

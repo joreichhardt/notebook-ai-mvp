@@ -6,7 +6,9 @@ Run migrations separately before these tests; never point at a shared database.
 
 import os
 import subprocess
+import sys
 from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 from typing import LiteralString, cast
 from uuid import uuid4
@@ -87,7 +89,9 @@ def test_fresh_migrations_and_model_columns(upgrade_via):
                     "revision,dimensions) VALUES (%s,%s,%s,'fixture','original','v1',3)",
                     (profile, workspace, notebook),
                 )
-                job = insert_job(admin, workspace, notebook, version, actor, connection, profile)
+                job = insert_job(
+                    admin, workspace, notebook, version, actor, connection, profile, status="queued"
+                )
         result = subprocess.run(
             [
                 str(root / ".venv/bin/alembic"),
@@ -106,6 +110,39 @@ def test_fresh_migrations_and_model_columns(upgrade_via):
             text=True,
             check=False,
         )
+        if upgrade_via:
+            # A legacy queued job MUST block0006 without rewriting data/revision.
+            assert result.returncode != 0
+            with psycopg.connect(URL, dbname=name) as admin:
+                assert admin.execute("SELECT version_num FROM alembic_version").fetchone() == (
+                    upgrade_via,
+                )
+                assert admin.execute(
+                    "SELECT status,attempts,lease_token FROM ingestion_jobs WHERE id=%s", (job,)
+                ).fetchone() == ("queued", 0, None)
+                # Explicit exact-ID retirement in this isolated fixture only.
+                admin.execute(
+                    "UPDATE ingestion_jobs SET status='failed' WHERE id=%s AND status='queued' AND attempts=0",
+                    (job,),
+                )
+            result = subprocess.run(
+                [
+                    str(root / ".venv/bin/alembic"),
+                    "-c",
+                    "backend/migrations/alembic.ini",
+                    "upgrade",
+                    "head",
+                ],
+                cwd=root,
+                env={
+                    **os.environ,
+                    "PYTHONPATH": str(root / "backend"),
+                    "NOTEBOOK_MIGRATION_DATABASE_URL": url.render_as_string(hide_password=False),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
         assert result.returncode == 0, "fresh migration failed (output suppressed to protect URL)"
         with psycopg.connect(URL, dbname=name, user="notebook_app") as db:
             assert db.execute(
@@ -150,7 +187,7 @@ def test_fresh_migrations_and_model_columns(upgrade_via):
 
 def test_document_tables_are_rls_protected():
     with psycopg.connect(URL) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0005",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0006",)
         db.execute("SET ROLE notebook_app")
         assert db.execute(
             "SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user"
@@ -214,15 +251,39 @@ def insert_chunk(db, ws, note, doc, version, ordinal=0):
     return chunk
 
 
-def insert_job(db, ws, note, version, actor, connection=None, profile=None, key=None):
+def insert_job(
+    db, ws, note, version, actor, connection=None, profile=None, key=None, *, status="failed"
+):
     job = uuid4()
     db.execute(
         "INSERT INTO ingestion_jobs(id,document_version_id,notebook_id,workspace_id,"
-        "actor_user_id,connection_id,index_profile_id,idempotency_key) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-        (job, version, note, ws, actor, connection, profile, key or str(job)),
+        "actor_user_id,connection_id,index_profile_id,idempotency_key,status) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        (job, version, note, ws, actor, connection, profile, key or str(job), status),
     )
     return job
+
+
+@pytest.fixture(autouse=True)
+def version_database(request, monkeypatch):
+    # Keep the original0005 raw-job execution/fencing assertions in the default
+    # suite, against a real0005 schema and frozen0005 helper implementation.
+    legacy = {
+        "test_lease_claim_recovery_and_fencing",
+        "test_claim_rechecks_current_authorization_and_bounds",
+        "test_publication_transaction_rolls_back_expired_lease",
+    }
+    if request.node.originalname not in legacy:
+        yield
+        return
+    from database_versions import isolated_database
+
+    with isolated_database(URL, "0005") as url:
+        monkeypatch.setattr(sys.modules[__name__], "URL", url)
+        monkeypatch.setattr(
+            sys.modules[__name__], "insert_job", partial(insert_job, status="queued")
+        )
+        yield
 
 
 @pytest.fixture
@@ -568,7 +629,7 @@ def test_job_connection_profile_pairing_ownership_revocation_and_history(corpus)
 
 
 def test_lease_claim_recovery_and_fencing(corpus):
-    from app.db.leases import claim_job, finish_job, heartbeat_job
+    from leases_0005 import claim_job, finish_job, heartbeat_job
     from sqlalchemy import create_engine, text
     from sqlalchemy.orm import Session
 
@@ -620,7 +681,7 @@ def test_lease_claim_recovery_and_fencing(corpus):
     "blocker", ["membership", "admission", "viewer", "deleted", "version", "attempts", "connection"]
 )
 def test_claim_rechecks_current_authorization_and_bounds(corpus, blocker):
-    from app.db.leases import claim_job
+    from leases_0005 import claim_job
     from sqlalchemy import create_engine, text
     from sqlalchemy.orm import Session
 
@@ -669,8 +730,8 @@ def test_claim_rechecks_current_authorization_and_bounds(corpus, blocker):
 
 
 def test_publication_transaction_rolls_back_expired_lease(corpus):
-    from app.db.leases import claim_job, finish_job, lock_job_for_publish
     from app.db.models import Chunk
+    from leases_0005 import claim_job, finish_job, lock_job_for_publish
     from sqlalchemy import create_engine, text
     from sqlalchemy.orm import Session
 
