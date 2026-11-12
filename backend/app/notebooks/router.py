@@ -11,6 +11,7 @@ from app.auth.settings import get_settings
 from app.auth.supabase import Identity
 from app.db.models import Notebook
 from app.db.session import identity, user_session
+from app.mutations import ActorMutations, actor_mutations
 from app.workspaces.router import membership
 
 router = APIRouter(prefix="/api", tags=["notebooks"])
@@ -49,15 +50,18 @@ def create_notebook(
     workspace_id: UUID,
     body: NotebookInput,
     request: Request,
-    db: Annotated[Session, Depends(user_session)],
-    user: Annotated[Identity, Depends(identity)],
+    mutations: Annotated[ActorMutations, Depends(actor_mutations)],
 ):
     check_csrf(request, get_settings().public_origin)
-    membership(db, workspace_id, user.id, write=True)
-    n = Notebook(workspace_id=workspace_id, title=body.title.strip())
-    db.add(n)
-    db.flush()
-    return serialize(n)
+
+    def create(db: Session):
+        membership(db, workspace_id, mutations.user.id, write=True)
+        n = Notebook(workspace_id=workspace_id, title=body.title.strip())
+        db.add(n)
+        db.flush()
+        return serialize(n)
+
+    return mutations.run(create)
 
 
 def editable(db, notebook_id, user):
