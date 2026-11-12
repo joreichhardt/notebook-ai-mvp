@@ -2,6 +2,8 @@
 
 ## Aktuell laufend
 
+**Testhost:** Docker-Builds und containerisierte Tests ausschließlich auf kube1; Laptop ohne neue Containerlast. SSH/Docker/Compose geprüft, getrennte private Bereiche für Main/B3/A5 angelegt; Zuordnung und Kommandos im [Testbetriebs-Runbook](../operations/testing-kube1.md). Eigene native lokale Worker-DBs nach laufenden Tests geordnet stoppen und erhalten, neue schwere Tests remote. Bestehende Ports 55443/55444 unten sind historische lokale Reservierungen, keine kube1-Portfreigabe.
+
 Integrationsbasis `f77255d`: Daten-/Provider-Seam samt unabhängiger F3a-Nachprüfung integriert. Aktuelle Prüfnachweise stehen im [Integrationslog](integration-log.md); Einstieg in alle Anleitungen: [Dokumentationsindex](../README.md).
 
 - **B3** in `../notebook-upload-v3`, Branch `notebook-upload-v3`, Dispatch `ctx_67e121724725`: TXT/Markdown, begrenzter privater Storage-Adapter und explizit actorgebundener Einzeljob-Worker. Arbeitet unabhängig weiter, Upload-/Statusverdrahtung wartet auf A5.

@@ -8,6 +8,12 @@
 - Zuerst Bestand und Git-Status prüfen; Nutzeränderungen erhalten. In kleinen vertikalen Schritten arbeiten und passende Prüfungen ausführen. Versionen und Befehle aus dem Projekt ableiten, externe APIs anhand offizieller Dokumentation prüfen.
 - Fehlende Zugänge blockieren nur abhängige Schritte. Unabhängige Arbeit fortsetzen. Abschließend Änderungen, tatsächlich ausgeführte Tests und offene Punkte nennen; lokale Tests und Produktionsnachweise unterscheiden.
 
+## Testinfrastruktur
+
+- Docker-Testmaschinen, Compose-Teststacks und Containerbuilds ausschließlich auf `kube1` ausführen; der lokale Laptop ist dafür zu schwach. Lokal nur leichte Entwicklungsprüfungen ohne Containerlast. Vorgehen und isolierte Namensräume: [kube1-Testbetrieb](docs/operations/testing-kube1.md).
+- Auf kube1 je Auftrag eigene Pfade, Compose-Projektnamen, Netze/Volumes und Ressourcenlimits verwenden; Ports nur bei Bedarf auf Loopback veröffentlichen. Ausschließlich synthetische Testdaten und eigene Test-Credentials verwenden. Bestehende Dienste, Produktions-Secrets und andere Worker-Umgebungen unverändert lassen; Aufräumen nur im explizit zugewiesenen Testprojekt, keine globalen Prune-Befehle.
+- Fehlt kube1-Zugriff oder freie Kapazität, abhängige Tests als blockiert melden, statt sie auf dem Laptop zu starten. Vorhandene lokale oder native Testumgebungen nur gezielt und nach Zuständigkeitsprüfung stilllegen; keine fremden Container stoppen.
+
 ## Dokumentation laufend pflegen
 
 - Bei jeder Änderung an Verhalten, Schnittstellen, Konfiguration, Betrieb oder Arbeitsstand die betroffenen Markdown-Dateien im selben Arbeitsschritt aktualisieren, spätestens vor Abschluss/Übergabe. Tatsächlich implementiert, getestet und offen klar trennen; Nachweise mit geprüftem Stand und Umgebung angeben. Auch diese `AGENTS.md` bei geänderten Arbeitsregeln aktuell halten.
