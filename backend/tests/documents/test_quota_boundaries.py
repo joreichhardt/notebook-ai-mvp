@@ -332,3 +332,88 @@ def test_readmission_never_reactivates_sticky_cancelled_work(upload_scene):
             "SELECT work_cancelled,job_state,job_attempts FROM upload_intents WHERE job_id=%s",
             (receipt.job.id,),
         ).fetchone() == (True, "queued", 0)
+
+
+@pytest.mark.parametrize("exhaust", [False, True])
+def test_watchdog_busy_closes_unfinished_io_but_keeps_live_lease(upload_scene, exhaust):
+    c = upload_scene
+    receipt = perform(c)
+    calls, closed = [], []
+
+    class Original:
+        async def read(self, actor_id, scope):
+            calls.append("read")
+            try:
+                await asyncio.sleep(0.15)
+                return b"hello"
+            finally:
+                closed.append(True)
+
+    worker = TextWorker(
+        c["actor_engine"], store_factory=lambda auth: Original(), heartbeat_seconds=0.03
+    )
+    with contend(c["actor_engine"], target=3, exhaust=exhaust):
+        result = asyncio.run(worker.run_one(actor_id=c["actor"], job_id=receipt.job.id))
+    assert result == ("yielded" if exhaust else "succeeded")
+    assert calls == ["read"] and closed == [True]
+    with c["actor_tx"](c["actor"]) as db:
+        row = db.execute(
+            text("SELECT status,attempts,lease_token FROM ingestion_jobs WHERE id=:j"),
+            {"j": receipt.job.id},
+        ).one()
+        assert row[:2] == ("running" if exhaust else "succeeded", 1)
+        assert (row[2] is not None) == exhaust
+        assert db.execute(
+            text("SELECT count(*) FROM chunks WHERE document_version_id=:v"),
+            {"v": receipt.document.version_id},
+        ).scalar_one() == (0 if exhaust else 1)
+
+
+@pytest.mark.parametrize(
+    "code,message",
+    [("P0001", "other_error"), ("42501", "quota_capacity"), ("55P03", "other_error")],
+)
+def test_worker_nearby_server_errors_propagate_once_without_attempt_or_io(
+    upload_scene, code, message
+):
+    from app.db.quota import classify_quota_error
+    from sqlalchemy.exc import DBAPIError
+
+    c = upload_scene
+    receipt = perform(c)
+    invocations, calls = [], []
+
+    def before(connection, cursor, statement, parameters, context, many):
+        if "SELECT public.quota_gate()" in statement:
+            invocations.append(True)
+            with connection.connection.cursor() as probe:
+                probe.execute(
+                    "SELECT set_config('test.quota_code',%s,true),set_config('test.quota_message',%s,true)",
+                    (code, message),
+                )
+                probe.execute(
+                    "DO $$ BEGIN RAISE EXCEPTION USING MESSAGE=current_setting('test.quota_message'), ERRCODE=current_setting('test.quota_code'); END $$"
+                )
+
+    class Original:
+        async def read(self, actor_id, scope):
+            calls.append("read")
+            return b"hello"
+
+    event.listen(c["actor_engine"], "before_cursor_execute", before)
+    try:
+        with pytest.raises((psycopg.Error, DBAPIError)) as caught:
+            asyncio.run(
+                TextWorker(c["actor_engine"], store_factory=lambda auth: Original()).run_one(
+                    actor_id=c["actor"], job_id=receipt.job.id
+                )
+            )
+        assert classify_quota_error(caught.value) is None
+    finally:
+        event.remove(c["actor_engine"], "before_cursor_execute", before)
+    assert invocations == [True] and calls == []
+    with c["actor_tx"](c["actor"]) as db:
+        assert db.execute(
+            text("SELECT status,attempts,lease_token FROM ingestion_jobs WHERE id=:j"),
+            {"j": receipt.job.id},
+        ).one() == ("queued", 0, None)
