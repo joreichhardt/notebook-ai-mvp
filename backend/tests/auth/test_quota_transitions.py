@@ -170,6 +170,10 @@ def test_direct_dml_busy_fallback_rolls_back_unrelated_transaction_write(scope):
                 text("UPDATE notebooks SET title='must rollback' WHERE id=:n"), {"n": notebook}
             )
         assert classify_quota_error(caught.value) == "quota_gate_busy"
+        # Contender's BEFORE-trigger failure released its target-row lock:
+        # the gate holder can take that same row without inversion/hang.
+        holder.execute(text("SET LOCAL lock_timeout='500ms'"))
+        holder.execute(text("UPDATE notebooks SET title=title WHERE id=:n"), {"n": notebook})
     with app(actor) as db:
         assert (
             db.execute(
@@ -244,3 +248,27 @@ def test_already_started_direct_claim_sees_committed_active_capacity(scope):
         assert db.execute(
             text("SELECT status,attempts FROM ingestion_jobs WHERE id=:j"), {"j": intents[2].job_id}
         ).one() == ("queued", 0)
+
+
+@pytest.mark.parametrize(
+    "column",
+    ["job_state", "job_attempts", "job_lease_token", "job_lease_expires_at", "work_cancelled"],
+)
+def test_app_cannot_read_or_write_protected_quota_mirror(scope, column):
+    from psycopg import sql
+
+    actor, _, _, _, _, notebook = scope
+    with app(actor) as db:
+        intent = reserve(db, notebook)
+    for statement in (
+        sql.SQL("SELECT {} FROM public.upload_intents WHERE id=%s").format(sql.Identifier(column)),
+        sql.SQL("UPDATE public.upload_intents SET {}=NULL WHERE id=%s").format(
+            sql.Identifier(column)
+        ),
+    ):
+        with (
+            pytest.raises(psycopg.errors.InsufficientPrivilege),
+            psycopg.connect(URL, user="notebook_app") as db,
+        ):
+            db.execute("SELECT set_config('request.jwt.claim.sub',%s,true)", (str(actor),))
+            db.execute(statement, (intent.id,))
