@@ -154,6 +154,43 @@ def contend(engine, *, target=1, marker="SELECT public.quota_gate()", exhaust=Fa
         holder.close()
 
 
+@pytest.mark.parametrize("advance", [0.01, 0.25, 1.0])
+def test_retry_start_admission_rechecks_clock_after_backoff(upload_scene, monkeypatch, advance):
+    from app.documents import transactions
+
+    c = upload_scene
+    clock, delays = [100.0], []
+    owned_sleep = transactions.sleep  # Keep the real caller-owned rollback/CLOSED/IDLE probe.
+
+    def suspended_backoff(delay):
+        delays.append(delay)
+        owned_sleep(0)  # No wall-clock suspension: only the controlled monotonic clock advances.
+        clock[0] += advance
+
+    monkeypatch.setattr(transactions, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(transactions, "sleep", suspended_backoff)
+    with contend(c["actor_engine"]) as (seen, xids, rollbacks):
+        if advance >= 0.25:
+            with pytest.raises(DocumentError) as caught:
+                perform(c)
+            assert (caught.value.status_code, caught.value.code) == (503, "quota_gate_busy")
+            # The failed first callback rolled back; no second gate/callback is admitted.
+            assert len(seen) == len(xids) == 1
+            assert c["store"].actions == []
+        else:
+            assert perform(c).job.status == "queued"
+            assert len(xids) >= 2 and xids[0] != xids[1]
+            assert c["store"].actions == ["put", "read"]
+        assert delays == [0.01] and len(rollbacks) == 1
+    with psycopg.connect(URL) as db:
+        assert db.execute(
+            "SELECT count(*) FROM upload_intents WHERE notebook_id=%s", (c["notebook"],)
+        ).fetchone() == (0 if advance >= 0.25 else 1,)
+        assert db.execute(
+            "SELECT count(*) FROM ingestion_jobs WHERE notebook_id=%s", (c["notebook"],)
+        ).fetchone() == (0 if advance >= 0.25 else 1,)
+
+
 def test_service_capacity_is_opaque429_before_any_io(upload_scene):
     c = upload_scene
     for n in range(10):
