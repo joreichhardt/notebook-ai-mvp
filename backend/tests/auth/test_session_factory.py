@@ -33,7 +33,7 @@ def factory(monkeypatch):
     url = url.update_query_dict(
         {
             "application_name": "a5-root-budgets",
-            "sslmode": "disable",
+            "sslmode": "prefer",
             "connect_timeout": "90",
             "options": "-c statement_timeout=90000 -c lock_timeout=90000 -c search_path=pg_catalog,public",
         }
@@ -74,7 +74,7 @@ def test_actual_driver_parameters_and_server_settings(factory):
         assert db.execute(text("SHOW application_name")).scalar_one() == "a5-root-budgets"
         assert db.execute(text("SHOW idle_in_transaction_session_timeout")).scalar_one() == "0"
     assert observed["connect_timeout"] == 3
-    assert observed["sslmode"] == "disable"
+    assert observed["sslmode"] == "prefer"
     assert factory.pool.timeout() == 1
     assert not args and kwargs["application_name"] == "a5-root-budgets"
 
@@ -177,7 +177,18 @@ def test_owned_loopback_connect_timeout(monkeypatch):
                 port=listener.getsockname()[1],
             )
             ._replace(username="notebook_app", password=None)
-            .difference_update_query(["password", "passfile", "user"])
+            .difference_update_query(
+                [
+                    "password",
+                    "passfile",
+                    "user",
+                    "host",
+                    "hostaddr",
+                    "port",
+                    "service",
+                    "servicefile",
+                ]
+            )
         )
         assert url.password is None
         assert not {"password", "passfile", "user"}.intersection(url.query)

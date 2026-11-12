@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app.auth.security import SESSION_COOKIE, fail
@@ -16,7 +17,26 @@ def engine():
     url = get_settings().database_url.get_secret_value()
     if not url:
         fail(503, "database_unconfigured", "Datenbank ist noch nicht eingerichtet.")
-    return create_engine(url, pool_pre_ping=True, hide_parameters=True)
+    parsed = make_url(url)
+    # Use the project's pinned psycopg3 driver, preserving TLS and other DSN options.
+    if parsed.drivername not in ("postgresql", "postgresql+psycopg"):
+        fail(503, "database_unconfigured", "Datenbankkonfiguration nicht unterstützt.")
+    parsed = parsed.set(drivername="postgresql+psycopg")
+    options = parsed.query.get("options", "")
+    if not isinstance(options, str):
+        fail(503, "database_unconfigured", "Datenbankkonfiguration nicht unterstützt.")
+    # Final startup -c values override earlier DSN settings. No idle-in-transaction
+    # cutoff: legacy Connections can perform non-retried external work while idle.
+    return create_engine(
+        parsed,
+        pool_pre_ping=True,
+        hide_parameters=True,
+        pool_timeout=1,
+        connect_args={
+            "connect_timeout": 3,
+            "options": f"{options} -c statement_timeout=3000 -c lock_timeout=1000".strip(),
+        },
+    )
 
 
 async def identity(request: Request) -> Identity:
