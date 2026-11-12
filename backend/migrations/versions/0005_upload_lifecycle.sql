@@ -158,7 +158,13 @@ CREATE FUNCTION public.upload_commit_guard() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
 DECLARE i public.upload_intents%ROWTYPE;
 BEGIN
- SELECT * INTO i FROM public.upload_intents WHERE document_id=NEW.id OR version_id=NEW.id OR job_id=NEW.id;
+ IF TG_TABLE_NAME='ingestion_jobs' THEN
+  -- A new UUID must not evade canonical upload-job identity and overwrite the
+  -- member-safe projection via its otherwise actor-visible private job row.
+  SELECT * INTO i FROM public.upload_intents WHERE version_id=NEW.document_version_id OR job_id=NEW.id;
+ ELSE
+  SELECT * INTO i FROM public.upload_intents WHERE document_id=NEW.id OR version_id=NEW.id OR job_id=NEW.id;
+ END IF;
  IF NOT FOUND THEN RETURN NULL; END IF;
  IF i.state<>'finalized' THEN
  RAISE EXCEPTION 'upload_not_finalized' USING ERRCODE='23514'; END IF;
