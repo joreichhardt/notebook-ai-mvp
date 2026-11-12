@@ -258,3 +258,73 @@ def test_real_deferred_commit_failure_precedes_asgi_response(http_runtime, messa
             cleanup.execute("DROP TRIGGER root_http_commit_failure ON public.notebooks")
             cleanup.execute("DROP FUNCTION public.root_http_commit_failure()")
     assert client.get(path).json() == before
+
+
+@pytest.mark.parametrize("revocation", ["admission", "membership"])
+def test_busy_retry_rechecks_revoked_authorization(http_runtime, monkeypatch, revocation):
+    from app.documents import transactions
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import QueuePool
+
+    client, scope = http_runtime
+    actor = scope[0] if revocation == "admission" else scope[1]
+    app.dependency_overrides[session_layer.identity] = lambda: Identity(
+        actor, "http-mutation@example.test"
+    )
+    path = f"/api/workspaces/{scope[4]}/notebooks"
+    # Establish real write authorization before the competing transaction changes it.
+    assert client.post(path, json={"title": "authorized control"}).status_code == 201
+    before = client.get(path).json()
+    runtime = session_layer.engine()
+    pool = runtime.pool
+    assert isinstance(pool, QueuePool)
+    sessions, connections, backoffs = [], [], []
+
+    def begun(session, transaction, connection):
+        if connection.engine is runtime:
+            sessions.append(session)
+            connections.append(connection)
+
+    with psycopg.connect(URL) as holder:
+        holder.execute("SELECT public.quota_gate()")
+
+        def revoke_during_backoff(delay):
+            assert not backoffs and len(sessions) == 1
+            assert connections[0].closed and not sessions[0].in_transaction()
+            assert pool.checkedout() == 0
+            # Separate fixture transaction owns the gate; real first request
+            # has already rolled back/closed before authorization is revoked.
+            if revocation == "admission":
+                holder.execute("DELETE FROM app_admissions WHERE user_id=%s", (actor,))
+            else:
+                holder.execute(
+                    "UPDATE workspace_members SET role='viewer' WHERE workspace_id=%s AND user_id=%s",
+                    (scope[4], actor),
+                )
+            holder.commit()  # Publish revocation and release the competing gate together.
+            backoffs.append(delay)
+
+        # Isolate freshness from scheduling: real PostgreSQL errors/rollback,
+        # but an unexpired retry-admission clock, not a latency measurement.
+        monkeypatch.setattr(transactions, "monotonic", lambda: 0.0)
+        monkeypatch.setattr(transactions, "sleep", revoke_during_backoff)
+        event.listen(Session, "after_begin", begun)
+        try:
+            response = client.post(path, json={"title": "must not survive revocation"})
+        finally:
+            event.remove(Session, "after_begin", begun)
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == (
+        "admission_required" if revocation == "admission" else "workspace_access_denied"
+    )
+    assert backoffs == [0.01]
+    assert len(sessions) == 2 and sessions[0] is not sessions[1]
+    assert all(connection.closed for connection in connections)
+    assert all(not session.in_transaction() for session in sessions)
+    assert pool.checkedout() == 0
+    # An unaffected, still-admitted member sees exactly the pre-revocation rows.
+    reader = scope[1] if revocation == "admission" else scope[0]
+    app.dependency_overrides[session_layer.identity] = lambda: Identity(
+        reader, "http-mutation@example.test"
+    )
+    assert client.get(path).json() == before
