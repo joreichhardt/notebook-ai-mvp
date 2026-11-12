@@ -5,6 +5,7 @@ binding. The future route must additionally bound the actual file to25MiB,
 validate parts/headers and close all parser spools in finally on ANY exception.
 This limiter alone is not a multipart parser, upload route or spool-cleanup proof.
 """
+
 import asyncio
 from time import monotonic
 
@@ -20,8 +21,9 @@ class UploadBodyError(ValueError):
 
 
 class RawBodyBudget:
-    def __init__(self, receive: Receive, *, max_bytes: int = MAX_MULTIPART_BYTES,
-                 timeout_seconds: float = 60):
+    def __init__(
+        self, receive: Receive, *, max_bytes: int = MAX_MULTIPART_BYTES, timeout_seconds: float = 60
+    ):
         if not 0 < max_bytes <= MAX_MULTIPART_BYTES or not 0 < timeout_seconds <= 60:
             raise ValueError("invalid bounded upload budget")
         self._receive = receive

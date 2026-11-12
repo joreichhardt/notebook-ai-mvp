@@ -1,4 +1,5 @@
 """Synthetic HTTP fixtures, NOT real private Storage policy acceptance."""
+
 import asyncio
 from uuid import uuid4
 
@@ -27,8 +28,11 @@ def test_private_bucket_checked_and_scope_authorized_before_each_io():
         return httpx.Response(200, content=b"hello")
 
     storage = SupabaseStorage(
-        StorageConfig("https://configured.example/storage/v1", "originals", SecretStr("synthetic-token")),
-        authorize=authorize, transport=httpx.MockTransport(handler),
+        StorageConfig(
+            "https://configured.example/storage/v1", "originals", SecretStr("synthetic-token")
+        ),
+        authorize=authorize,
+        transport=httpx.MockTransport(handler),
     )
     assert asyncio.run(storage.read(actor, scope)) == b"hello"
     assert events == ["authorize", "bucket", "authorize", "object", "authorize"]
@@ -44,12 +48,16 @@ def test_public_bucket_and_redirects_fail_closed(public, status):
 
     def handler(request):
         calls.append(request)
-        return httpx.Response(status, json={"id": "originals", "public": public},
-                              headers={"location": "https://evil.example"})
+        return httpx.Response(
+            status,
+            json={"id": "originals", "public": public},
+            headers={"location": "https://evil.example"},
+        )
 
     storage = SupabaseStorage(
         StorageConfig("https://configured.example/storage/v1", "originals", SecretStr("secret")),
-        authorize=authorize, transport=httpx.MockTransport(handler),
+        authorize=authorize,
+        transport=httpx.MockTransport(handler),
     )
     with pytest.raises(StorageError):
         asyncio.run(storage.read(uuid4(), ObjectScope(*(uuid4() for _ in range(4)))))
@@ -67,7 +75,8 @@ def test_unconfigured_storage_and_revocation_never_reach_object():
         asyncio.run(storage.read(uuid4(), ObjectScope(*(uuid4() for _ in range(4)))))
     storage = SupabaseStorage(
         StorageConfig("https://configured.example/storage/v1", "originals", SecretStr("secret")),
-        authorize=revoked, transport=httpx.MockTransport(lambda r: httpx.Response(500)),
+        authorize=revoked,
+        transport=httpx.MockTransport(lambda r: httpx.Response(500)),
     )
     with pytest.raises(StorageError, match="storage_forbidden"):
         asyncio.run(storage.read(uuid4(), ObjectScope(*(uuid4() for _ in range(4)))))
@@ -95,13 +104,16 @@ def test_non_upsert_write_uses_generated_key_and_private_bucket():
 
     storage = SupabaseStorage(
         StorageConfig("https://configured.example/storage/v1", "originals", SecretStr("fixture")),
-        authorize=authorize, transport=httpx.MockTransport(handler),
+        authorize=authorize,
+        transport=httpx.MockTransport(handler),
     )
     asyncio.run(storage.put(uuid4(), scope, b"hello", "text/plain"))
     assert len(requests) == 2 and len(checks) == 3
 
 
-@pytest.mark.parametrize("mode", ["oversize", "compressed", "wrong_key", "malformed", "secret_error"])
+@pytest.mark.parametrize(
+    "mode", ["oversize", "compressed", "wrong_key", "malformed", "secret_error"]
+)
 def test_http_boundary_rejects_untrusted_or_oversize_responses_without_secret(mode):
     import traceback
 
@@ -123,12 +135,19 @@ def test_http_boundary_rejects_untrusted_or_oversize_responses_without_secret(mo
         return httpx.Response(200, content=b"not json")
 
     storage = SupabaseStorage(
-        StorageConfig("https://configured.example/storage/v1", "originals", SecretStr("fixture-credential")),
-        authorize=authorize, transport=httpx.MockTransport(handler),
+        StorageConfig(
+            "https://configured.example/storage/v1", "originals", SecretStr("fixture-credential")
+        ),
+        authorize=authorize,
+        transport=httpx.MockTransport(handler),
     )
     with pytest.raises(StorageError) as error:
         if mode in ("wrong_key", "malformed"):
-            asyncio.run(storage.put(uuid4(), ObjectScope(*(uuid4() for _ in range(4))), b"hello", "text/plain"))
+            asyncio.run(
+                storage.put(
+                    uuid4(), ObjectScope(*(uuid4() for _ in range(4))), b"hello", "text/plain"
+                )
+            )
         else:
             asyncio.run(storage.read(uuid4(), ObjectScope(*(uuid4() for _ in range(4)))))
     assert "fixture-credential" not in "".join(traceback.format_exception(error.value))
@@ -148,18 +167,22 @@ def test_revocation_after_bucket_check_prevents_object_request():
 
     storage = SupabaseStorage(
         StorageConfig("https://configured.example/storage/v1", "originals", SecretStr("fixture")),
-        authorize=authorize, transport=httpx.MockTransport(handler),
+        authorize=authorize,
+        transport=httpx.MockTransport(handler),
     )
     with pytest.raises(StorageError, match="storage_forbidden"):
         asyncio.run(storage.read(uuid4(), ObjectScope(*(uuid4() for _ in range(4)))))
     assert calls == ["/storage/v1/bucket/originals"]
 
 
-@pytest.mark.parametrize("endpoint,bucket", [
-    ("http://configured.example/storage/v1", "originals"),
-    ("https://configured.example/storage/v1?token=x", "originals"),
-    ("https://configured.example/storage/v1", "../foreign"),
-])
+@pytest.mark.parametrize(
+    "endpoint,bucket",
+    [
+        ("http://configured.example/storage/v1", "originals"),
+        ("https://configured.example/storage/v1?token=x", "originals"),
+        ("https://configured.example/storage/v1", "../foreign"),
+    ],
+)
 def test_invalid_administrator_configuration_is_rejected(endpoint, bucket):
     with pytest.raises(ValueError):
         StorageConfig(endpoint, bucket, SecretStr("fixture"))

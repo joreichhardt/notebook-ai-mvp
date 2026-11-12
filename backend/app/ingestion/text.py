@@ -1,4 +1,5 @@
 """Bounded UTF-8 TXT/Markdown only. No PDF parser or credential access."""
+
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import PurePosixPath

@@ -3,6 +3,7 @@
 The caller owns identity issuance. IDs must come from verified durable server
 state; never let a browser choose an actor. Ordinary SQL uses notebook_app only.
 """
+
 import asyncio
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
@@ -44,30 +45,42 @@ class Source:
 
 
 class TextWorker:
-    def __init__(self, engine: Engine, *, storage: StorageConfig | None = None,
-                 store_factory: Callable[[Authorize], OriginalStore] | None = None,
-                 lease_seconds: int = 30, heartbeat_seconds: float = 5):
+    def __init__(
+        self,
+        engine: Engine,
+        *,
+        storage: StorageConfig | None = None,
+        store_factory: Callable[[Authorize], OriginalStore] | None = None,
+        lease_seconds: int = 30,
+        heartbeat_seconds: float = 5,
+    ):
         if not 1 <= lease_seconds <= 300 or not 0 < heartbeat_seconds < lease_seconds / 2:
             raise ValueError("invalid bounded heartbeat/lease")
         self.engine = engine
         self.lease_seconds = lease_seconds
         self.heartbeat_seconds = heartbeat_seconds
         # No synthetic store is constructed by default. Unconfigured means fail closed.
-        self.store_factory = store_factory or (lambda auth: SupabaseStorage(storage, authorize=auth))
+        self.store_factory = store_factory or (
+            lambda auth: SupabaseStorage(storage, authorize=auth)
+        )
 
     @contextmanager
     def _session(self, actor: UUID) -> Iterator[Session]:
         with Session(self.engine) as session, session.begin():
-            safe = session.execute(text(
-                "SELECT current_user='notebook_app' AND NOT rolsuper AND NOT rolbypassrls "
-                "FROM pg_roles WHERE rolname=current_user"
-            )).scalar_one()
+            safe = session.execute(
+                text(
+                    "SELECT current_user='notebook_app' AND NOT rolsuper AND NOT rolbypassrls "
+                    "FROM pg_roles WHERE rolname=current_user"
+                )
+            ).scalar_one()
             if safe is not True:
                 raise RuntimeError("unsafe_database_role")
             session.execute(text("SET LOCAL statement_timeout='3s'"))
             session.execute(text("SET LOCAL lock_timeout='1s'"))
-            session.execute(text("SELECT set_config('request.jwt.claim.sub',:actor,true)"),
-                            {"actor": str(actor)})
+            session.execute(
+                text("SELECT set_config('request.jwt.claim.sub',:actor,true)"),
+                {"actor": str(actor)},
+            )
             if session.get(Admission, actor) is None:
                 raise LeaseLost("admission_revoked")
             yield session
@@ -76,28 +89,43 @@ class TextWorker:
         with self._session(actor) as db:
             # Cooperating callers serialize per actor, across notebooks/processes.
             # Actor-private SELECT cannot establish notebook-wide cross-actor quotas.
-            db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:actor,0))"),
-                       {"actor": str(actor)})
-            running = db.execute(text(
-                "SELECT count(*) FROM public.ingestion_jobs WHERE actor_user_id=:actor "
-                "AND status='running' AND lease_expires_at>clock_timestamp()"
-            ), {"actor": actor}).scalar_one()
+            db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:actor,0))"),
+                {"actor": str(actor)},
+            )
+            running = db.execute(
+                text(
+                    "SELECT count(*) FROM public.ingestion_jobs WHERE actor_user_id=:actor "
+                    "AND status='running' AND lease_expires_at>clock_timestamp()"
+                ),
+                {"actor": actor},
+            ).scalar_one()
             if running >= 2:
                 return None
             token = claim_job(db, job_id, lease_seconds=self.lease_seconds)
             if token is None:
                 return None
-            row = db.execute(select(IngestionJob, DocumentVersion).join(
-                DocumentVersion, IngestionJob.document_version_id == DocumentVersion.id,
-            ).where(IngestionJob.id == job_id, IngestionJob.actor_user_id == actor)).one_or_none()
+            row = db.execute(
+                select(IngestionJob, DocumentVersion)
+                .join(
+                    DocumentVersion,
+                    IngestionJob.document_version_id == DocumentVersion.id,
+                )
+                .where(IngestionJob.id == job_id, IngestionJob.actor_user_id == actor)
+            ).one_or_none()
             if row is None:
                 raise LeaseLost()
             job, version = row
             scope = ObjectScope(job.workspace_id, job.notebook_id, version.document_id, version.id)
             if version.storage_key != scope.key:
                 raise LeaseLost()
-            source = Source(scope, version.sha256, version.byte_count, version.media_type,
-                            job.connection_id is not None or job.index_profile_id is not None)
+            source = Source(
+                scope,
+                version.sha256,
+                version.byte_count,
+                version.media_type,
+                job.connection_id is not None or job.index_profile_id is not None,
+            )
             return token, source  # context exits and commits BEFORE any I/O
 
     def _pulse(self, actor: UUID, job: UUID, token: UUID) -> None:
@@ -105,8 +133,9 @@ class TextWorker:
             if not heartbeat_job(db, job, token, lease_seconds=self.lease_seconds):
                 raise LeaseLost()
 
-    def _finish(self, actor: UUID, job: UUID, token: UUID,
-                status: Literal["failed", "cancelled"], code: str) -> bool:
+    def _finish(
+        self, actor: UUID, job: UUID, token: UUID, status: Literal["failed", "cancelled"], code: str
+    ) -> bool:
         with self._session(actor) as db:
             if not lock_job_for_publish(db, job, token):
                 raise LeaseLost()
@@ -114,20 +143,29 @@ class TextWorker:
                 raise LeaseLost()
             return True
 
-    def _publish(self, actor: UUID, job: UUID, token: UUID,
-                 source: Source, parts: tuple[TextChunk, ...]) -> None:
+    def _publish(
+        self, actor: UUID, job: UUID, token: UUID, source: Source, parts: tuple[TextChunk, ...]
+    ) -> None:
         with self._session(actor) as db:
             if not lock_job_for_publish(db, job, token):
                 raise LeaseLost()
             # Retry output IDs and order are deterministic. Never commit partial chunks.
             for ordinal, part in enumerate(parts):
-                db.add(Chunk(
-                    id=uuid5(source.scope.version_id, str(ordinal)),
-                    document_version_id=source.scope.version_id,
-                    document_id=source.scope.document_id, notebook_id=source.scope.notebook_id,
-                    workspace_id=source.scope.workspace_id, ordinal=ordinal, text=part.text,
-                    sha256=part.sha256, page=None, start_offset=part.start, end_offset=part.end,
-                ))
+                db.add(
+                    Chunk(
+                        id=uuid5(source.scope.version_id, str(ordinal)),
+                        document_version_id=source.scope.version_id,
+                        document_id=source.scope.document_id,
+                        notebook_id=source.scope.notebook_id,
+                        workspace_id=source.scope.workspace_id,
+                        ordinal=ordinal,
+                        text=part.text,
+                        sha256=part.sha256,
+                        page=None,
+                        start_offset=part.start,
+                        end_offset=part.end,
+                    )
+                )
             db.flush()
             if not finish_job(db, job, token, status="succeeded"):
                 # Exception leaves context -> rollback ALL chunk writes.

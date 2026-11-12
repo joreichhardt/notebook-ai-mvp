@@ -1,0 +1,59 @@
+# Isolated kube1-only B3 reporting-race regression, never product deployment.
+# Only coordinator-assigned /home/jre/notebook-tests/b3/<commit> snapshots.
+name: notebook-test-b3
+services:
+  database:
+    image: "postgres:16-alpine@sha256:\
+      aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139"
+    user: "70:70"
+    environment:
+      POSTGRES_DB: notebook_b3_test
+      POSTGRES_PASSWORD_FILE: /run/secrets/test_password
+      PGDATA: /var/lib/postgresql/data
+    secrets: [test_password]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 1
+    mem_limit: 512m
+    pids_limit: 128
+    tmpfs:
+      - /var/lib/postgresql/data:uid=70,gid=70,mode=0700,size=268435456
+      - /var/run/postgresql:uid=70,gid=70,mode=0700,size=16777216
+      - /tmp:mode=1777,size=16777216
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d notebook_b3_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  runner:
+    image: "python:3.12-slim-bookworm@sha256:\
+      935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df"
+    user: "${B3_TEST_UID:?UID required}:${B3_TEST_GID:?GID required}"
+    entrypoint: [python, /snapshot/backend/tests/documents/run_checkpoint.py]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      database: {condition: service_healthy}
+    volumes:
+      - ${B3_TEST_SNAPSHOT:?immutable committed snapshot}:/snapshot:ro
+    secrets: [test_password]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 1
+    mem_limit: 1g
+    pids_limit: 128
+    tmpfs:
+      - /work:mode=1777,size=536870912
+      - /tmp:mode=1777,size=67108864
+    networks: [database, dependencies]
+networks:
+  database: {internal: true}
+  dependencies: {}
+secrets:
+  # Synthetic per-run credential in the private assigned server area only.
+  test_password:
+    file: ${B3_TEST_PASSWORD_FILE:?protected synthetic test credential file}

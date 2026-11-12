@@ -1,4 +1,5 @@
 """Pure text seam; no parser, network, secrets or database."""
+
 import pytest
 from app.ingestion.text import TextRejected, chunks, read_text_upload
 
@@ -29,15 +30,18 @@ async def test_utf8_markdown_and_deterministic_offsets():
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("data,name,media,code", [
-    (b"%PDF-1.7", "x.pdf", "application/pdf", "unsupported_media"),
-    (b"abc\x00xyz", "x.txt", "text/plain", "invalid_text"),
-    (b"\xff", "x.txt", "text/plain", "invalid_text"),
-    (b"abc\x01", "x.md", "text/markdown", "invalid_text"),
-    (b"\t\n", "x.txt", "text/plain", "empty_text"),
-    (b"hello", "x.exe", "text/plain", "unsupported_media"),
-    (b"hello", "x.txt", "application/octet-stream", "unsupported_media"),
-])
+@pytest.mark.parametrize(
+    "data,name,media,code",
+    [
+        (b"%PDF-1.7", "x.pdf", "application/pdf", "unsupported_media"),
+        (b"abc\x00xyz", "x.txt", "text/plain", "invalid_text"),
+        (b"\xff", "x.txt", "text/plain", "invalid_text"),
+        (b"abc\x01", "x.md", "text/markdown", "invalid_text"),
+        (b"\t\n", "x.txt", "text/plain", "empty_text"),
+        (b"hello", "x.exe", "text/plain", "unsupported_media"),
+        (b"hello", "x.txt", "application/octet-stream", "unsupported_media"),
+    ],
+)
 async def test_rejects_unsafe_or_unsupported_text(data, name, media, code):
     with pytest.raises(TextRejected) as error:
         await read_text_upload(Reader(data), name, media)

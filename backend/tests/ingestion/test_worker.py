@@ -1,4 +1,5 @@
 """Real isolated PostgreSQL + explicitly synthetic originals, never Storage acceptance."""
+
 import asyncio
 import os
 from hashlib import sha256
@@ -26,8 +27,13 @@ def scene():
         for uid, role in ((actor, "owner"), (editor, "editor"), (viewer, "viewer")):
             admin.execute("INSERT INTO workspace_members VALUES (%s,%s,%s)", (workspace, uid, role))
         admin.execute("INSERT INTO notebooks VALUES (%s,%s,'text')", (notebook, workspace))
-    engine = create_engine(make_url(URL).set(drivername="postgresql+psycopg", username="notebook_app"),
-                           hide_parameters=True)
+    engine = create_engine(
+        make_url(URL).set(
+            drivername="postgresql+psycopg", username="notebook_app",
+            password=os.getenv("NOTEBOOK_TEST_RUNTIME_PASSWORD") or make_url(URL).password,
+        ),
+        hide_parameters=True,
+    )
     worker = TextWorker(engine)
     yield actor, editor, viewer, workspace, notebook, worker
     engine.dispose()
@@ -41,16 +47,41 @@ def persisted_job(scene, data=b"hello", *, key="initial", media="text/plain"):
     actor, _, _, workspace, notebook, worker = scene
     document, version, job = uuid4(), uuid4(), uuid4()
     with worker._session(actor) as db:
-        db.add(Document(id=document, workspace_id=workspace, notebook_id=notebook,
-                        created_by=actor, filename="example.txt", current_version_id=version))
+        db.add(
+            Document(
+                id=document,
+                workspace_id=workspace,
+                notebook_id=notebook,
+                created_by=actor,
+                filename="example.txt",
+                current_version_id=version,
+            )
+        )
         db.flush()
-        db.add(DocumentVersion(id=version, document_id=document, notebook_id=notebook,
-                               workspace_id=workspace, version=1, media_type=media,
-                               byte_count=len(data), sha256=sha256(data).hexdigest(),
-                               storage_key=f"{workspace}/{notebook}/{document}/{version}/original"))
+        db.add(
+            DocumentVersion(
+                id=version,
+                document_id=document,
+                notebook_id=notebook,
+                workspace_id=workspace,
+                version=1,
+                media_type=media,
+                byte_count=len(data),
+                sha256=sha256(data).hexdigest(),
+                storage_key=f"{workspace}/{notebook}/{document}/{version}/original",
+            )
+        )
         db.flush()
-        db.add(IngestionJob(id=job, document_version_id=version, notebook_id=notebook,
-                            workspace_id=workspace, actor_user_id=actor, idempotency_key=key))
+        db.add(
+            IngestionJob(
+                id=job,
+                document_version_id=version,
+                notebook_id=notebook,
+                workspace_id=workspace,
+                actor_user_id=actor,
+                idempotency_key=key,
+            )
+        )
     return document, version, job
 
 
@@ -73,8 +104,9 @@ def test_real_job_claim_chunks_and_finish_commit_atomically(scene):
     assert asyncio.run(worker.run_one(actor_id=actor, job_id=job)) == "succeeded"
     assert asyncio.run(worker.run_one(actor_id=actor, job_id=job)) == "not_claimed"
     with worker._session(actor) as db:
-        rows = db.scalars(select(Chunk).where(Chunk.document_version_id == version)
-                          .order_by(Chunk.ordinal)).all()
+        rows = db.scalars(
+            select(Chunk).where(Chunk.document_version_id == version).order_by(Chunk.ordinal)
+        ).all()
         assert [(c.start_offset, c.end_offset) for c in rows] == [(0, 1200), (1000, 2200)]
         assert db.get(IngestionJob, job).status == "succeeded"
         assert db.get(IngestionJob, job).attempts == 1
@@ -101,12 +133,23 @@ def test_current_authorization_and_source_gate_before_storage(scene, mode):
     elif mode == "new_version":
         replacement = uuid4()
         with worker._session(actor) as db:
-            db.execute(text("UPDATE documents SET current_version_id=:v WHERE id=:d"),
-                       {"v": replacement, "d": document})
-            db.add(DocumentVersion(id=replacement, document_id=document, notebook_id=notebook,
-                                   workspace_id=workspace, version=2, media_type="text/plain",
-                                   byte_count=5, sha256=sha256(b"hello").hexdigest(),
-                                   storage_key=f"{workspace}/{notebook}/{document}/{replacement}/original"))
+            db.execute(
+                text("UPDATE documents SET current_version_id=:v WHERE id=:d"),
+                {"v": replacement, "d": document},
+            )
+            db.add(
+                DocumentVersion(
+                    id=replacement,
+                    document_id=document,
+                    notebook_id=notebook,
+                    workspace_id=workspace,
+                    version=2,
+                    media_type="text/plain",
+                    byte_count=5,
+                    sha256=sha256(b"hello").hexdigest(),
+                    storage_key=f"{workspace}/{notebook}/{document}/{replacement}/original",
+                )
+            )
     assert asyncio.run(worker.run_one(actor_id=invocation_actor, job_id=job)) == "not_claimed"
     assert store.calls == 0
 
@@ -135,19 +178,26 @@ def test_inflight_revocation_or_reclaimed_lease_cannot_publish(scene, mode):
         # Separate DB connection mutates durable state while I/O is in flight.
         if mode == "membership":
             with psycopg.connect(URL) as admin:
-                admin.execute("DELETE FROM workspace_members WHERE workspace_id=%s AND user_id=%s",
-                              (workspace, actor))
+                admin.execute(
+                    "DELETE FROM workspace_members WHERE workspace_id=%s AND user_id=%s",
+                    (workspace, actor),
+                )
         elif mode == "delete":
             with worker._session(actor) as db:
                 db.execute(text("SELECT notebook_delete_document(:d)"), {"d": document})
         else:
             with psycopg.connect(URL) as admin:
-                admin.execute("UPDATE ingestion_jobs SET lease_token=%s WHERE id=%s", (uuid4(), job))
+                admin.execute(
+                    "UPDATE ingestion_jobs SET lease_token=%s WHERE id=%s", (uuid4(), job)
+                )
         assert await asyncio.wait_for(task, timeout=3) == "lease_lost"
         assert cancelled.is_set()
+
     asyncio.run(run())
     with psycopg.connect(URL) as admin:
-        assert admin.execute("SELECT count(*) FROM chunks WHERE document_version_id=%s", (version,)).fetchone() == (0,)
+        assert admin.execute(
+            "SELECT count(*) FROM chunks WHERE document_version_id=%s", (version,)
+        ).fetchone() == (0,)
 
 
 def test_integrity_failure_is_durable_and_unconfigured_storage_fails_closed(scene):
@@ -186,8 +236,11 @@ def test_actor_concurrency_limit_is_serialized_and_expired_leases_do_not_consume
     assert worker._claim(actor, jobs[1]) is not None
     assert worker._claim(actor, jobs[2]) is None
     with psycopg.connect(URL) as admin:
-        admin.execute("UPDATE ingestion_jobs SET lease_expires_at=clock_timestamp()-interval '1s' "
-                      "WHERE id=%s", (jobs[0],))
+        admin.execute(
+            "UPDATE ingestion_jobs SET lease_expires_at=clock_timestamp()-interval '1s' "
+            "WHERE id=%s",
+            (jobs[0],),
+        )
     assert worker._claim(actor, jobs[2]) is not None
 
 
@@ -213,6 +266,7 @@ def test_external_cancellation_closes_io_and_commits_no_chunks(scene):
         with pytest.raises(asyncio.CancelledError):
             await task
         assert closed.is_set()
+
     asyncio.run(run())
     with worker._session(actor) as db:
         row = db.get(IngestionJob, job)
@@ -251,8 +305,11 @@ def test_crash_reclaim_is_bounded_and_old_worker_cannot_publish(scene):
     assert initial is not None
     old_token, source = initial
     with psycopg.connect(URL) as admin:
-        admin.execute("UPDATE ingestion_jobs SET lease_expires_at=clock_timestamp()-interval '1s' "
-                      "WHERE id=%s", (job,))
+        admin.execute(
+            "UPDATE ingestion_jobs SET lease_expires_at=clock_timestamp()-interval '1s' "
+            "WHERE id=%s",
+            (job,),
+        )
     worker.store_factory = lambda auth: SyntheticStore(b"hello")
     assert asyncio.run(worker.run_one(actor_id=actor, job_id=job)) == "succeeded"
     with pytest.raises(LeaseLost):
@@ -288,3 +345,56 @@ def test_runtime_refuses_superuser_engine_before_claim(scene):
             asyncio.run(TextWorker(engine).run_one(actor_id=actor, job_id=uuid4()))
     finally:
         engine.dispose()
+
+
+def test_postcommit_watchdog_loss_does_not_misreport_success(scene):
+    """Real separate-connection watchdog reads the terminal row after publication.
+
+    Test-only barriers make both asyncio tasks complete before wait() resumes.
+    No lease helper, publication result or DB authorization is mocked.
+    """
+    import threading
+
+    from app.workers.text import LeaseLost
+
+    actor, _, _, _, _, base = scene
+    _, version, job = persisted_job(scene)
+    watch_started, published, watch_failed = (threading.Event() for _ in range(3))
+    counter_lock = threading.Lock()
+
+    class TimingWorker(TextWorker):
+        pulses = 0
+
+        def _pulse(self, actor, job, token):
+            with counter_lock:
+                self.pulses += 1
+                number = self.pulses
+            super()._pulse(actor, job, token)
+            if number == 2:  # watchdog, after first authorization before Storage read
+                watch_started.set()
+                assert published.wait(3)
+                try:
+                    super()._pulse(actor, job, token)
+                except LeaseLost:
+                    watch_failed.set()
+                    raise
+                raise AssertionError("terminal job unexpectedly retained running lease")
+
+        def _publish(self, *args, **kwargs):
+            super()._publish(*args, **kwargs)
+            published.set()
+            assert watch_failed.wait(3)
+
+    class TimedOriginal:
+        async def read(self, actor_id, scope):
+            assert await asyncio.to_thread(watch_started.wait, 3)
+            return b"hello"
+
+    worker = TimingWorker(base.engine, store_factory=lambda auth: TimedOriginal(),
+                          heartbeat_seconds=0.01)
+    assert asyncio.run(worker.run_one(actor_id=actor, job_id=job)) == "succeeded"
+    with base._session(actor) as db:
+        row = db.get(IngestionJob, job)
+        assert row is not None and row.status == "succeeded"
+        assert len(db.scalars(select(Chunk).where(Chunk.document_version_id == version)).all()) == 1
+    assert watch_failed.is_set()
