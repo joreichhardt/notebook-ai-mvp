@@ -113,7 +113,11 @@ def switched_engine(request, tmp_path):
                     (material,),
                 )
                 admin.execute(sql.SQL("GRANT notebook_app TO {}").format(sql.Identifier(role)))
-            url = url.set(username=role, password=None)
+            # set(password=None) retains an existing setup password; explicitly clear it.
+            url = url._replace(username=role, password=None).difference_update_query(
+                ["password", "passfile", "user"]
+            )
+            assert url.password is None
             fields = [url.host or "localhost", str(url.port or 5432), url.database, role, material]
             with os.fdopen(
                 os.open(passfile, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
