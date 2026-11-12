@@ -40,7 +40,7 @@ def main() -> None:
         configure_test_role()
         return
     SOURCE.mkdir()
-    for name in ("backend", "pyproject.toml", "uv.lock"):
+    for name in ("backend", "tests", "pyproject.toml", "uv.lock"):
         original = Path("/snapshot") / name
         if original.is_dir():
             shutil.copytree(original, SOURCE / name)
@@ -82,8 +82,8 @@ def main() -> None:
     runtime = secrets.token_hex(24)
     for name, value in {
         "runtime": runtime,
-        "pgpass": f"database:5432:notebook_b3_test:postgres:{material}\n"
-        f"database:5432:notebook_b3_test:notebook_app:{runtime}\n",
+        "pgpass": f"database:5432:*:postgres:{material}\n"
+        f"database:5432:*:notebook_app:{runtime}\n",
     }.items():
         with os.fdopen(
             os.open(private / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
@@ -134,9 +134,9 @@ def main() -> None:
         worker.write_text(fixed)
     run(*command, env=env)
     print("Reporting regression GREEN: committed worker, real restricted-role PostgreSQL.")
-    run(python, "-m", "pytest", "backend/tests/documents/test_multipart.py",
-        "backend/tests/documents/test_body_limit.py", "backend/tests/ingestion/test_text.py",
-        "-q", "--tb=short", env=env)
+    run(python, "-m", "pytest", "backend/tests/documents/test_service.py", "-q", "--tb=short", env=env)
+    run(python, "-m", "pytest", "-q", "--tb=short", env=env)
+    run(str(SOURCE / ".venv/bin/ruff"), "check", "--no-cache", "backend", "tests/security", env=env)
 
 
 if __name__ == "__main__":
