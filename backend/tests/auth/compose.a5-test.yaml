@@ -1,0 +1,53 @@
+# Only on assigned kube1 /home/jre/notebook-tests/a5/<committed-sha> snapshot.
+# Explicit project isolates every container/network/volume; no host ports.
+name: notebook-test-a5
+services:
+  db:
+    image: "postgres:16-alpine@sha256:\
+      aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139"
+    environment:
+      POSTGRES_DB: notebook_a5
+      # Synthetic, disposable internal-only fixture; no real credentials.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    cpus: 1
+    mem_limit: 512m
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - a5-data:/var/lib/postgresql/data
+    tmpfs:
+      - /var/run/postgresql
+      - /tmp
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d notebook_a5]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks: [a5-internal]
+  runner:
+    build:
+      context: ../../..
+      dockerfile: backend/tests/auth/Dockerfile.a5-test
+    environment:
+      PYTHONPATH: /workspace/backend
+      NOTEBOOK_MIGRATION_DATABASE_URL: >-
+        postgresql+psycopg://postgres@db/notebook_a5
+      NOTEBOOK_TEST_POSTGRES_URL: postgresql://postgres@db/notebook_a5
+    user: '10001:10001'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 1
+    mem_limit: 1g
+    pids_limit: 128
+    tmpfs:
+      - /tmp:uid=10001,gid=10001,mode=1777,size=256m
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [a5-internal]
+networks:
+  a5-internal:
+    internal: true
+volumes:
+  a5-data:
