@@ -35,6 +35,7 @@ services:
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
+      B3_QUOTA_RED: "${B3_QUOTA_RED:-0}"
     depends_on:
       database: {condition: service_healthy}
     volumes:

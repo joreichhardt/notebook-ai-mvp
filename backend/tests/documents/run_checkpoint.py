@@ -104,6 +104,17 @@ def main() -> None:
         env=env,
     )
     run(python, __file__, "--configure-test-role", env=env)
+    if os.environ.get("B3_QUOTA_RED") == "1":
+        run(
+            python,
+            "-m",
+            "pytest",
+            "backend/tests/documents/test_quota_boundaries.py",
+            "-q",
+            "--tb=short",
+            env=env,
+        )
+        return
     run(
         python,
         "-m",
