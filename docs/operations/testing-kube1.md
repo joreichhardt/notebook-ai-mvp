@@ -24,9 +24,11 @@ Auf dem Laptop im Integrations-Repository (nur Archivierung, kein Containerbuild
 set -eu
 rev=$(git rev-parse --short=12 HEAD)
 git archive HEAD | ssh -o BatchMode=yes kube1 \
-  "set -eu; umask 077; mkdir -p /home/jre/notebook-tests/main; mkdir /home/jre/notebook-tests/main/$rev; tar -xf - -C /home/jre/notebook-tests/main/$rev"
+  "set -eu; umask 077; mkdir -p /home/jre/notebook-tests/main; mkdir /home/jre/notebook-tests/main/$rev; umask 022; tar -xf - -C /home/jre/notebook-tests/main/$rev"
 printf 'Snapshot: %s\n' "$rev"
 ```
+
+Parent und Snapshot-Wurzel bleiben `0700`; beim Entpacken absichtlich `umask 022`, damit reine Quelltextdateien im Buildkontext ihre Git-Modi behalten. Sonst kopiert Docker etwa `0600`-Rootdateien ins Image und der Non-root-Prozess kann seinen eigenen Code nicht lesen. Keine Secrets in diesen Snapshot übertragen.
 
 Auf kube1, `<commit>` durch genau diesen Snapshot ersetzen. Vorhandenes eigenes Projekt zunächst prüfen, nicht durch einen zweiten Snapshot unbemerkt ersetzen. Port 18190 muss frei oder bereits diesem Projekt zugeordnet sein; nie den Shop-Port 18080 verwenden.
 
