@@ -209,6 +209,54 @@ def test_canonical_seed_exact_and_mismatch_or_active_overcapacity_refuses(mode):
                 )
 
 
+@pytest.mark.parametrize("seconds", [3600, 300, 200, 1, -1])
+def test_canonical_lease_preflight_bound_and_exact_seed(seconds):
+    with isolated_database(URL, "0005") as url:
+        actor, workspace, notebook = seed_scope(url)
+        intent, _, _, job = canonical_0005(url, actor, workspace, notebook)
+        with psycopg.connect(url, user="notebook_app") as db:
+            db.execute("SELECT set_config('request.jwt.claim.sub',%s,true)", (str(actor),))
+            db.execute(
+                "UPDATE ingestion_jobs SET status='running',attempts=1,"
+                "lease_token=gen_random_uuid(),heartbeat_at=clock_timestamp(),"
+                "lease_expires_at=clock_timestamp()+make_interval(secs => %s) WHERE id=%s",
+                (seconds, job),
+            )
+        before = snapshot(url)
+        result = migrate(url, "head")
+        if seconds > 300:
+            assert result.returncode != 0, "Overlong canonical lease must refuse migration"
+            assert "quota_preflight_required" in result.stderr
+            assert snapshot(url) == before
+            return
+        assert result.returncode == 0
+        with psycopg.connect(url) as db:
+            assert db.execute(
+                "SELECT i.job_state=j.status AND i.job_attempts=j.attempts "
+                "AND i.job_lease_token IS NOT DISTINCT FROM j.lease_token "
+                "AND i.job_lease_expires_at IS NOT DISTINCT FROM j.lease_expires_at "
+                "FROM upload_intents i JOIN ingestion_jobs j ON j.id=i.job_id WHERE i.id=%s",
+                (intent,),
+            ).fetchone() == (True,)
+            after = snapshot(url)
+            assert after[2:5] == before[2:5]
+            assert (
+                db.execute(
+                    "SELECT to_jsonb(i)-ARRAY['job_state','job_attempts','job_lease_token',"
+                    "'job_lease_expires_at','work_cancelled'] FROM upload_intents i ORDER BY id"
+                ).fetchall()
+                == before[1]
+            )
+            if seconds == -1:
+                assert db.execute(
+                    "SELECT count(*) FILTER (WHERE NOT work_cancelled AND state='finalized' "
+                    "AND job_state IN ('queued','running')), count(*) FILTER (WHERE "
+                    "job_state='running' AND job_lease_expires_at>clock_timestamp()) "
+                    "FROM upload_intents WHERE id=%s",
+                    (intent,),
+                ).fetchone() == (1, 0)
+
+
 def test_terminal_history_preserved_byte_for_byte_and_new_queue_refused():
     with isolated_database(URL, "0005") as url:
         actor, workspace, notebook = seed_scope(url)
