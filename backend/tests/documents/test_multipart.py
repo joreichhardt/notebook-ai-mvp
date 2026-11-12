@@ -67,7 +67,7 @@ def test_actual_file_limit_not_declared_length_or_starlette_field_limit(monkeypa
     assert all(f.closed for f in opened)
 
 
-@pytest.mark.parametrize("mode", ["cancel", "disconnect", "raw_limit", "timeout"])
+@pytest.mark.parametrize("mode", ["cancel", "cancel_disk", "disconnect", "raw_limit", "timeout"])
 def test_incomplete_stream_or_cancellation_closes_spool(monkeypatch, mode):
     opened = spools(monkeypatch)
     if mode == "timeout":
@@ -83,7 +83,10 @@ def test_incomplete_stream_or_cancellation_closes_spool(monkeypatch, mode):
             nonlocal calls
             calls += 1
             if calls == 1:
-                return {"type": "http.request", "body": body(end=False), "more_body": True}
+                data = b"x" * 1_100_000 if mode == "cancel_disk" else b"hello"
+                return {"type": "http.request", "body": body(data, end=False), "more_body": True}
+            if mode == "cancel_disk":
+                assert opened[0].name is not None  # Real rolled-to-disk spool, not memory only.
             entered.set()
             if mode == "disconnect":
                 return {"type": "http.disconnect"}
@@ -94,7 +97,7 @@ def test_incomplete_stream_or_cancellation_closes_spool(monkeypatch, mode):
 
         task = asyncio.create_task(parse_text_form(request_for(b"", receive=receive)))
         await entered.wait()
-        if mode == "cancel":
+        if mode in ("cancel", "cancel_disk"):
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
@@ -105,3 +108,23 @@ def test_incomplete_stream_or_cancellation_closes_spool(monkeypatch, mode):
             assert error.value.status_code == expected[mode]
         assert opened and all(f.closed for f in opened)
     asyncio.run(run())
+
+
+def test_chunked_unknown_length_handles_split_utf8_and_multipart_headers(monkeypatch):
+    opened = spools(monkeypatch)
+
+    async def run():
+        payload = body("Grüße".encode())
+        pieces = iter(payload[i:i + 3] for i in range(0, len(payload), 3))
+
+        async def receive():
+            chunk = next(pieces, b"")
+            return {"type": "http.request", "body": chunk, "more_body": bool(chunk)}
+
+        request = Request({"type": "http", "method": "POST", "path": "/", "headers": [
+            (b"content-type", b"multipart/form-data; boundary=b3-boundary"),
+        ]}, receive=receive)
+        result = await parse_text_form(request)
+        assert result.text == "Grüße"
+    asyncio.run(run())
+    assert opened and all(f.closed for f in opened)
