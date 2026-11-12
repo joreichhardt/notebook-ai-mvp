@@ -1,6 +1,78 @@
 # F3a independent security / integration review
 
-## Candidate and verdict
+## Closure — candidate f46054bcf0ad48b7b343171c7ffd2f564d482408
+
+**F3a-01 CLOSED independently on this exact integrated candidate.** A4 fix
+`6db2122a4e73e231f29a3a89e0b6689e3db25555` adds privilege-only migration 0004:
+`REVOKE DELETE ON public.index_profiles FROM notebook_app`. Inspected A4 handoff
+and migration/test diff; no new privileged RPC, RLS bypass, data transformation,
+FK rewrite or ORM structural change. Ordinary profile cleanup is intentionally
+forbidden even for unreferenced identities; new identities and authorized notebook
+cascade cleanup remain supported. Downgrade restores the vulnerable grant and is
+not a security rollback. Production inherited/nonstandard grants still need auditing.
+
+Before merge, unexpected local formatting in the two reviewer test files was
+preserved with explicit coordinator approval as
+`7c5aec9dae4abbd5975bbdd8ba3acbaed051d555`; AST comparison confirmed both files
+semantically identical to their prior committed versions. Tracked state was then
+clean; `.pi/` remained untracked. Controlled merge of the exact candidate produced
+`3e9912d7ebd54a7ce66ac7b1cf159873b8f08849`; its only differences from the candidate
+were these test format changes before closure. Main's separately retained
+integration-test formatting was not treated as part of the fix.
+
+### Independent closure checks actually run
+
+Own existing `.venv` only. Checked prior own cluster stopped/no PID and 55441 free,
+then created PostgreSQL 16.15 at `/tmp/notebook-f3a-closure-pg.zjVp3wYn/data`, bound
+only to loopback 55441 with its private socket directory; temporary database
+`notebook_f3a_closure`. Ports 5432/55439/55440/55442 untouched.
+
+```sh
+NOTEBOOK_MIGRATION_DATABASE_URL=postgresql+psycopg://jre@127.0.0.1:55441/notebook_f3a_closure \
+  PYTHONPATH=backend .venv/bin/alembic -c backend/migrations/alembic.ini upgrade head
+# Fresh head migration succeeded, revision 0004 confirmed.
+
+NOTEBOOK_TEST_POSTGRES_URL=postgresql://jre@127.0.0.1:55441/notebook_f3a_closure \
+  .venv/bin/python -m pytest tests/security/seam_v3/test_database_boundaries.py::test_referenced_profile_identity_cannot_be_replaced \
+  --runxfail -q --tb=short
+# 1 passed in 1.31s with original strict-xfail marker still present.
+
+# Only after that independent pass: removed reviewer-owned strict-xfail marker;
+# updated its stale module docstring, without changing any regression assertion.
+NOTEBOOK_TEST_POSTGRES_URL=postgresql://jre@127.0.0.1:55441/notebook_f3a_closure \
+  .venv/bin/python -m pytest backend/tests/auth/test_documents.py tests/security/seam_v3 \
+  backend/tests/integration/test_execution_database.py -q --tb=short
+# 65 passed in 10.90s; zero skip/xfail/XPASS.
+
+.venv/bin/ruff check tests/security/seam_v3
+# All checks passed.
+git diff --check
+# Passed; staged diff also checked before commit.
+```
+
+This run includes fresh and seeded 0003-to-0004 upgrade/parity tests (retaining
+original job/profile data), owner/editor/viewer/outsider deletion denial,
+authorized notebook cascade vs foreign/viewer denial, preservation of personal
+connections, new-profile creation and unreferenced-profile deletion denial. It
+also reruns the independent definer-grant/publication-lock and default real-DB
+in-flight admission/disconnect cancellation tests, main's same-workspace ownership
+and secret-resolution revocation tests, and synthetic decoding cases. Vault and
+provider calls remain synthetic. Active LSP on the sole semantically changed test
+file: one confirmed clean, zero diagnostics/inconclusive results.
+
+Temporary database dropped, random migration fixture databases absent, own cluster
+stopped and `pg_ctl status` confirmed no server running. Synthetic directory/logs
+retained locally. No live provider, shared environment, production or deployment
+access. A4's 164 backend/12 seam results are not represented as reviewer runs.
+
+**Current verdict:** zero open confirmed findings in this bounded review; F3a-01
+is specifically closed, not a blanket approval of missing subsystems. Actor-bound
+dispatch, private Storage/policies/cleanup, isolated parser, aggregate quotas,
+end-to-end SDK/DB timeout/capacity policy and composed fenced worker publication
+remain the next-step gates described below. No product or production acceptance.
+The original review below is historical evidence on a44d4c2, not current open status.
+
+## Original candidate and verdict (historical)
 
 Reviewed **`a44d4c28457c33b8f5714ca87c5de009c6b1eebd`**, relative to
 `06c56b60db1f53ebfa9655a39cbf174418ea0c29` (also the merge-base), in
@@ -39,7 +111,7 @@ actor context. Neither is a newly discovered browser bypass in this BFF design;
 the caller and future worker must remain trusted, never expose generic SQL/context
 selection, and use the fenced transaction protocol.
 
-## Spec axis — F3a-01: referenced index profile can be replaced in place
+## Spec axis — F3a-01: referenced index profile can be replaced in place (closed above)
 
 **Severity: Medium / P2. Confidence: reproduced on PostgreSQL 16.15.**
 
@@ -142,7 +214,7 @@ These are next-step acceptance boundaries, not claims that dispatch, private
 Storage policies, cleanup, isolated parser, retrieval/citations or global quotas
 already exist. No privileged bypass is proposed as a substitute.
 
-## Actual local verification
+## Original local verification (a44d4c2; historical)
 
 Own `.venv` created with `uv sync --frozen --quiet`. Reserved 55441 was checked
 free before starting a unique loopback PostgreSQL **16.15** instance at
