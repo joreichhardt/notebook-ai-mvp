@@ -173,3 +173,88 @@ def test_committed_notebook_and_invitation_flow_preserves_accept_without_admissi
         with psycopg.connect(URL) as cleanup:
             cleanup.execute("DELETE FROM workspaces WHERE personal_owner_id=%s", (recipient,))
             cleanup.execute("DELETE FROM app_admissions WHERE user_id=%s", (recipient,))
+
+
+@pytest.mark.parametrize(
+    "message,code,status",
+    [("quota_gate_busy", "55P03", 503), ("root_unknown_commit", "P0001", 500)],
+)
+def test_real_deferred_commit_failure_precedes_asgi_response(http_runtime, message, code, status):
+    from psycopg import sql
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import QueuePool
+
+    client, scope = http_runtime
+    runtime = session_layer.engine()
+    pool = runtime.pool
+    assert isinstance(pool, QueuePool)
+    path = f"/api/workspaces/{scope[4]}/notebooks"
+    before = client.get(path).json()
+    sessions, connections, starts = [], [], []
+
+    def begun(session, transaction, connection):
+        if connection.engine is runtime:
+            sessions.append(session)
+
+    def committing(connection):
+        connections.append(connection)
+
+    async def observed_app(asgi_scope, receive, send):
+        async def observed_send(event_message):
+            if event_message["type"] == "http.response.start":
+                starts.append(
+                    (
+                        event_message["status"],
+                        all(connection.closed for connection in connections),
+                        all(not session.in_transaction() for session in sessions),
+                        pool.checkedout(),
+                    )
+                )
+            await send(event_message)
+
+        await app(asgi_scope, receive, observed_send)
+
+    # Own disposable fixture only: add a failure, never disable existing guards.
+    # PostgreSQL raises at REAL deferred COMMIT, after flush/DTO construction.
+    with psycopg.connect(URL) as setup:
+        setup.execute(
+            "CREATE FUNCTION public.root_http_commit_failure() RETURNS trigger "
+            "LANGUAGE plpgsql AS $$ BEGIN "
+            "RAISE EXCEPTION USING MESSAGE=TG_ARGV[0], ERRCODE=TG_ARGV[1]; END; $$"
+        )
+        setup.execute(
+            sql.SQL(
+                "CREATE CONSTRAINT TRIGGER root_http_commit_failure "
+                "AFTER INSERT ON public.notebooks DEFERRABLE INITIALLY DEFERRED "
+                "FOR EACH ROW WHEN (NEW.title='commit failure probe') "
+                "EXECUTE FUNCTION public.root_http_commit_failure({}, {})"
+            ).format(sql.Literal(message), sql.Literal(code))
+        )
+    event.listen(Session, "after_begin", begun)
+    event.listen(runtime, "commit", committing)
+    try:
+        with TestClient(
+            observed_app,
+            base_url=str(client.base_url),
+            headers=client.headers,
+            raise_server_exceptions=False,
+        ) as witnessed:
+            response = witnessed.post(path, json={"title": "commit failure probe"})
+        assert response.status_code == status
+        assert starts == [(status, True, True, 0)]
+        assert sessions and len(sessions) == len({id(session) for session in sessions})
+        assert len(connections) == len(sessions)
+        assert all(connection.closed for connection in connections)
+        if status == 503:
+            assert 1 <= len(sessions) <= 3  # Count AND elapsed admission may stop retries.
+            assert response.json()["detail"]["code"] == "quota_busy"
+        else:
+            assert len(sessions) == 1  # Unclassified commit failure is NEVER replayed.
+            assert message not in response.text
+    finally:
+        event.remove(Session, "after_begin", begun)
+        event.remove(runtime, "commit", committing)
+        with psycopg.connect(URL) as cleanup:
+            cleanup.execute("DROP TRIGGER root_http_commit_failure ON public.notebooks")
+            cleanup.execute("DROP FUNCTION public.root_http_commit_failure()")
+    assert client.get(path).json() == before
