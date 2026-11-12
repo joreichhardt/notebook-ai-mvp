@@ -77,24 +77,30 @@ def rename(
     notebook_id: UUID,
     body: NotebookInput,
     request: Request,
-    db: Annotated[Session, Depends(user_session)],
-    user: Annotated[Identity, Depends(identity)],
+    mutations: Annotated[ActorMutations, Depends(actor_mutations)],
 ):
     check_csrf(request, get_settings().public_origin)
-    n = editable(db, notebook_id, user)
-    n.title = body.title.strip()
-    db.flush()
-    return serialize(n)
+
+    def update(db: Session):
+        n = editable(db, notebook_id, mutations.user)
+        n.title = body.title.strip()
+        db.flush()
+        return serialize(n)
+
+    return mutations.run(update)
 
 
 @router.delete("/notebooks/{notebook_id}", status_code=204)
 def delete(
     notebook_id: UUID,
     request: Request,
-    db: Annotated[Session, Depends(user_session)],
-    user: Annotated[Identity, Depends(identity)],
+    mutations: Annotated[ActorMutations, Depends(actor_mutations)],
 ):
     check_csrf(request, get_settings().public_origin)
-    db.delete(editable(db, notebook_id, user))
-    db.flush()
+
+    def remove(db: Session):
+        db.delete(editable(db, notebook_id, mutations.user))
+        db.flush()
+
+    mutations.run(remove)
     return Response(status_code=204)

@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import check_csrf, fail, invitation_hash, invitation_token
 from app.auth.settings import get_settings
-from app.db.session import authenticated_session, user_session
+from app.db.session import user_session
+from app.mutations import ActorMutations, actor_mutations
 
 router = APIRouter(prefix="/api", tags=["invitations", "members"])
 
@@ -44,39 +45,51 @@ def rpc(db: Session, statement: str, params: dict):
 
 
 @router.post("/invitations", status_code=201)
-def create(body: InviteInput, request: Request, db: Annotated[Session, Depends(user_session)]):
+def create(
+    body: InviteInput,
+    request: Request,
+    mutations: Annotated[ActorMutations, Depends(actor_mutations)],
+):
     check_csrf(request, get_settings().public_origin)
     token, digest = invitation_token()
     invite_id = uuid4()
-    expiry = rpc(
-        db,
-        "SELECT public.notebook_create_invite(:id,:hash,:email,:workspace,:role)",
-        {
-            "id": invite_id,
-            "hash": digest,
-            "email": body.email.lower(),
-            "workspace": body.workspace_id,
-            "role": body.role,
-        },
-    ).scalar_one()
-    return {"id": str(invite_id), "token": token, "expires_at": expiry.isoformat()}
+
+    def create_invitation(db: Session):
+        expiry = rpc(
+            db,
+            "SELECT public.notebook_create_invite(:id,:hash,:email,:workspace,:role)",
+            {
+                "id": invite_id,
+                "hash": digest,
+                "email": body.email.lower(),
+                "workspace": body.workspace_id,
+                "role": body.role,
+            },
+        ).scalar_one()
+        return {"id": str(invite_id), "token": token, "expires_at": expiry.isoformat()}
+
+    return mutations.run(create_invitation)
 
 
 @router.post("/invitations/accept")
 def accept(
-    body: AcceptInput, request: Request, db: Annotated[Session, Depends(authenticated_session)]
+    body: AcceptInput,
+    request: Request,
+    mutations: Annotated[ActorMutations, Depends(actor_mutations)],
 ):
     check_csrf(request, get_settings().public_origin)
-    row = (
-        rpc(
-            db,
-            "SELECT * FROM public.notebook_accept_invite(:hash)",
-            {"hash": invitation_hash(body.token)},
+    digest = invitation_hash(body.token)
+
+    def accept_invitation(db: Session):
+        row = (
+            rpc(db, "SELECT * FROM public.notebook_accept_invite(:hash)", {"hash": digest})
+            .mappings()
+            .one()
         )
-        .mappings()
-        .one()
-    )
-    return dict(row)
+        return dict(row)
+
+    # Accepting an invitation is precisely how a verified user gains admission.
+    return mutations.run(accept_invitation, require_admission=False)
 
 
 @router.get("/workspaces/{workspace_id}/members")
@@ -93,15 +106,19 @@ def change(
     user_id: UUID,
     body: RoleInput,
     request: Request,
-    db: Annotated[Session, Depends(user_session)],
+    mutations: Annotated[ActorMutations, Depends(actor_mutations)],
 ):
     check_csrf(request, get_settings().public_origin)
-    rpc(
-        db,
-        "SELECT public.notebook_change_member(:workspace,:user,:role)",
-        {"workspace": workspace_id, "user": user_id, "role": body.role},
-    )
-    return {"user_id": str(user_id), "role": body.role}
+
+    def change_member(db: Session):
+        rpc(
+            db,
+            "SELECT public.notebook_change_member(:workspace,:user,:role)",
+            {"workspace": workspace_id, "user": user_id, "role": body.role},
+        )
+        return {"user_id": str(user_id), "role": body.role}
+
+    return mutations.run(change_member)
 
 
 @router.delete("/workspaces/{workspace_id}/members/{user_id}", status_code=204)
@@ -109,14 +126,18 @@ def remove(
     workspace_id: UUID,
     user_id: UUID,
     request: Request,
-    db: Annotated[Session, Depends(user_session)],
+    mutations: Annotated[ActorMutations, Depends(actor_mutations)],
 ):
     check_csrf(request, get_settings().public_origin)
-    rpc(
-        db,
-        "SELECT public.notebook_change_member(:workspace,:user,:role)",
-        {"workspace": workspace_id, "user": user_id, "role": None},
-    )
+
+    def remove_member(db: Session):
+        rpc(
+            db,
+            "SELECT public.notebook_change_member(:workspace,:user,:role)",
+            {"workspace": workspace_id, "user": user_id, "role": None},
+        )
+
+    mutations.run(remove_member)
     return Response(status_code=204)
 
 
