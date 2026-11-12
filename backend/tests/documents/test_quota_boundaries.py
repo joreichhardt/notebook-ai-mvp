@@ -19,13 +19,18 @@ pytestmark = pytest.mark.skipif(not URL, reason="isolated migrated PostgreSQL re
 def backoff_has_no_transaction(upload_scene, monkeypatch):
     from time import sleep
 
+    before_check = []
+
     def checked_sleep(delay):
+        for hook in before_check:
+            hook()
         assert not upload_scene["active"]
         assert upload_scene["actor_engine"].pool.checkedout() == 0
         assert upload_scene["io_engine"].pool.checkedout() == 0
         sleep(delay)
 
     monkeypatch.setattr("app.documents.transactions.sleep", checked_sleep)
+    yield before_check
 
 
 @contextmanager
@@ -332,6 +337,80 @@ def test_readmission_never_reactivates_sticky_cancelled_work(upload_scene):
             "SELECT work_cancelled,job_state,job_attempts FROM upload_intents WHERE job_id=%s",
             (receipt.job.id,),
         ).fetchone() == (True, "queued", 0)
+
+
+def test_retry_owns_no_transaction_while_sibling_connection_is_checked_out(
+    upload_scene, backoff_has_no_transaction
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from sqlalchemy.orm import Session
+
+    c = upload_scene
+    receipt = perform(c)
+    start, ready, release = Event(), Event(), Event()
+    calls, overlap = [], []
+
+    def sibling():
+        assert start.wait(5)
+        with Session(c["actor_engine"]) as db, db.begin():
+            db.execute(
+                text("SELECT set_config('request.jwt.claim.sub',:actor,true)"),
+                {"actor": str(c["actor"])},
+            )
+            assert (
+                db.execute(
+                    text("SELECT user_id FROM app_admissions WHERE user_id=:actor"),
+                    {"actor": c["actor"]},
+                ).scalar_one()
+                == c["actor"]
+            )
+            ready.set()
+            assert release.wait(5)
+
+    def overlap_at_backoff():
+        start.set()
+        assert ready.wait(5)
+        # Independent, legitimate reader is pinned across the retry's sleep.
+        assert c["actor_engine"].pool.checkedout() == 1
+        overlap.append(True)
+
+    class Original:
+        async def read(self, actor_id, scope):
+            calls.append("read")
+            return b"hello"
+
+    backoff_has_no_transaction.append(overlap_at_backoff)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(sibling)
+        try:
+            with contend(c["actor_engine"], target=3) as (seen, xids, rollbacks):
+                result = asyncio.run(
+                    TextWorker(c["actor_engine"], store_factory=lambda auth: Original()).run_one(
+                        actor_id=c["actor"], job_id=receipt.job.id
+                    )
+                )
+            assert result == "succeeded"
+            assert overlap and rollbacks and len(seen) >= 6 and xids
+            assert calls == ["read"]
+        finally:
+            release.set()
+            start.set()
+            future.result(timeout=5)
+            backoff_has_no_transaction.remove(overlap_at_backoff)
+    with c["actor_tx"](c["actor"]) as db:
+        assert db.execute(
+            text("SELECT status,attempts,lease_token FROM ingestion_jobs WHERE id=:j"),
+            {"j": receipt.job.id},
+        ).one() == ("succeeded", 1, None)
+        assert (
+            db.execute(
+                text("SELECT count(*) FROM chunks WHERE document_version_id=:v"),
+                {"v": receipt.document.version_id},
+            ).scalar_one()
+            == 1
+        )
 
 
 @pytest.mark.parametrize("exhaust", [False, True])
