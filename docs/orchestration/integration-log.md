@@ -1,5 +1,13 @@
 # Integration log
 
+## F3a closure and default security regression gate · 2026-11-12
+
+- Independent review found F3a-01 (Medium): DELETE/reinsert of a shared immutable profile could change another actor's private job options. Review/repro merged in `229e670`; A4 fix `6db2122` plus handoff `ae30cd5` merged in candidate `f46054b`. Migration 0004 revokes direct runtime profile DELETE; notebook cascade remains authorized. No historical migration rewritten.
+- Independent reviewer closure `edcaf398` on `f46054b` merged as `2293330`. Original reproduction passed; reviewer removed only its own strict-xfail marker and independently passed 65 focused tests. No further confirmed findings; full product/production gates remain open.
+- Main enabled `tests/security` in default pytest discovery, normalized reviewer imports to the application's `app` package (avoiding alternate `backend.app` module identity), and added Pyright backend path configuration for root-level tests. Preserved existing formatting-only changes in main's DB integration test; no test assertions weakened.
+- Main reran fresh migration through 0004 and normal default pytest on the combined candidate: **176 passed**, one existing Starlette/httpx warning. Ruff for backend and security tests passed; active LSP on migration, integration and two security files confirmed zero errors/inconclusive checks. Frontend unchanged since previous successful 17 tests/build; not rerun for this backend-only closure.
+- Fresh disposable DB `notebook_wave3_review_verify` on retained isolated PostgreSQL16 55439 was dropped and cluster stopped afterward. No system DB, production or live-provider changes. Embedding dispatch, Storage, parser and upload/chat remain unimplemented integration gates.
+
 ## Wave 3 persistence / execution seam · 2026-11-12
 
 - A3 HEAD `eae387ef523d7fdb7a705f7c0c99e0fcc5a449f6` merged first; C3 HEAD `bb00822d722d153e7346179fec295401e43aa959` merged into candidate `f0937b1528b4903657fedc447c44afedfdb35a9f`. Both merges clean; worker changes respected assigned paths. Central dependency `httpcore>=1,<2` and `fail -> NoReturn` supplied by main `06c56b6`.

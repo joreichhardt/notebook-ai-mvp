@@ -88,10 +88,14 @@ def test_disconnect_during_secret_resolution_prevents_adapter(persisted_connecti
     async def check():
         # Foreign workspace member must not reach even the synthetic secret reader.
         with pytest.raises(HTTPException):
-            await service.embed(actor_id=other, connection_id=connection, model="fixture", texts=["x"])
+            await service.embed(
+                actor_id=other, connection_id=connection, model="fixture", texts=["x"]
+            )
         assert calls == []
         with pytest.raises(HTTPException) as error:
-            await service.embed(actor_id=actor, connection_id=connection, model="fixture", texts=["x"])
+            await service.embed(
+                actor_id=actor, connection_id=connection, model="fixture", texts=["x"]
+            )
         assert error.value.status_code == 409
         assert calls == [connection]
 

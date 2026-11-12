@@ -6,11 +6,10 @@ import traceback
 
 import httpx
 import pytest
+from app.providers.adapter import Adapter, Message, StreamDone
+from app.providers.config import Provider
+from app.providers.protocol import TextDelta
 from fastapi import HTTPException
-
-from backend.app.providers.adapter import Adapter, Message, StreamDone
-from backend.app.providers.config import Provider
-from backend.app.providers.protocol import TextDelta
 
 
 class Wire(httpx.AsyncByteStream):

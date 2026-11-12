@@ -11,13 +11,12 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from app.connections import execution
+from app.db.leases import claim_job, finish_job, lock_job_for_publish
 from fastapi import HTTPException
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
-
-from backend.app.connections import execution
-from backend.app.db.leases import claim_job, finish_job, lock_job_for_publish
 
 URL = os.getenv("NOTEBOOK_TEST_POSTGRES_URL", "")
 pytestmark = pytest.mark.skipif(not URL, reason="Isolated PostgreSQL URL required")

@@ -2,6 +2,8 @@
 
 ## Neuester Stand nach ausdrücklicher Fortsetzung
 
+**Aktualisierung F3a/A4:** F3a-01 (Medium Profilidentität) mit Migration 0004 korrigiert und unabhängig auf f46054b geschlossen. Reviewabschluss edcaf398 integriert als 2293330. Default pytest umfasst jetzt Sicherheitsregressionen: Main prüfte frische Migration 0004 und **176 bestandene Tests**, Ruff und vier aktive LSP-Pfade fehlerfrei. Pyright backend-Pfad sowie einheitliche app-Imports ergänzt. Test-DB entfernt, 55439 gestoppt. Details im Integrationslog; keine Produkt-/Produktionsfreigabe. Folgende 154-Test-Angabe beschreibt nur den vorherigen Meilenstein.
+
 A3 und C3 sind inzwischen kontrolliert integriert: Candidate `f0937b1528b4903657fedc447c44afedfdb35a9f` (C3 final `bb00822`, A3 `eae387e`). Zentrale Ergänzungen in `06c56b6`. Zusätzlicher DB-Integrationstest prüft den echten restricted-role ExecutionService-Lookup und Widerruf während synthetischer Secret-Auflösung. 154 Backendtests mit isoliertem PostgreSQL, 17 Frontendtests, Build, Ruff und 9 Provisionertests bestanden. Test-DB gelöscht, Cluster auf 55439 wieder gestoppt. Keine Live-Provider-/Supabase-/Bitwarden-Abnahme, keine Container neu gebaut, kein Deployment. Details und verbleibende Grenzen in Plan/Integrationslog und A3/C3-Handoffs. Beide Workeraufträge erfolgreich beendet. Nächster Schritt: B3/E3 für echten Upload/private Storage/isoliertes Parsing, sicheren Actor-Dispatch und fenced Publish koordinieren; danach Chat/UI und unabhängige Abnahme. Die folgenden Reload-/Pauseabschnitte sind historisch und überholt, kein neuer Reload als Voraussetzung angeordnet.
 
 ## Historischer Wiederaufnahmestand vor Integration
