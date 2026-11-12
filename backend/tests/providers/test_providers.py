@@ -20,6 +20,7 @@ def test_unconfigured_store_is_closed():
 
 def test_secret_store_traceback_does_not_leak_sdk_error():
     import traceback
+
     secret = "SYNTHETIC" + "_SECRET"
     store = BitwardenStore(ProviderSettings())
     client = SimpleNamespace(secrets=lambda: None)

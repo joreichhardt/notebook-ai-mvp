@@ -5,20 +5,22 @@ from collections.abc import AsyncIterator
 from typing import NoReturn
 
 import httpx
+from fastapi import HTTPException
 
 from app.auth.security import fail
 from app.providers.types import Limits, StreamDone, TextDelta
 
 
 def invalid() -> NoReturn:
-    fail(502, "provider_protocol", "Ungültige Antwort des Anbieters.")
-    raise AssertionError("unreachable")
+    raise HTTPException(
+        502, detail={"code": "provider_protocol", "message": "Ungültige Antwort des Anbieters."}
+    ) from None
 
 
 def object_json(value):
     try:
         result = json.loads(value)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         invalid()
     if not isinstance(result, dict):
         invalid()
@@ -80,6 +82,8 @@ async def anthropic_events(response, limits) -> AsyncIterator[TextDelta | Stream
     async for frame in frames(response, limits, sse=True):
         data = object_json(frame)
         kind = data["type"]
+        if kind.startswith("content_block_") and type(data.get("index")) is not int:
+            invalid()
         if kind == "ping":
             continue
         if kind == "message_start":
@@ -179,7 +183,7 @@ async def openai_events(response, limits) -> AsyncIterator[TextDelta | StreamDon
         if not choices:
             continue
         choice = choices[0]
-        if choice["index"] != 0 or reason:
+        if type(choice["index"]) is not int or choice["index"] != 0 or reason:
             invalid()
         delta = choice["delta"]
         if any(delta.get(k) for k in ("tool_calls", "function_call", "audio", "refusal")):
