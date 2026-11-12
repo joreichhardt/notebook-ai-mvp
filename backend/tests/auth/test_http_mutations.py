@@ -56,17 +56,54 @@ def http_runtime(scope, monkeypatch):
         runtime.dispose()
 
 
-def test_notebook_busy_is_opaque_503_without_mutation(http_runtime):
+@pytest.mark.parametrize(
+    "operation,method,target,payload",
+    [
+        ("create", "POST", "/api/workspaces/{workspace}/notebooks", {"title": "must not commit"}),
+        ("rename", "PATCH", "/api/notebooks/{notebook}", {"title": "must not commit"}),
+        ("delete", "DELETE", "/api/notebooks/{notebook}", None),
+        (
+            "invite",
+            "POST",
+            "/api/invitations",
+            {"email": "next@example.test", "role": "viewer"},
+        ),
+        ("accept", "POST", "/api/invitations/accept", None),
+        ("change", "PATCH", "/api/workspaces/{workspace}/members/{user}", {"role": "viewer"}),
+        ("remove", "DELETE", "/api/workspaces/{workspace}/members/{user}", None),
+    ],
+)
+def test_mutation_busy_is_opaque_503_without_mutation(
+    http_runtime, operation, method, target, payload
+):
+    from uuid import uuid4
+
     client, scope = http_runtime
     path = f"/api/workspaces/{scope[4]}/notebooks"
+    members_path = f"/api/workspaces/{scope[4]}/members"
     before = client.get(path)
-    assert before.status_code == 200
+    before_members = client.get(members_path)
+    assert before.status_code == before_members.status_code == 200
+    if operation == "invite":
+        payload = {**payload, "workspace_id": str(scope[4])}
+    elif operation == "accept":
+        # A verified but NOT admitted identity must reach acceptance, not be
+        # rejected by the ordinary mutation admission requirement.
+        app.dependency_overrides[session_layer.identity] = lambda: Identity(
+            uuid4(), "http-mutation@example.test"
+        )
+        payload = {"token": secrets.token_urlsafe(32)}
+    target = target.format(workspace=scope[4], notebook=scope[5], user=scope[1])
     # This synthetic operator holds only its own cluster's fixed transaction gate.
     # The HTTP request still uses the actual direct nonprivileged notebook_app login.
     with psycopg.connect(URL) as holder:
         holder.execute("SELECT public.quota_gate()")
-        response = client.post(path, json={"title": "must not commit"})
+        response = client.request(method, target, json=payload)
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "quota_busy"
     assert "quota_gate_busy" not in response.text
+    app.dependency_overrides[session_layer.identity] = lambda: Identity(
+        scope[0], "http-mutation@example.test"
+    )
     assert client.get(path).json() == before.json()
+    assert client.get(members_path).json() == before_members.json()
