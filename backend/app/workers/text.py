@@ -69,8 +69,11 @@ class TextWorker:
         with Session(self.engine) as session, session.begin():
             safe = session.execute(
                 text(
-                    "SELECT current_user='notebook_app' AND NOT rolsuper AND NOT rolbypassrls "
-                    "FROM pg_roles WHERE rolname=current_user"
+                    "SELECT current_user='notebook_app' AND session_user='notebook_app' "
+                    "AND NOT c.rolsuper AND NOT c.rolbypassrls "
+                    "AND NOT s.rolsuper AND NOT s.rolbypassrls "
+                    "FROM pg_roles c JOIN pg_roles s ON s.rolname=session_user "
+                    "WHERE c.rolname=current_user"
                 )
             ).scalar_one()
             if safe is not True:
