@@ -1,5 +1,12 @@
 # Integration log
 
+## Quotenentwurf geprüft, Präzisierungsauftrag ohne Implementierung
+
+- A5-Folgeauftrag lieferte ausschließlich `docs/handoffs/A5.md` als `2a5b206`; Main übernahm diesen Dokumentationscommit. Frühere238Tests belegen weiterhin nur die0005-Basis, **nicht** den nicht implementierten Quotenentwurf.
+- Main billigte grundsätzlich ledger-only NEW/OLD-Spiegel mit exakt genannten Spaltenrechten/enger App-SELECT-Allowlist, festen nonblocking transactionGate unter READ COMMITTED, keine neuen App-/Rawjob-/Providerrechte und logische admitted-work/Leasegrenzen10/50/2globalActor/4Notebook. Physische Remote-Prozessparallelität bleibt separater Runtime-Nachweis; trusted-cooperative A3-Grenze wird dadurch nicht still in eine adversarial-runtime Garantie umgedeutet.
+- Zwei Punkte vor Implementierungsauftrag offen: nur ungebundene running-Übergänge zu sperren lässt neue queuedJobs außerhalb outstanding-Zählung; Main verlangt fail-closed neue ungebundene nonterminal-Arbeit und explizite Bestands-/Drain-Preflightsemantik, keine fakeIntents oder stillen Bestandslöschungen. Außerdem Gate-Triggers und EXECUTE-Grenzen für tatsächlich vorhandene Admin-/Bootstrap-/Definerkontexte konkret nachweisen, keine pauschalen Rollengrants.
+- Präzisierung erneut im **bestehenden** A5-Worktree beauftragt: `ctx_d0b9c18fc7d3` / `task_e1eb7c4ee3d0`, ausschließlich eigener Handoff, keine DDL/Grants/Container. B3 über Entwurfsstatus und echte kanonische Intentfixtures für neue Flowtests informiert; stabile Servicebasis bleibt Main`8862a1e2636d`. Router/Capabilities unverändert aus.
+
 ## A5 integriert und durch Main auf kube1 verifiziert
 
 - Finales worker_done: Implementierung `47f3d6b`, dokumentierte Delivery **`da6b4c00184bec1289173cc5503c2aab7c6847cd`**. Main prüfte Pfadumfang, finalen Handoff und Guards; letzter Deliverydelta nur Dokumentation. Sauberer Merge in Integration als **`8862a1e2636d`**, keine Nutzer-/Worker-Dateien überschrieben.
