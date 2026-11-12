@@ -3,6 +3,11 @@
   "supabase_source": "6205145edd7d94c6b1e37437c873df7d0b5b9d3d",
   "postgres_source": "d156ba65c14694c12cc5e782bc15b9b8ed2d1376",
   "storage_source": "1c49b6a4cb123c5f0edf05505a846956820a5e67",
+  "native_init_sha256": {
+    "webhooks.sql": "05a61316b899374253891cbba66ce073d9273f33983c3f47961eda3aa26c2823",
+    "roles.sql": "3ad717b225daa38aa982da26750f35641eb404e1eb5e69a763c22236ab96c1b2",
+    "jwt.sql": "c1d3f5c01e44646c2e533c5a1c111821cc49cb5a4c2534e08cddad61d8fb0339"
+  },
   "phase_a": {
     "database": "supabase/postgres:17.6.1.136@sha256:5a4314708484bec672de2c09653a5c01fb1c84a998564ac231b0325e2238ed5b",
     "runner_base": "python:3.12-slim@sha256:05a994d2344eb364cc186910f4fc8786a38215f39f00d0acc25bff33a08f4177",

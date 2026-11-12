@@ -177,6 +177,13 @@ def verify_phase_a():
             assert db.execute("SELECT to_regprocedure('auth.uid()') IS NOT NULL").fetchone()[0]
             assert db.execute("SELECT to_regclass('auth.users') IS NOT NULL").fetchone()[0]
             assert db.execute("SELECT to_regnamespace('storage') IS NOT NULL").fetchone()[0]
+            # Native dependency regression: never fabricate this role/schema in tests.
+            assert db.execute(
+                "SELECT EXISTS (SELECT FROM pg_roles WHERE rolname='supabase_functions_admin') "
+                "AND EXISTS (SELECT FROM pg_extension WHERE extname='pg_net') "
+                "AND to_regprocedure('supabase_functions.http_request()') IS NOT NULL"
+            ).fetchone()[0], "native_webhook_dependency_missing"
+            print("NATIVE_WEBHOOK_DEPENDENCY_PRESENT=1", flush=True)
             # Genuine upstream-default exposure, only on disposable synthetic probe.
             role_scope(db, "postgres")
             db.execute("CREATE TABLE public.a5_upstream_acl_probe (value integer)")

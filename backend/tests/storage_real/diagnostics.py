@@ -27,6 +27,7 @@ PHASES = {
             (b"00000000000001-auth-schema.sql", "phase_auth"),
             (b"00000000000002-storage-schema.sql", "phase_storage"),
             (b"00000000000003-post-setup.sql", "phase_post_setup"),
+            (b"98-webhooks.sql", "phase_webhooks"),
         )
     },
 }

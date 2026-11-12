@@ -28,6 +28,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - pgconfig:/etc/postgresql-custom
+      - ./webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:ro
       - ./roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
       - ./jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
       - ${A5_PHASE_A_SECRETS:?}:/phase-a-secrets:ro

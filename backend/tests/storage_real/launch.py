@@ -33,6 +33,7 @@ def main():
     ):
         raise SystemExit("REFUSED_NON_ASSIGNED_SNAPSHOT")
     for filename, expected in {
+        "webhooks.sql": "05a61316b899374253891cbba66ce073d9273f33983c3f47961eda3aa26c2823",
         "roles.sql": "3ad717b225daa38aa982da26750f35641eb404e1eb5e69a763c22236ab96c1b2",
         "jwt.sql": "c1d3f5c01e44646c2e533c5a1c111821cc49cb5a4c2534e08cddad61d8fb0339",
     }.items():

@@ -50,6 +50,19 @@ def test_start_wiring_never_requests_raw_state_or_enables_docker_logs():
     assert ">/dev/null 2>&1" not in compose
 
 
+def test_official_webhook_dependency_is_mounted_before_password_roles():
+    import hashlib
+    from pathlib import Path
+
+    base = Path(__file__).parent
+    compose = base.joinpath("compose.yaml").read_text()
+    lock = json.loads(base.joinpath("lock.json").read_text())
+    assert "./webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:ro" in compose
+    data = base.joinpath("webhooks.sql").read_bytes()
+    assert hashlib.sha256(data).hexdigest() == lock["native_init_sha256"]["webhooks.sql"]
+    assert b"CREATE USER supabase_functions_admin" in data
+
+
 def test_stream_split_phase_and_error_never_exposes_canary(capsys):
     from backend.tests.storage_real.diagnostics import classify
 
