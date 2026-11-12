@@ -25,11 +25,13 @@ async def identity(request: Request) -> Identity:
 
 def authenticated_session(user: Annotated[Identity, Depends(identity)]):
     with Session(engine()) as session, session.begin():
-        # The connection role itself must be non-owner, non-superuser and NOBYPASSRLS.
+        # Require a direct restricted login, not SET ROLE from a privileged session.
+        # Equal current/session principals share the checked non-super/NOBYPASS flags.
         safe = session.execute(
             text(
                 "SELECT NOT rolsuper AND NOT rolbypassrls AND "
-                "rolname = 'notebook_app' FROM pg_roles WHERE rolname=current_user"
+                "rolname = 'notebook_app' AND session_user=current_user "
+                "FROM pg_roles WHERE rolname=current_user"
             )
         ).scalar()
         if safe is not True:
