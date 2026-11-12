@@ -16,6 +16,7 @@
 - [Architekturentscheidungen](architecture/decisions.md): Gründe und verbindliche Präzisierungen.
 - [Bestandsaufnahme](architecture/inventory.md): ermittelter Infrastrukturstand; kein Ersatz für aktuelle Live-Prüfungen.
 - [Sicherheitsregeln und Betriebsgrenzen](../SECURITY.md).
+- [Mainreview Quoten0006/B3](review/quota-v6.md): Rollen-/RLS-/Gateprüfung, Altlease-Preflightkorrektur, getrennte Quieszenzgrenze und noch offene kombinierte Callertests.
 - [Review des Daten-/Provider-Durchstichs](review/seam-v3.md): Befund, Reproduktion und unabhängige Nachprüfung. Weitere Reviews unter `review/` beziehen sich auf ihre jeweiligen Kandidaten.
 
 ## Entwicklung und Betrieb

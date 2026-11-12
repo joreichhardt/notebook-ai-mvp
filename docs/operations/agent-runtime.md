@@ -1,5 +1,13 @@
 # Pi-Kompaktierung und Orca-Fortsetzung
 
+## Aktuelle Hauptsitzung: Aktivierung noch ausstehend
+
+Nach direkter Nutzerklärung beziehen sich45,9% vor manuellem Compact und anschließend12,2%/500k auf **Main**, nicht A5. Der frühere A5-Replay von138352Tokens/27,7% war eine andere Sitzung und erklärt den Mainfehler nicht.
+
+Read-only Prozess-/Sessionnachweis: aktueller SupervisorPID235860 gestartet11.11.2026/23:46CET; Corepatchmtime12.11./09:17CET, installierter Hash weiter `c76f9585431ac2f58b66ae9213cf2dc41f1b2a796873f052c74441f5084b14e9`. Der laufende Nodeprozess hat den Core vor Änderung importiert, nicht durch `/reload` neu geladen. Hauptsession `01a1ccca-ce97-702d-b0c7-565081ed2d9f`: letzter manueller Compactioneintrag12.11./11:14:27Z mit tokensBefore407488; danach60773Tokens≈12,2%. Das belegt den Sessionabgleich, **nicht** eine automatische Kompaktierung. Der frühere45,9%-Zeitpunkt wurde nicht als exakter Snapshot rekonstruiert.
+
+Kein neuer Patch nötig: gesicherten Hauptprozess mit `/quit` verlassen, Exit prüfen und exakt dieselbe Sitzung frisch öffnen; [Handoff/Resume](../handoffs/CONTINUE.md). Kein paralleler Hauptagent, kein Workerstop/Testabbruch, keine künstlichen Providerrequests zum Erreichen einer Schwelle. Nach Neustart Prozess/Core prüfen und bei natürlichem Hauptarbeitsfortschritt echtes Autoereignis/Schwelle nachweisen. Bis dahin Aktivierung bzw. Livefunktion nicht als abgeschlossen behaupten.
+
 ## Nachgewiesene Ursache
 
 Die Worker verwenden Pi1.5.2 mit dem virtuellen Modell `openai-codex/sol-astra-auto`. In `~/.pi/agent/settings.json` ist automatische Kompaktierung aktiv; Projektsettings überschreiben sie nicht. Reserven sind für die **physischen** Modelle konfiguriert: Sol315000 bei500000 Kontext, Astra171360 bei272000 Kontext, jeweils20000 jüngere Tokens behalten.
