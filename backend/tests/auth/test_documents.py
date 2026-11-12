@@ -18,13 +18,14 @@ URL = os.getenv("NOTEBOOK_TEST_POSTGRES_URL", "")
 pytestmark = pytest.mark.skipif(not URL, reason="Isolated PostgreSQL URL not configured")
 
 
-def test_fresh_migrations_and_model_columns():
+@pytest.mark.parametrize("upgrade_via", [None, "0003"])
+def test_fresh_migrations_and_model_columns(upgrade_via):
     from app.db.models import Chunk, Document, DocumentVersion, IndexProfile, IngestionJob
     from psycopg import sql
     from sqlalchemy import create_engine, inspect
     from sqlalchemy.engine import make_url
 
-    name = f"a3_fresh_{uuid4().hex}"
+    name = f"a4_migration_{uuid4().hex}"
     url = make_url(URL).set(database=name, drivername="postgresql+psycopg")
     root = Path(__file__).resolve().parents[3]
     with psycopg.connect(URL, autocommit=True) as admin:
@@ -34,7 +35,44 @@ def test_fresh_migrations_and_model_columns():
             )
         )
     engine = create_engine(url)
+    actor, workspace, notebook, profile = [uuid4() for _ in range(4)]
+    job = None
     try:
+        if upgrade_via:
+            result = subprocess.run(
+                [str(root / ".venv/bin/alembic"), "-c", "backend/migrations/alembic.ini",
+                 "upgrade", upgrade_via],
+                cwd=root,
+                env={
+                    **os.environ,
+                    "PYTHONPATH": str(root / "backend"),
+                    "NOTEBOOK_MIGRATION_DATABASE_URL": url.render_as_string(hide_password=False),
+                },
+                capture_output=True, text=True, check=False,
+            )
+            assert result.returncode == 0, "0003 migration failed (output suppressed)"
+            with psycopg.connect(URL, dbname=name, user="notebook_app") as db:
+                assert db.execute(
+                    "SELECT has_table_privilege(current_user,'public.index_profiles','DELETE')"
+                ).fetchone() == (True,)
+            # Existing 0003 records must survive the privilege-only correction.
+            with psycopg.connect(URL, dbname=name) as admin:
+                admin.execute("INSERT INTO app_admissions VALUES (%s)", (actor,))
+                admin.execute("INSERT INTO workspaces(id,name) VALUES (%s,'upgrade')", (workspace,))
+                admin.execute(
+                    "INSERT INTO workspace_members VALUES (%s,%s,'owner')", (workspace, actor)
+                )
+                admin.execute(
+                    "INSERT INTO notebooks VALUES (%s,%s,'upgrade')", (notebook, workspace)
+                )
+                _, version = insert_document(admin, workspace, notebook, actor)
+                connection = add_connection(admin, actor)
+                admin.execute(
+                    "INSERT INTO index_profiles(id,workspace_id,notebook_id,provider,model,"
+                    "revision,dimensions) VALUES (%s,%s,%s,'fixture','original','v1',3)",
+                    (profile, workspace, notebook),
+                )
+                job = insert_job(admin, workspace, notebook, version, actor, connection, profile)
         result = subprocess.run(
             [
                 str(root / ".venv/bin/alembic"),
@@ -54,6 +92,19 @@ def test_fresh_migrations_and_model_columns():
             check=False,
         )
         assert result.returncode == 0, "fresh migration failed (output suppressed to protect URL)"
+        with psycopg.connect(URL, dbname=name, user="notebook_app") as db:
+            assert db.execute(
+                "SELECT has_table_privilege(current_user,'public.index_profiles','DELETE'),"
+                "has_table_privilege(current_user,'public.index_profiles','UPDATE'),"
+                "has_table_privilege(current_user,'public.index_profiles','INSERT'),"
+                "has_table_privilege(current_user,'public.index_profiles','SELECT')"
+            ).fetchone() == (False, False, True, True)
+            if upgrade_via:
+                db.execute("SELECT set_config('request.jwt.claim.sub',%s,true)", (str(actor),))
+                assert db.execute(
+                    "SELECT j.id,p.id,p.model,p.revision,p.dimensions FROM ingestion_jobs j "
+                    "JOIN index_profiles p ON p.id=j.index_profile_id WHERE j.id=%s", (job,)
+                ).fetchone() == (job, profile, "original", "v1", 3)
         inspector = inspect(engine)
         for model in (Document, DocumentVersion, IndexProfile, Chunk, IngestionJob):
             actual = {
@@ -70,7 +121,7 @@ def test_fresh_migrations_and_model_columns():
 
 def test_document_tables_are_rls_protected():
     with psycopg.connect(URL) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0003",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0004",)
         db.execute("SET ROLE notebook_app")
         assert db.execute(
             "SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user"
@@ -310,6 +361,78 @@ def test_delete_rpc_is_narrow_and_does_not_escalate(corpus, actor_name):
             db.execute("SET ROLE notebook_document_lifecycle")
         with pytest.raises(psycopg.errors.InsufficientPrivilege), db.transaction():
             db.execute("INSERT INTO workspace_members VALUES (%s,%s,'owner')", (c["ws"], uuid4()))
+
+
+@pytest.mark.parametrize("actor_name", ["owner", "editor", "viewer", "outsider"])
+def test_profiles_cannot_be_deleted_or_replaced(corpus, actor_name):
+    c = corpus
+    with runtime(c["owner"]) as db:
+        connection = add_connection(db, c["owner"])
+        job = insert_job(
+            db, c["ws"], c["note"], c["version"], c["owner"], connection, c["profile"]
+        )
+    with runtime(c[actor_name]) as db:
+        if actor_name != "owner":
+            assert db.execute("SELECT id FROM ingestion_jobs").fetchall() == []
+            assert db.execute("SELECT id FROM user_provider_connections").fetchall() == []
+        with pytest.raises(psycopg.errors.InsufficientPrivilege), db.transaction():
+            db.execute("DELETE FROM index_profiles WHERE id=%s", (c["profile"],))
+            db.execute(
+                "INSERT INTO index_profiles(id,workspace_id,notebook_id,provider,model,"
+                "revision,dimensions) VALUES (%s,%s,%s,'fixture','replacement','v2',7)",
+                (c["profile"], c["ws"], c["note"]),
+            )
+            db.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    with runtime(c["owner"]) as db:
+        assert db.execute(
+            "SELECT j.id,p.id,p.model,p.revision,p.dimensions FROM ingestion_jobs j "
+            "JOIN index_profiles p ON p.id=j.index_profile_id WHERE j.id=%s", (job,)
+        ).fetchone() == (job, c["profile"], "embed", "v1", 3)
+
+
+@pytest.mark.parametrize("actor_name", ["owner", "editor", "viewer", "outsider"])
+def test_profile_cleanup_only_through_authorized_notebook(corpus, actor_name):
+    c = corpus
+    with runtime(c["owner"]) as db:
+        connection = add_connection(db, c["owner"])
+        job = insert_job(
+            db, c["ws"], c["note"], c["version"], c["owner"], connection, c["profile"]
+        )
+    allowed = actor_name in ("owner", "editor")
+    with runtime(c[actor_name]) as db:
+        deleted = db.execute(
+            "DELETE FROM notebooks WHERE id=%s RETURNING id", (c["note"],)
+        ).fetchall()
+        assert deleted == ([(c["note"],)] if allowed else [])
+        db.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    # Inspect as the original actor after commit, not a privileged cleanup bypass.
+    with runtime(c["owner"]) as db:
+        for table, identity in (
+            ("notebooks", c["note"]), ("index_profiles", c["profile"]),
+            ("documents", c["doc"]), ("document_versions", c["version"]),
+            ("chunks", c["chunk"]), ("ingestion_jobs", job),
+        ):
+            assert db.execute(
+                cast(LiteralString, f"SELECT id FROM {table} WHERE id=%s"), (identity,)
+            ).fetchall() == ([] if allowed else [(identity,)])
+        assert db.execute(
+            "SELECT id FROM user_provider_connections WHERE id=%s", (connection,)
+        ).fetchone() == (connection,)
+
+
+def test_new_profile_identity_remains_supported(corpus):
+    c = corpus
+    new_profile = uuid4()
+    with runtime(c["editor"]) as db:
+        db.execute(
+            "INSERT INTO index_profiles(id,workspace_id,notebook_id,provider,model,"
+            "revision,dimensions) VALUES (%s,%s,%s,'fixture','replacement','v2',7)",
+            (new_profile, c["ws"], c["note"]),
+        )
+        assert db.execute("SELECT count(*) FROM index_profiles").fetchone() == (2,)
+        # Even an unreferenced identity cannot be recycled by ordinary runtime SQL.
+        with pytest.raises(psycopg.errors.InsufficientPrivilege), db.transaction():
+            db.execute("DELETE FROM index_profiles WHERE id=%s", (new_profile,))
 
 
 def test_metadata_is_immutable(corpus):
