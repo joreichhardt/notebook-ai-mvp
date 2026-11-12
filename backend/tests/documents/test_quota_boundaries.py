@@ -17,20 +17,78 @@ pytestmark = pytest.mark.skipif(not URL, reason="isolated migrated PostgreSQL re
 
 @pytest.fixture(autouse=True)
 def backoff_has_no_transaction(upload_scene, monkeypatch):
+    from threading import Lock, get_ident
     from time import sleep
 
+    from psycopg.pq import TransactionStatus
+
+    # Each callback is synchronous on one thread (no await inside its DB Tx).
+    # The pool is shared with other threads; global checkedout/active counts
+    # cannot establish ownership. Keep strong Connection references so reuse of
+    # a pooled DBAPI connection cannot masquerade as the previous callback.
+    lock = Lock()
+    leases, transactions, latest = {}, {}, {}
     before_check = []
+
+    def checkout(raw, record, proxy):
+        with lock:
+            assert raw not in leases
+            leases[raw] = {"owner": get_ident(), "transactions": []}
+
+    def begin(connection):
+        with lock:
+            state = {"connection": connection, "outcome": None, "returned": False}
+            transactions[connection] = state
+            latest[get_ident()] = state
+            leases[connection.connection.dbapi_connection]["transactions"].append(state)
+
+    def rollback(connection):
+        with lock:
+            transactions[connection]["outcome"] = "rollback"
+
+    def commit(connection):
+        with lock:
+            transactions[connection]["outcome"] = "commit"
+
+    def checkin(raw, record):
+        with lock:
+            # Pool checkin occurs AFTER DBAPI rollback/commit, not at the
+            # before-rollback Engine event. Validate actual PostgreSQL IDLE.
+            assert raw is not None and raw.info.transaction_status == TransactionStatus.IDLE
+            for state in leases.pop(raw)["transactions"]:
+                state["returned"] = True
 
     def checked_sleep(delay):
         for hook in before_check:
             hook()
-        assert not upload_scene["active"]
-        assert upload_scene["actor_engine"].pool.checkedout() == 0
-        assert upload_scene["io_engine"].pool.checkedout() == 0
-        sleep(delay)
+        with lock:
+            own = latest[get_ident()]
+            assert own["outcome"] == "rollback", "retry callback did not roll back"
+            assert own["returned"], "retry callback did not return its connection"
+            assert own["connection"].closed, "retry callback Connection is still open"
+            assert not own["connection"].in_transaction()
+            assert not any(lease["owner"] == get_ident() for lease in leases.values())
+        sleep(delay)  # Independent sibling transactions are intentionally allowed.
 
+    listeners = [
+        ("checkout", checkout),
+        ("begin", begin),
+        ("rollback", rollback),
+        ("commit", commit),
+        ("checkin", checkin),
+    ]
+    engines = [upload_scene["actor_engine"], upload_scene["io_engine"]]
+    for engine in engines:
+        for name, listener in listeners:
+            event.listen(engine, name, listener)
     monkeypatch.setattr("app.documents.transactions.sleep", checked_sleep)
-    yield before_check
+    try:
+        yield before_check
+        assert not leases, "test leaked a checked-out connection"
+    finally:
+        for engine in engines:
+            for name, listener in listeners:
+                event.remove(engine, name, listener)
 
 
 @contextmanager
@@ -40,8 +98,12 @@ def contend(engine, *, target=1, marker="SELECT public.quota_gate()", exhaust=Fa
     Release transient contention only after the failed transaction rolls back.
     Observe actual XIDs, not manufactured driver exceptions or protected writes.
     """
+    from threading import Lock
+
     holder = psycopg.connect(URL)
     seen, xids, rollbacks = [], [], []
+    blocked = {}
+    lock = Lock()
     acquired = False
     released = False
 
@@ -49,25 +111,35 @@ def contend(engine, *, target=1, marker="SELECT public.quota_gate()", exhaust=Fa
         nonlocal acquired
         if marker not in statement:
             return
-        seen.append(statement)
-        if len(seen) < target or released:
-            return
-        with connection.connection.cursor() as probe:
-            probe.execute("SELECT txid_current()")
-            xids.append(probe.fetchone()[0])
-        if not acquired:
-            holder.execute("SELECT public.quota_gate()")
-            acquired = True
+        with lock:
+            seen.append(statement)
+            if len(seen) < target:
+                return
+            with connection.connection.cursor() as probe:
+                probe.execute("SELECT txid_current()")
+                xids.append(probe.fetchone()[0])
+            if released:
+                return
+            blocked[connection] = [connection.connection.dbapi_connection, False]
+            if not acquired:
+                holder.execute("SELECT public.quota_gate()")
+                acquired = True
 
     def rollback(connection):
-        if acquired and not released:
-            rollbacks.append(True)
+        with lock:
+            if connection in blocked:
+                blocked[connection][1] = True
+                rollbacks.append(True)
 
     def checked_in(connection, record):
         nonlocal released
-        if acquired and rollbacks and not released and not exhaust:
-            holder.rollback()
-            released = True
+        with lock:
+            # Only the rejected callback's own completed rollback/checkin
+            # releases the holder, never an unrelated sibling checkin.
+            own_rollback = any(raw is connection and rolled for raw, rolled in blocked.values())
+            if acquired and own_rollback and not released and not exhaust:
+                holder.rollback()
+                released = True
 
     event.listen(engine, "before_cursor_execute", before)
     event.listen(engine, "rollback", rollback)
@@ -339,6 +411,23 @@ def test_readmission_never_reactivates_sticky_cancelled_work(upload_scene):
         ).fetchone() == (True, "queued", 0)
 
 
+@pytest.mark.parametrize("rolled_back", [False, True])
+def test_backoff_probe_rejects_own_unclosed_connection(upload_scene, rolled_back):
+    from app.documents import transactions
+
+    connection = upload_scene["actor_engine"].connect()
+    try:
+        transaction = connection.begin()
+        connection.execute(text("SELECT 1"))
+        if rolled_back:
+            transaction.rollback()
+        message = "did not return its connection" if rolled_back else "did not roll back"
+        with pytest.raises(AssertionError, match=message):
+            transactions.sleep(0)
+    finally:
+        connection.close()
+
+
 def test_retry_owns_no_transaction_while_sibling_connection_is_checked_out(
     upload_scene, backoff_has_no_transaction
 ):
@@ -392,7 +481,8 @@ def test_retry_owns_no_transaction_while_sibling_connection_is_checked_out(
                     )
                 )
             assert result == "succeeded"
-            assert overlap and rollbacks and len(seen) >= 6 and xids
+            assert overlap and rollbacks and len(seen) >= 6
+            assert len(xids) >= 2 and xids[0] != xids[1]
             assert calls == ["read"]
         finally:
             release.set()
