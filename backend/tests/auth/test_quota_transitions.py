@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(not URL, reason="Isolated PostgreSQL URL require
         "lease_expires_at=clock_timestamp()+interval '1 second'",
         "lease_expires_at=clock_timestamp()+interval '301 seconds'",
         "available_at=clock_timestamp()+interval '1 day'",
-        "status='queued',lease_token=NULL,lease_expires_at=NULL",
+        "status='queued',lease_token=NULL,lease_expires_at=NULL,heartbeat_at=NULL",
     ],
 )
 def test_direct_running_rewrites_refused_without_mirror_or_projection_change(scope, change):
@@ -55,8 +55,8 @@ def test_direct_running_rewrites_refused_without_mirror_or_projection_change(sco
             "available_at=clock_timestamp()+interval '1 day'": text(
                 "UPDATE ingestion_jobs SET available_at=clock_timestamp()+interval '1 day' WHERE id=:j"
             ),
-            "status='queued',lease_token=NULL,lease_expires_at=NULL": text(
-                "UPDATE ingestion_jobs SET status='queued',lease_token=NULL,lease_expires_at=NULL WHERE id=:j"
+            "status='queued',lease_token=NULL,lease_expires_at=NULL,heartbeat_at=NULL": text(
+                "UPDATE ingestion_jobs SET status='queued',lease_token=NULL,lease_expires_at=NULL,heartbeat_at=NULL WHERE id=:j"
             ),
         }
         db.execute(statements[change], {"j": intent.job_id})
@@ -142,6 +142,13 @@ def test_cancellation_preserves_live_occupancy_and_never_fabricates_cleanup(scop
         with pytest.raises(DBAPIError) as caught, app(actor) as db:
             claim_job(db, intents[1].job_id)
         assert classify_quota_error(caught.value) == "quota_legacy_unsupported"
+    # Cancellation/deletion MUST NOT free a still-live logical execution lease.
+    replacements = [finalized(actor, notebook, f"replacement-{n}") for n in range(2)]
+    with app(actor) as db:
+        assert claim_job(db, replacements[0].job_id)
+    with pytest.raises(DBAPIError) as caught, app(actor) as db:
+        claim_job(db, replacements[1].job_id)
+    assert classify_quota_error(caught.value) == "quota_capacity"
     # Another member still reads the finalized original on uploader revocation.
     if event in ("admission", "demotion"):
         with app(editor) as db:
@@ -160,12 +167,14 @@ def test_direct_dml_busy_fallback_rolls_back_unrelated_transaction_write(scope):
         with pytest.raises(DBAPIError) as caught, app(actor) as contender:
             # No helper gate: BEFORE trigger itself must reject the mutation.
             contender.execute(
-                text("UPDATE notebooks SET name='must rollback' WHERE id=:n"), {"n": notebook}
+                text("UPDATE notebooks SET title='must rollback' WHERE id=:n"), {"n": notebook}
             )
         assert classify_quota_error(caught.value) == "quota_gate_busy"
     with app(actor) as db:
         assert (
-            db.execute(text("SELECT name FROM notebooks WHERE id=:n"), {"n": notebook}).scalar_one()
+            db.execute(
+                text("SELECT title FROM notebooks WHERE id=:n"), {"n": notebook}
+            ).scalar_one()
             == "A5"
         )
         assert reserve(db, notebook, idempotency_key="retry-after-busy").id
@@ -185,3 +194,53 @@ def test_classifier_does_not_map_nearby_server_errors(scope, code, message):
             "DO $$ BEGIN RAISE EXCEPTION USING MESSAGE=current_setting('test.quota_message'), ERRCODE=current_setting('test.quota_code'); END $$"
         )
     assert classify_quota_error(caught.value) is None
+
+
+def test_already_started_direct_claim_sees_committed_active_capacity(scope):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    actor, _, _, _, _, notebook = scope
+    intents = [finalized(actor, notebook, str(n)) for n in range(3)]
+    with app(actor) as db:
+        assert claim_job(db, intents[0].job_id)
+    started = Event()
+    pids = []
+
+    def delayed_claim():
+        try:
+            with psycopg.connect(URL, user="notebook_app") as db:
+                db.execute("SELECT set_config('request.jwt.claim.sub',%s,true)", (str(actor),))
+                pids.append(db.info.backend_pid)
+                started.set()
+                db.execute(
+                    "WITH delayed AS MATERIALIZED (SELECT pg_sleep(1)) "
+                    "UPDATE ingestion_jobs SET status='running',attempts=attempts+1,"
+                    "lease_token=gen_random_uuid(),heartbeat_at=clock_timestamp(),"
+                    "lease_expires_at=clock_timestamp()+interval '60 seconds' "
+                    "FROM delayed WHERE id=%s",
+                    (intents[2].job_id,),
+                )
+        except psycopg.Error as error:
+            return classify_quota_error(error)
+        return "incorrectly_admitted"
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with app(actor) as holder:
+            assert claim_job(holder, intents[1].job_id)
+            future = pool.submit(delayed_claim)
+            assert started.wait(3)
+            with psycopg.connect(URL, autocommit=True) as observer:
+                for _ in range(100):
+                    if observer.execute(
+                        "SELECT wait_event FROM pg_stat_activity WHERE pid=%s", (pids[0],)
+                    ).fetchone() == ("PgSleep",):
+                        break
+                    sleep(0.005)
+                else:
+                    pytest.fail("direct claim never reached pre-gate sleep")
+        assert future.result(timeout=5) == "quota_capacity"
+    with app(actor) as db:
+        assert db.execute(
+            text("SELECT status,attempts FROM ingestion_jobs WHERE id=:j"), {"j": intents[2].job_id}
+        ).one() == ("queued", 0)
