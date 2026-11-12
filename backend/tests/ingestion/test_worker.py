@@ -387,8 +387,9 @@ def test_postcommit_watchdog_loss_does_not_misreport_success(scene):
             assert await asyncio.to_thread(watch_started.wait, 3)
             return b"hello"
 
-    worker = TimingWorker(base.engine, store_factory=lambda auth: TimedOriginal(),
-                          heartbeat_seconds=0.01)
+    worker = TimingWorker(
+        base.engine, store_factory=lambda auth: TimedOriginal(), heartbeat_seconds=0.01
+    )
     assert asyncio.run(worker.run_one(actor_id=actor, job_id=job)) == "succeeded"
     with base._session(actor) as db:
         row = db.get(IngestionJob, job)

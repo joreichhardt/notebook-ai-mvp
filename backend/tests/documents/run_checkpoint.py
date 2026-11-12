@@ -4,6 +4,7 @@ The Compose definition provides a private, unexposed ephemeral PostgreSQL servic
 and a synthetic per-run credential file. Only a copied scratch source is writable;
 /snapshot remains the immutable committed archive. No production settings loaded.
 """
+
 import os
 import secrets
 import shutil
@@ -25,9 +26,11 @@ def configure_test_role() -> None:
     from psycopg import sql
 
     with psycopg.connect(os.environ["NOTEBOOK_TEST_POSTGRES_URL"]) as db:
-        db.execute(sql.SQL("ALTER ROLE notebook_app PASSWORD {}").format(
-            sql.Literal(Path("/work/private/runtime").read_text())
-        ))
+        db.execute(
+            sql.SQL("ALTER ROLE notebook_app PASSWORD {}").format(
+                sql.Literal(Path("/work/private/runtime").read_text())
+            )
+        )
 
 
 def main() -> None:
@@ -44,13 +47,32 @@ def main() -> None:
         else:
             shutil.copyfile(original, SOURCE / name)
     (SOURCE.parent / "tmp").mkdir()
-    env = {**os.environ, "TMPDIR": "/work/tmp", "UV_NO_CACHE": "1", "UV_LINK_MODE": "copy",
-           "UV_PYTHON_DOWNLOADS": "never", "UV_CONCURRENT_DOWNLOADS": "2",
-           "UV_CONCURRENT_INSTALLS": "2", "RAYON_NUM_THREADS": "2",
-           "UV_PROJECT_ENVIRONMENT": str(SOURCE / ".venv"),
-           "PYTHONPATH": str(SOURCE / "backend"), "PYTHONDONTWRITEBYTECODE": "1"}
-    run(sys.executable, "-m", "pip", "install", "--quiet", "--no-cache-dir",
-        "--disable-pip-version-check", "--target", "/work/tools", "uv==0.9.9", env=env)
+    env = {
+        **os.environ,
+        "TMPDIR": "/work/tmp",
+        "UV_NO_CACHE": "1",
+        "UV_LINK_MODE": "copy",
+        "UV_PYTHON_DOWNLOADS": "never",
+        "UV_CONCURRENT_DOWNLOADS": "2",
+        "UV_CONCURRENT_INSTALLS": "2",
+        "RAYON_NUM_THREADS": "2",
+        "UV_PROJECT_ENVIRONMENT": str(SOURCE / ".venv"),
+        "PYTHONPATH": str(SOURCE / "backend"),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    run(
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--quiet",
+        "--no-cache-dir",
+        "--disable-pip-version-check",
+        "--target",
+        "/work/tools",
+        "uv==0.9.9",
+        env=env,
+    )
     run("/work/tools/bin/uv", "sync", "--frozen", "--quiet", env=env)
     material = PASSWORD_FILE.read_text().strip()
     if len(material) != 48 or any(c not in "0123456789abcdef" for c in material):
@@ -63,22 +85,33 @@ def main() -> None:
         "pgpass": f"database:5432:notebook_b3_test:postgres:{material}\n"
         f"database:5432:notebook_b3_test:notebook_app:{runtime}\n",
     }.items():
-        with os.fdopen(os.open(private / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as target:
+        with os.fdopen(
+            os.open(private / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
+        ) as target:
             target.write(value)
     # libpq reads mode0600 per-role synthetic credentials; no secret in URL/env/CLI.
     env["PGPASSFILE"] = str(private / "pgpass")
     env["NOTEBOOK_TEST_POSTGRES_URL"] = "postgresql://postgres@database/notebook_b3_test"
-    env["NOTEBOOK_MIGRATION_DATABASE_URL"] = "postgresql+psycopg://postgres@database/notebook_b3_test"
+    env["NOTEBOOK_MIGRATION_DATABASE_URL"] = (
+        "postgresql+psycopg://postgres@database/notebook_b3_test"
+    )
     python = str(SOURCE / ".venv/bin/python")
-    run(str(SOURCE / ".venv/bin/alembic"), "-c", "backend/migrations/alembic.ini", "upgrade", "head", env=env)
+    run(
+        str(SOURCE / ".venv/bin/alembic"),
+        "-c",
+        "backend/migrations/alembic.ini",
+        "upgrade",
+        "head",
+        env=env,
+    )
     run(python, __file__, "--configure-test-role", env=env)
     worker = SOURCE / "backend/app/workers/text.py"
     fixed = worker.read_text()
-    new = '''            if work in done:
+    new = """            if work in done:
                 await work
                 return "succeeded"
             watcher.result()
-            raise LeaseLost()'''
+            raise LeaseLost()"""
     old = '''            if watcher in done:
                 watcher.result()
             await work
@@ -90,7 +123,9 @@ def main() -> None:
         # RED uses only an ephemeral scratch copy to restore the old reporting bug;
         # publication/leases/RLS are unchanged, snapshot is never edited.
         worker.write_text(fixed.replace(new, old))
-        red = subprocess.run(command, cwd=SOURCE, env=env, capture_output=True, text=True, check=False)
+        red = subprocess.run(
+            command, cwd=SOURCE, env=env, capture_output=True, text=True, check=False
+        )
         if red.returncode != 1 or "lease_lost" not in red.stdout or "1 failed" not in red.stdout:
             print(red.stdout, red.stderr)
             raise RuntimeError("expected watchdog-reporting RED was not reproduced")
@@ -99,6 +134,9 @@ def main() -> None:
         worker.write_text(fixed)
     run(*command, env=env)
     print("Reporting regression GREEN: committed worker, real restricted-role PostgreSQL.")
+    run(python, "-m", "pytest", "backend/tests/documents/test_multipart.py",
+        "backend/tests/documents/test_body_limit.py", "backend/tests/ingestion/test_text.py",
+        "-q", "--tb=short", env=env)
 
 
 if __name__ == "__main__":
