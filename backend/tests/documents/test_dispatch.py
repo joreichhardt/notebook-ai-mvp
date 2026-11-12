@@ -15,6 +15,41 @@ pytest_plugins = ["test_service"]
 pytestmark = pytest.mark.skipif(not URL, reason="isolated PostgreSQL required")
 
 
+@pytest.fixture(autouse=True)
+def bounded_dispatch_transactions(upload_scene):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    c = upload_scene
+    engine = create_engine(
+        c["actor_engine"].url,
+        hide_parameters=True,
+        pool_timeout=1,
+        connect_args={
+            "connect_timeout": 3,
+            "options": "-c statement_timeout=3000 -c lock_timeout=1000",
+        },
+    )
+
+    @contextmanager
+    def actor_tx(actor):
+        c["active"].append("dispatch")
+        try:
+            with Session(engine) as db, db.begin():
+                db.execute(
+                    text("SELECT set_config('request.jwt.claim.sub',:u,true)"), {"u": str(actor)}
+                )
+                yield db
+        finally:
+            c["active"].remove("dispatch")
+
+    c["actor_engine"], c["actor_tx"] = engine, actor_tx
+    try:
+        yield
+    finally:
+        engine.dispose()
+
+
 def dispatcher(c, *, actor_tx=None, worker=None):
     from app.workers.dispatch import SelectionFactory, dispatch_one
 
@@ -287,3 +322,71 @@ def test_dispatch_selection_commit_failure_never_invokes_worker(upload_scene):
         asyncio.run(dispatcher(c, actor_tx=fail_commit)(c["actor"]))
     assert c["store"].actions == []
     assert asyncio.run(dispatcher(c)(c["actor"])) == "succeeded"
+
+
+def test_dispatch_current_version_and_one_job_limit_markdown(upload_scene):
+    from dataclasses import replace
+
+    from test_service import sample
+
+    c = upload_scene
+    old = perform(c, key="old")
+    with psycopg.connect(URL) as setup:
+        setup.execute(
+            "UPDATE documents SET current_version_id=NULL WHERE id=%s", (old.document.id,)
+        )
+    c["store"].actions.clear()
+    assert asyncio.run(dispatcher(c)(c["actor"])) == "idle"
+    first = perform(
+        c, key="first", upload=replace(sample(), filename="sample.md", media_type="text/markdown")
+    )
+    second = perform(c, key="second")
+    c["store"].actions.clear()
+    assert asyncio.run(dispatcher(c)(c["actor"])) == "succeeded"
+    assert c["store"].actions == ["read"]
+    with c["actor_tx"](c["actor"]) as db:
+        rows = dict(
+            db.execute(
+                text("SELECT id,status FROM ingestion_jobs WHERE id IN (:a,:b,:c)"),
+                {"a": old.job.id, "b": first.job.id, "c": second.job.id},
+            ).all()
+        )
+    assert rows == {old.job.id: "queued", first.job.id: "succeeded", second.job.id: "queued"}
+
+
+@pytest.mark.parametrize("assume_role", [False, True])
+def test_dispatch_rejects_superuser_and_privileged_set_role(upload_scene, assume_role):
+    from app.workers.dispatch import DispatchUnavailable
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.orm import Session
+
+    c = upload_scene
+    perform(c)
+    root = create_engine(
+        make_url(URL).set(drivername="postgresql+psycopg"),
+        hide_parameters=True,
+        pool_timeout=1,
+        connect_args={
+            "connect_timeout": 3,
+            "options": "-c statement_timeout=3000 -c lock_timeout=1000",
+        },
+    )
+
+    @contextmanager
+    def privileged(actor):
+        with Session(root) as db, db.begin():
+            if assume_role:
+                db.execute(text("SET LOCAL ROLE notebook_app"))
+            db.execute(
+                text("SELECT set_config('request.jwt.claim.sub',:u,true)"), {"u": str(actor)}
+            )
+            yield db
+
+    try:
+        c["store"].actions.clear()
+        with pytest.raises(DispatchUnavailable, match="unsafe_database_role"):
+            asyncio.run(dispatcher(c, actor_tx=privileged)(c["actor"]))
+        assert c["store"].actions == []
+    finally:
+        root.dispose()
