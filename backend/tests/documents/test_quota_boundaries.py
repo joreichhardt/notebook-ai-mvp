@@ -540,8 +540,72 @@ def test_retry_owns_no_transaction_while_sibling_connection_is_checked_out(
         )
 
 
+@contextmanager
+def _watchdog_test_schedule(monkeypatch):
+    """Test-only event schedule; no production timing/acquisition bound implied.
+
+    Identify the actual created watcher Task by its exact nested code object,
+    then compare Task identity. Context propagation labels only that Task's real
+    to_thread heartbeat; foreground pulses cannot signal its commit event.
+    """
+    from contextvars import ContextVar
+    from types import CodeType
+
+    loop = asyncio.get_running_loop()
+    read_started, heartbeat_committed, parked = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    origin = ContextVar("b3_watchdog_origin", default=None)
+    tasks, ticks = [], []
+    real_create, real_sleep = asyncio.create_task, asyncio.sleep
+    watch_code = next(
+        code
+        for code in TextWorker.run_one.__code__.co_consts
+        if isinstance(code, CodeType) and code.co_name == "watch"
+    )
+
+    def create(coro, *args, **kwargs):
+        task = real_create(coro, *args, **kwargs)
+        if getattr(coro, "cr_code", None) is watch_code:
+            assert not tasks, "fixture expects exactly one worker watcher"
+            tasks.append(task)
+        return task
+
+    def is_watcher():
+        return bool(tasks) and origin.get() is tasks[0]
+
+    async def sleep(delay):
+        if tasks and asyncio.current_task() is tasks[0]:
+            if not ticks:
+                ticks.append(True)
+                await asyncio.wait_for(read_started.wait(), 3)
+                origin.set(tasks[0])
+                return
+            await asyncio.wait_for(parked.wait(), 3)
+        else:
+            await real_sleep(delay)
+
+    class Worker(TextWorker):
+        def _pulse(self, actor, job, token):
+            result = super()._pulse(actor, job, token)
+            if is_watcher():
+                loop.call_soon_threadsafe(heartbeat_committed.set)
+            return result
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(asyncio, "create_task", create)
+        scoped.setattr(asyncio, "sleep", sleep)
+        try:
+            yield Worker, read_started, heartbeat_committed, is_watcher
+        finally:
+            read_started.set()
+            heartbeat_committed.set()
+            parked.set()
+            assert tasks and all(task.done() for task in tasks), "worker did not cancel watcher"
+
+
 @pytest.mark.parametrize("exhaust", [False, True])
-def test_watchdog_busy_closes_unfinished_io_but_keeps_live_lease(upload_scene, exhaust):
+def test_watchdog_busy_closes_unfinished_io_but_keeps_live_lease(
+    upload_scene, exhaust, monkeypatch
+):
     c = upload_scene
     receipt = perform(c)
     calls, closed = [], []
@@ -555,11 +619,39 @@ def test_watchdog_busy_closes_unfinished_io_but_keeps_live_lease(upload_scene, e
             finally:
                 closed.append(True)
 
-    worker = TextWorker(
-        c["actor_engine"], store_factory=lambda auth: Original(), heartbeat_seconds=0.03
-    )
-    with contend(c["actor_engine"], target=3, exhaust=exhaust):
-        result = asyncio.run(worker.run_one(actor_id=c["actor"], job_id=receipt.job.id))
+    async def transient():
+        with _watchdog_test_schedule(monkeypatch) as (Worker, read_started, committed, _):
+
+            class EventOriginal:
+                async def read(self, actor_id, scope) -> bytes:
+                    assert not c["active"]
+                    calls.append("read")
+                    try:
+                        read_started.set()
+                        await committed.wait()
+                        return b"hello"
+                    finally:
+                        closed.append(True)
+
+            worker = Worker(
+                c["actor_engine"],
+                store_factory=lambda auth: EventOriginal(),
+                heartbeat_seconds=0.03,
+            )
+            with contend(c["actor_engine"], target=3, exhaust=False):
+                return await asyncio.wait_for(
+                    worker.run_one(actor_id=c["actor"], job_id=receipt.job.id), 5
+                )
+
+    if exhaust:
+        # Preserve the original real exhaustion/I/O cancellation scenario verbatim.
+        worker = TextWorker(
+            c["actor_engine"], store_factory=lambda auth: Original(), heartbeat_seconds=0.03
+        )
+        with contend(c["actor_engine"], target=3, exhaust=exhaust):
+            result = asyncio.run(worker.run_one(actor_id=c["actor"], job_id=receipt.job.id))
+    else:
+        result = asyncio.run(transient())
     assert result == ("yielded" if exhaust else "succeeded")
     assert calls == ["read"] and closed == [True]
     with c["actor_tx"](c["actor"]) as db:
@@ -573,6 +665,190 @@ def test_watchdog_busy_closes_unfinished_io_but_keeps_live_lease(upload_scene, e
             text("SELECT count(*) FROM chunks WHERE document_version_id=:v"),
             {"v": receipt.document.version_id},
         ).scalar_one() == (0 if exhaust else 1)
+
+
+@pytest.mark.parametrize("hold_second_work", [False, True])
+def test_watchdog_second_real_work_has_exact_cap_and_live_lease(
+    upload_scene, monkeypatch, hold_second_work
+):
+    """Separate deliberate self-contention regression, not a relaxed success test.
+
+    Historical0cf9f61 demonstrates the old success assertion's deterministic RED.
+    This case instead specifies exact yielded/owned live-lease semantics when a
+    second real heartbeat holds the gate after the transient holder releases.
+    """
+    import json
+    from threading import Event, Thread, get_ident
+    from time import monotonic
+
+    from app.db.leases import heartbeat_job
+    from app.documents.transactions import QuotaUnavailable
+    from psycopg.pq import TransactionStatus
+    from sqlalchemy.exc import SQLAlchemyError
+
+    c = upload_scene
+    receipt = perform(c)
+    sibling_acquired, sibling_release = Event(), Event()
+    state = {"actor": c["actor"], "job": receipt.job.id, "owned": [], "sibling_errors": []}
+    calls, closed = [], []
+
+    def sibling():
+        try:
+            with c["actor_tx"](state["actor"]) as db:
+                assert heartbeat_job(db, state["job"], state["token"], lease_seconds=30)
+                sibling_acquired.set()
+                assert sibling_release.wait(3), "independent heartbeat was not released"
+        except (AssertionError, SQLAlchemyError, psycopg.Error, RuntimeError) as exc:
+            state["sibling_errors"].append(type(exc).__name__)
+            sibling_acquired.set()
+
+    @contextmanager
+    def second_contend(db_engine, **kwargs):
+        with contend(db_engine, **kwargs) as evidence:
+
+            def before(connection, cursor, statement, parameters, context, many):
+                if "SELECT public.quota_gate()" not in statement:
+                    return
+                if get_ident() == state.get("watch_thread"):
+                    state["owned"].append(
+                        {
+                            "connection": connection,
+                            "raw": connection.connection.dbapi_connection,
+                            "rolled": False,
+                            "idle": False,
+                        }
+                    )
+
+            def rollback(connection):
+                for item in state["owned"]:
+                    if item["connection"] is connection:
+                        item["rolled"] = True
+
+            def checkin(raw, record):
+                for item in state["owned"]:
+                    if item["raw"] is raw:
+                        item["idle"] = raw.info.transaction_status == TransactionStatus.IDLE
+                # Registered AFTER real_contend: it has already rolled back its
+                # holder for this exact rejected callback before we acquire work.
+                if (
+                    len(state["owned"]) == 1
+                    and state["owned"][0]["raw"] is raw
+                    and "thread" not in state
+                ):
+                    state["thread"] = Thread(target=sibling, name="b3-independent-heartbeat")
+                    state["thread"].start()
+                    assert sibling_acquired.wait(3), "second real heartbeat never acquired gate"
+                    assert not state["sibling_errors"]
+                    if not hold_second_work:
+                        sibling_release.set()
+                        state["thread"].join(3)
+                        assert not state["thread"].is_alive()
+
+            listeners = [
+                ("before_cursor_execute", before),
+                ("rollback", rollback),
+                ("checkin", checkin),
+            ]
+            for name, fn in listeners:
+                event.listen(db_engine, name, fn)
+            try:
+                yield evidence
+            finally:
+                sibling_release.set()
+                try:
+                    if "thread" in state:
+                        state["thread"].join(3)
+                finally:
+                    for name, fn in listeners:
+                        event.remove(db_engine, name, fn)
+                assert "thread" not in state or not state["thread"].is_alive()
+                assert not state["sibling_errors"]
+
+    async def run():
+        with _watchdog_test_schedule(monkeypatch) as (Worker, read_started, committed, is_watcher):
+
+            class ObservedWorker(Worker):
+                def _claim(self, actor, job_id):
+                    claimed = super()._claim(actor, job_id)
+                    assert claimed is not None
+                    state["token"] = claimed[0]
+                    return claimed
+
+                def _pulse(self, actor, job, token):
+                    if not is_watcher():
+                        return super()._pulse(actor, job, token)
+                    state["watch_thread"] = get_ident()
+                    started = monotonic()
+                    try:
+                        return super()._pulse(actor, job, token)
+                    except QuotaUnavailable as exc:
+                        elapsed = monotonic() - started
+                        owned = state["owned"]
+                        assert len(owned) == 3 and exc.code == "quota_gate_busy"
+                        assert elapsed < 0.25, "deadline exhaustion, not the intended attempt cap"
+                        assert all(item["rolled"] and item["idle"] for item in owned)
+                        assert all(
+                            item["connection"].closed and not item["connection"].in_transaction()
+                            for item in owned
+                        )
+                        state["cap"] = {
+                            "attempts": len(owned),
+                            "elapsed_ms": round(elapsed * 1000, 3),
+                            "deadline_ms": 250,
+                            "own_rollback_idle_closed": True,
+                        }
+                        raise
+
+            class Original:
+                async def read(self, actor_id, scope) -> bytes:
+                    assert not c["active"]
+                    calls.append("read")
+                    try:
+                        read_started.set()
+                        await committed.wait()
+                        return b"hello"
+                    finally:
+                        closed.append(True)
+
+            worker = ObservedWorker(
+                c["actor_engine"], store_factory=lambda auth: Original(), heartbeat_seconds=0.03
+            )
+            with second_contend(c["actor_engine"], target=3, exhaust=False):
+                return await asyncio.wait_for(
+                    worker.run_one(actor_id=c["actor"], job_id=receipt.job.id), 5
+                )
+
+    result = asyncio.run(run())
+    assert result == ("yielded" if hold_second_work else "succeeded")
+    assert calls == ["read"] and closed == [True]
+    assert ("cap" in state) == hold_second_work
+    with c["actor_tx"](c["actor"]) as db:
+        row = db.execute(
+            text(
+                "SELECT status,attempts,lease_token,lease_expires_at>clock_timestamp() FROM ingestion_jobs WHERE id=:j"
+            ),
+            {"j": receipt.job.id},
+        ).one()
+        assert row[:2] == ("running" if hold_second_work else "succeeded", 1)
+        assert row[2] == (state["token"] if hold_second_work else None)
+        assert row[3] is (True if hold_second_work else None)
+        assert db.execute(
+            text("SELECT count(*) FROM chunks WHERE document_version_id=:v"),
+            {"v": receipt.document.version_id},
+        ).scalar_one() == (0 if hold_second_work else 1)
+    print(
+        "B3_SYNC_GREEN "
+        + json.dumps(
+            {
+                "hold_second_work": hold_second_work,
+                "result": result,
+                "cap": state.get("cap"),
+                "io_calls": len(calls),
+                "io_closed": bool(closed),
+                "sibling_errors": state["sibling_errors"],
+            }
+        )
+    )
 
 
 @pytest.mark.parametrize(
