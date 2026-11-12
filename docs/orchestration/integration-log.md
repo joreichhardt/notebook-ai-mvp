@@ -1,5 +1,13 @@
 # Integration log
 
+## B3-Merge-Kandidat in Main, eigener Prüflauf folgt
+
+- Inzwischen A5-Finalmeldung empfangen: getesteter Code`b02d7793468b15d82ef6d5a68e16b88e85211ddd`, Docs-HEAD`e513db812bde1294aa813a0f5205c0ae315facb4`; frische kube1-DB/default281Tests+Ruff/FINAL_EXIT0, Quoten-/Migrationsmatrix38/QUOTA_EXIT0,15aktivePythonLSPclean, CleanupExit0/0eigeneRessourcen. Das ist ein Workerbeleg, keine Mainreview oder kombinierte B3/0006-Freigabe.0006 wird erst seriell nach dem B3-Mainprüflauf geprüft/übernommen.
+- Main prüfte den finalen Portabilitätsdiff von `8511c772` bis `17fcc812`: nur erwarteter URL-Credential-Clear/Querybereinigung/Assertion und B3-Handoff; Produktionsguard unverändert. Danach Branchancestry in sauberes Main`35775bc` seriell gemergt, noch ohne neue Runtime-/HTTP-Freischaltung.
+- Einziger Konflikt: `docs/operations/testing-kube1.md`. Vollständigen Main-Datenbankabschnitt und gemeinsamen SCRAM-Fixtureabschnitt nach Sichtung erhalten, nur Konfliktmarker entfernt; keine blinde ours/theirs-Auswahl. Runbook trennt B3-Fixture/314erNachweis von noch ausstehender Main-Abnahme.
+- Neuer Guard auch im Supervisor durch erwartete Ablehnung einer read-only Dry-run-Probe am neuen Kontextvalidator nachgewiesen; kein Commit/Repoeingriff durch die Probe, keine Umgehung. Coreprozesswechsel bleibt separat.
+- Dieser Merge ist zunächst ein **committeter Testkandidat**, kein Main314-/Full-Flow-Beleg. Nächster Schritt: unveränderliches Archiv in Main-eigenem kube1-Projekt, frische0005/SCRAM/Defaultsuite/Ruff/aktiveLSP und scopedCleanup.0006 bleibt A5-WIP; Storage-/Dispatch-/Quieszenz-/Provisionierungsgates und deaktivierte Capabilities unverändert.
+
 ## Guard korrigiert, beide Worker sicher aktiviert; Dokumentation konsolidiert
 
 - Nutzer autorisierte ausdrücklich den Secret-Guard-Fix und bestätigte den geordneten A5-Exit. Main prüfte tatsächlich PID497167 abwesend und keinen A5-Pi, bevor derselbe Quoten-Task im bestehenden Worktree wieder startete. Frühere fehlgeschlagene Zustellversuche und No-op-Stop-/Release-Resultate wurden nie als Exit gewertet. Pi verwendet `/quit`, nicht den zuvor von Main irrtümlich genannten `/exit`.
