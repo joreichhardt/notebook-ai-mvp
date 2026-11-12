@@ -8,6 +8,13 @@
 - Zuerst Bestand und Git-Status prüfen; Nutzeränderungen erhalten. In kleinen vertikalen Schritten arbeiten und passende Prüfungen ausführen. Versionen und Befehle aus dem Projekt ableiten, externe APIs anhand offizieller Dokumentation prüfen.
 - Fehlende Zugänge blockieren nur abhängige Schritte. Unabhängige Arbeit fortsetzen. Abschließend Änderungen, tatsächlich ausgeführte Tests und offene Punkte nennen; lokale Tests und Produktionsnachweise unterscheiden.
 
+## Dokumentation laufend pflegen
+
+- Bei jeder Änderung an Verhalten, Schnittstellen, Konfiguration, Betrieb oder Arbeitsstand die betroffenen Markdown-Dateien im selben Arbeitsschritt aktualisieren, spätestens vor Abschluss/Übergabe. Tatsächlich implementiert, getestet und offen klar trennen; Nachweise mit geprüftem Stand und Umgebung angeben. Auch diese `AGENTS.md` bei geänderten Arbeitsregeln aktuell halten.
+- Die wesentliche Projektdokumentation liegt übersichtlich unter `docs/`; Einstieg ist [docs/README.md](docs/README.md). Sie umfasst Produktumfang, Architektur/Schnittstellen, lokalen Start und Konfiguration, Tests, Betrieb sowie Grenzen und nächste Schritte. Kurze, ausführbare Anleitungen und gezielte Links bevorzugen; vorhandene Dokumente ergänzen statt parallele oder spekulative Dokumentationsbestände anzulegen.
+- Jede Information hat einen maßgeblichen Ort: Anforderungen in der Spezifikation, aktueller Aufgabenstand im Plan, Schnittstellen in den Verträgen, Prüfhistorie im Integrationslog. Handoffs enthalten einen knappen aktuellen Einstieg und verweisen auf Details; historische Nachweise als solche kennzeichnen. Veraltete Anweisungen berichtigen oder aus dem aktuellen Einstieg entfernen. Neue/verschobene Dokumente im Index verlinken und lokale Links prüfen.
+- Hauptagent pflegt Index und gemeinsame Dokumente gemäß `multi-agent.md`. Worker aktualisieren ihre zugewiesenen Bereichsdokumente und eigenen Handoffs fortlaufend und melden Änderungen an gemeinsamen Dokumenten an den Hauptagenten. Dokumentationspflege ist Bestandteil der Abnahme; keine Secrets oder privaten Einladungslinks dokumentieren.
+
 ## Infrastrukturwissen aus ~/dev/homeserver
 
 - Bei Arbeiten an kube1, Deployment, Netzwerk, Cloudflare, SMTP oder Betriebs-Secrets zuerst `~/dev/homeserver/README.md` und `~/dev/homeserver/secrets/README.md` lesen. Danach gezielt relevante Architekturdateien und Runbooks konsultieren; `services/excalidraw/README.md` beschreibt bestehende kube1-/Tunnel-Konventionen.

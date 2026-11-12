@@ -2,6 +2,8 @@
 
 Private Notebooks mit nachvollziehbaren Quellenantworten. Python/FastAPI, React/TypeScript und selbst gehostetes Supabase; Secrets aus Bitwarden Secrets Manager über `bws`.
 
+Dokumentation: [Übersicht und Einstieg](docs/README.md).
+
 ## Entwicklungsstand
 
 Implementiert sind Authentifizierung, Workspace-/Notebook-Verwaltung, Einladungsannahme für bestätigte Konten, Mitgliederrollen und persönliche Anbieter-Verbindungen mit Modellprüfung. Zusätzlich sind die Datenbasis für Dokumentversionen, Chunks und abgeschirmte Jobs (Migrationen 0003/0004) sowie interne Streaming-/Embedding-Adapter mit persönlicher Ausführungsprüfung integriert. Diese Bausteine sind noch nicht als Upload-/Chat-Funktionen freigeschaltet. Dies ist noch kein produktionsfertiger NotebookLM-Klon. Upload, belegte Modellantworten, Graphretrieval und die Registrierung neuer Konten sind noch offen. Persönliche Anbieter-Verbindungen benötigen eine konfigurierte Bitwarden-Instanz und freigegebene Endpoints. Es gibt keine fingierten Antworten oder Produktions-Auth-Mocks.
