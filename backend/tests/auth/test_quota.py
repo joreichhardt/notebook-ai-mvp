@@ -1,5 +1,7 @@
 """Quota head: direct runtime SQL, not privileged quota assertions."""
 
+from uuid import uuid4
+
 import psycopg
 import pytest
 from sqlalchemy import text
@@ -8,6 +10,29 @@ from test_uploads import URL, app, confirm, reserve
 
 pytest_plugins = ["test_uploads"]
 pytestmark = pytest.mark.skipif(not URL, reason="Isolated PostgreSQL URL not configured")
+
+
+@pytest.fixture
+def many_scopes():
+    actors = [uuid4() for _ in range(6)]
+    workspaces, notebooks = [uuid4(), uuid4()], [uuid4(), uuid4()]
+    with psycopg.connect(URL) as db:
+        for actor in actors:
+            db.execute("INSERT INTO app_admissions VALUES (%s)", (actor,))
+        for workspace, notebook in zip(workspaces, notebooks, strict=True):
+            db.execute("INSERT INTO workspaces(id,name) VALUES (%s,'quota multi')", (workspace,))
+            db.execute("INSERT INTO notebooks VALUES (%s,%s,'quota multi')", (notebook, workspace))
+            for actor in actors:
+                db.execute(
+                    "INSERT INTO workspace_members VALUES (%s,%s,'editor')", (workspace, actor)
+                )
+    try:
+        yield actors, notebooks
+    finally:
+        with psycopg.connect(URL) as db:
+            db.execute("DELETE FROM workspaces WHERE id=ANY(%s)", (workspaces,))
+            db.execute("DELETE FROM app_admissions WHERE user_id=ANY(%s)", (actors,))
+            db.execute("DELETE FROM upload_intents WHERE workspace_id=ANY(%s)", (workspaces,))
 
 
 def test_actor_notebook_capacity_rolls_back_statement(scope):
@@ -28,6 +53,48 @@ def test_actor_notebook_capacity_rolls_back_statement(scope):
             == 10
         )
         assert reserve(db, notebook, idempotency_key="quota-0").id
+
+
+def test_notebook_outstanding_fifty_and_replay(many_scopes):
+    from app.db.quota import classify_quota_error
+
+    actors, notebooks = many_scopes
+    for n in range(50):
+        with app(actors[n // 10]) as db:
+            reserve(db, notebooks[0], idempotency_key=str(n))
+    with app(actors[0]) as db:
+        assert reserve(db, notebooks[0], idempotency_key="0").id
+    with pytest.raises(DBAPIError) as caught, app(actors[5]) as db:
+        reserve(db, notebooks[0], idempotency_key="fifty-first")
+    assert classify_quota_error(caught.value) == "quota_capacity"
+    with app(actors[5]) as db:
+        assert reserve(db, notebooks[1], idempotency_key="other-notebook").id
+
+
+def test_actor_active_is_global_and_notebook_active_four(many_scopes):
+    from app.db.leases import claim_job
+    from app.db.quota import classify_quota_error
+
+    actors, notebooks = many_scopes
+    first = [finalized(actors[0], notebooks[n % 2], str(n)) for n in range(3)]
+    for intent in first[:2]:
+        with app(actors[0]) as db:
+            assert claim_job(db, intent.job_id)
+    with pytest.raises(DBAPIError) as caught, app(actors[0]) as db:
+        claim_job(db, first[2].job_id)
+    assert classify_quota_error(caught.value) == "quota_capacity"
+    # First actor uses one slot in this notebook; three other actors fill four.
+    for actor in actors[1:4]:
+        intent = finalized(actor, notebooks[0], str(actor))
+        with app(actor) as db:
+            assert claim_job(db, intent.job_id)
+    fifth = finalized(actors[4], notebooks[0], "fifth")
+    with pytest.raises(DBAPIError) as caught, app(actors[4]) as db:
+        claim_job(db, fifth.job_id)
+    assert classify_quota_error(caught.value) == "quota_capacity"
+    independent = finalized(actors[4], notebooks[1], "independent")
+    with app(actors[4]) as db:
+        assert claim_job(db, independent.job_id)
 
 
 def test_classifier_matches_only_exact_driver_errors():
@@ -174,3 +241,63 @@ def test_unsupported_isolation_fails_closed(scope, isolation):
             db.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
         db.execute("SELECT public.quota_gate()")
     assert classify_quota_error(caught.value) == "quota_isolation_unsupported"
+
+
+def test_already_started_insert_uses_fresh_snapshot_after_gate(scope):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from time import sleep
+
+    from app.db.quota import classify_quota_error
+
+    actor, _, _, _, workspace, notebook = scope
+    for n in range(9):
+        with app(actor) as db:
+            reserve(db, notebook, idempotency_key=str(n))
+    started = Event()
+    backend_pids: list[int] = []
+
+    def delayed_insert():
+        try:
+            with psycopg.connect(URL, user="notebook_app") as db:
+                db.execute("SELECT set_config('request.jwt.claim.sub',%s,true)", (str(actor),))
+                pid = db.info.backend_pid
+                backend_pids.append(pid)
+                started.set()
+                # Snapshot is taken before the other transaction commits, gate
+                # is deliberately reached afterward in this SAME SQL statement.
+                db.execute(
+                    """
+                    WITH delayed AS MATERIALIZED (SELECT pg_sleep(1))
+                    INSERT INTO upload_intents(workspace_id,notebook_id,idempotency_key,filename,sha256,byte_count,media_type)
+                    SELECT %s,%s,'stale-snapshot','x.txt',%s,5,'text/plain' FROM delayed
+                """,
+                    (workspace, notebook, "a" * 64),
+                )
+        except psycopg.Error as error:
+            return classify_quota_error(error)
+        return "incorrectly_admitted"
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with app(actor) as holder:
+            reserve(holder, notebook, idempotency_key="tenth")
+            future = pool.submit(delayed_insert)
+            assert started.wait(3)
+            with psycopg.connect(URL, autocommit=True) as observer:
+                for _ in range(100):
+                    if observer.execute(
+                        "SELECT wait_event FROM pg_stat_activity WHERE pid=%s", (backend_pids[0],)
+                    ).fetchone() == ("PgSleep",):
+                        break
+                    sleep(0.005)
+                else:
+                    pytest.fail("delayed statement never reached its pre-gate sleep")
+        # The late gate winner MUST see the committed tenth row, not its initial snapshot.
+        assert future.result(timeout=5) == "quota_capacity"
+    with app(actor) as db:
+        assert (
+            db.execute(
+                text("SELECT count(*) FROM upload_intents WHERE notebook_id=:n"), {"n": notebook}
+            ).scalar_one()
+            == 10
+        )
