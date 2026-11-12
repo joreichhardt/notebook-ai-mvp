@@ -1,5 +1,5 @@
 """Bounded UTF-8 TXT/Markdown only. No PDF parser or credential access."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import PurePosixPath
 from typing import Protocol
@@ -23,8 +23,8 @@ class ByteReader(Protocol):
 class TextUpload:
     filename: str
     media_type: str
-    data: bytes
-    text: str
+    data: bytes = field(repr=False)
+    text: str = field(repr=False)
     sha256: str
 
 
@@ -32,13 +32,15 @@ class TextUpload:
 class TextChunk:
     start: int
     end: int
-    text: str
+    text: str = field(repr=False)
     sha256: str
 
 
 def decode_text(data: bytes) -> str:
     if len(data) > MAX_UPLOAD_BYTES:
         raise TextRejected("upload_too_large")
+    if data.startswith((b"%PDF-", b"PK\x03\x04", b"\x89PNG", b"GIF8")):
+        raise TextRejected("invalid_text")
     try:
         value = data.decode("utf-8", errors="strict")
     except UnicodeError:
@@ -71,8 +73,6 @@ async def read_text_upload(reader: ByteReader, filename: str, media_type: str) -
         data.extend(block)
     original = bytes(data)
     value = decode_text(original)
-    if original.startswith((b"%PDF-", b"PK\x03\x04", b"\x89PNG", b"GIF8")):
-        raise TextRejected("invalid_text")
     return TextUpload(name, media, original, value, sha256(original).hexdigest())
 
 

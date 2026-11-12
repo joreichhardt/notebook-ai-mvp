@@ -239,3 +239,52 @@ def test_real_lease_expiry_at_finish_rolls_back_flushed_chunks(scene, monkeypatc
         assert db.scalars(select(Chunk).where(Chunk.document_version_id == version)).all() == []
         row = db.get(IngestionJob, job)
         assert row is not None and row.status == "running"
+
+
+def test_crash_reclaim_is_bounded_and_old_worker_cannot_publish(scene):
+    from app.ingestion.text import chunks
+    from app.workers.text import LeaseLost
+
+    actor, _, _, _, _, worker = scene
+    _, version, job = persisted_job(scene)
+    initial = worker._claim(actor, job)
+    assert initial is not None
+    old_token, source = initial
+    with psycopg.connect(URL) as admin:
+        admin.execute("UPDATE ingestion_jobs SET lease_expires_at=clock_timestamp()-interval '1s' "
+                      "WHERE id=%s", (job,))
+    worker.store_factory = lambda auth: SyntheticStore(b"hello")
+    assert asyncio.run(worker.run_one(actor_id=actor, job_id=job)) == "succeeded"
+    with pytest.raises(LeaseLost):
+        worker._publish(actor, job, old_token, source, chunks("hello"))
+    with worker._session(actor) as db:
+        row = db.get(IngestionJob, job)
+        assert row is not None and row.attempts == 2
+        assert len(db.scalars(select(Chunk).where(Chunk.document_version_id == version)).all()) == 1
+
+    _, _, exhausted = persisted_job(scene, key="exhausted")
+    with psycopg.connect(URL) as admin:
+        admin.execute("UPDATE ingestion_jobs SET attempts=5 WHERE id=%s", (exhausted,))
+    assert asyncio.run(worker.run_one(actor_id=actor, job_id=exhausted)) == "not_claimed"
+
+
+def test_pdf_job_has_explicit_unsupported_failure_without_io(scene):
+    actor, _, _, _, _, worker = scene
+    _, _, job = persisted_job(scene, b"%PDF-1.7", media="application/pdf")
+    store = SyntheticStore(b"%PDF-1.7")
+    worker.store_factory = lambda auth: store
+    assert asyncio.run(worker.run_one(actor_id=actor, job_id=job)) == "failed"
+    assert store.calls == 0
+    with worker._session(actor) as db:
+        row = db.get(IngestionJob, job)
+        assert row is not None and row.error_code == "unsupported_media"
+
+
+def test_runtime_refuses_superuser_engine_before_claim(scene):
+    actor, _, _, _, _, _ = scene
+    engine = create_engine(make_url(URL).set(drivername="postgresql+psycopg"), hide_parameters=True)
+    try:
+        with pytest.raises(RuntimeError, match="unsafe_database_role"):
+            asyncio.run(TextWorker(engine).run_one(actor_id=actor, job_id=uuid4()))
+    finally:
+        engine.dispose()

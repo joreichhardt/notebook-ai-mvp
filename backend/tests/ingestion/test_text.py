@@ -56,3 +56,18 @@ async def test_actual_bytes_and_aggregate_characters_are_bounded():
 async def test_display_name_removes_path_and_format_controls():
     upload = await read_text_upload(Reader(b"safe"), "C:\\fake\\a\u202etxt.md", "text/markdown")
     assert upload.filename == "atxt.md"
+
+
+def test_worker_decoder_also_rejects_disguised_pdf_and_binary_signatures():
+    from app.ingestion.text import decode_text
+
+    for data in (b"%PDF-1.7", b"GIF89a", b"PK\x03\x04"):
+        with pytest.raises(TextRejected, match="invalid_text"):
+            decode_text(data)
+
+
+@pytest.mark.anyio
+async def test_content_is_not_exposed_by_value_repr():
+    upload = await read_text_upload(Reader(b"private-body-fixture"), "x.txt", "text/plain")
+    assert "private-body-fixture" not in repr(upload)
+    assert "private-body-fixture" not in repr(chunks(upload.text)[0])

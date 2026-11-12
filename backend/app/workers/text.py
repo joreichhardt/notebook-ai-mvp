@@ -172,10 +172,14 @@ class TextWorker:
         work, watcher = asyncio.create_task(execute()), asyncio.create_task(watch())
         try:
             done, _ = await asyncio.wait((work, watcher), return_when=asyncio.FIRST_COMPLETED)
-            if watcher in done:
-                watcher.result()
-            await work
-            return "succeeded"
+            # A heartbeat racing AFTER the successful terminal commit sees no
+            # running lease. Completed work wins that reporting race; failures
+            # still propagate from work, and a lost watcher cancels unfinished I/O.
+            if work in done:
+                await work
+                return "succeeded"
+            watcher.result()
+            raise LeaseLost()
         except LeaseLost:
             return "lease_lost"
         except (TextRejected, StorageError) as exc:
