@@ -1,7 +1,7 @@
 """F3a independent checks on a fresh, isolated PostgreSQL 16 database.
 
-Never point NOTEBOOK_TEST_POSTGRES_URL at a shared/live database. One strict
-xfail documents a confirmed baseline defect, not a waived acceptance criterion.
+Never point NOTEBOOK_TEST_POSTGRES_URL at a shared/live database.
+F3a-01 is retained as an ordinary regression after independent fix verification.
 """
 
 import asyncio
@@ -97,9 +97,6 @@ def corpus():
             )
 
 
-@pytest.mark.xfail(
-    strict=True, reason="F3a-01: DELETE/reinsert changes another actor's job profile"
-)
 def test_referenced_profile_identity_cannot_be_replaced(corpus):
     c = corpus
     # An editor cannot even read this other member's job or connection.
