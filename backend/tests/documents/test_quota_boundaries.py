@@ -42,20 +42,24 @@ def contend(engine, *, target=1, marker="SELECT public.quota_gate()", exhaust=Fa
             acquired = True
 
     def rollback(connection):
-        nonlocal released
         if acquired and not released:
             rollbacks.append(True)
-            if not exhaust:
-                holder.rollback()
-                released = True
+
+    def checked_in(connection, record):
+        nonlocal released
+        if acquired and rollbacks and not released and not exhaust:
+            holder.rollback()
+            released = True
 
     event.listen(engine, "before_cursor_execute", before)
     event.listen(engine, "rollback", rollback)
+    event.listen(engine, "checkin", checked_in)
     try:
         yield seen, xids, rollbacks
     finally:
         event.remove(engine, "before_cursor_execute", before)
         event.remove(engine, "rollback", rollback)
+        event.remove(engine, "checkin", checked_in)
         holder.rollback()
         holder.close()
 
@@ -164,3 +168,78 @@ def test_worker_busy_is_bounded_without_repeating_io_or_losing_fence(
     else:
         assert row == ("cancelled" if phase == "cancel" else "succeeded", 1, None)
         assert chunks == (0 if phase == "cancel" else 1)
+
+
+def test_head_pdf_is_rejected_before_intent_job_or_storage(upload_scene):
+    from dataclasses import replace
+
+    c = upload_scene
+    with pytest.raises(DocumentError) as caught:
+        perform(c, upload=replace(sample(), filename="sample.pdf", media_type="application/pdf"))
+    assert (caught.value.status_code, caught.value.code) == (415, "unsupported_media")
+    assert c["store"].actions == []
+    with psycopg.connect(URL) as db:
+        for table in ("upload_intents", "documents", "ingestion_jobs"):
+            # Fixed identifiers, bound notebook; no user-controlled SQL.
+            from psycopg import sql
+
+            assert db.execute(
+                sql.SQL("SELECT count(*) FROM {} WHERE notebook_id=%s").format(
+                    sql.Identifier(table)
+                ),
+                (c["notebook"],),
+            ).fetchone() == (0,)
+
+
+def test_worker_capacity_honors_deleted_jobs_live_mirror_without_io(upload_scene):
+    c = upload_scene
+    receipts = [perform(c, key=f"mirror-{n}") for n in range(3)]
+    calls = []
+
+    class Original:
+        async def read(self, actor_id, scope):
+            calls.append("read")
+            return b"hello"
+
+    worker = TextWorker(c["actor_engine"], store_factory=lambda auth: Original())
+    for receipt in receipts[:2]:
+        assert worker._claim(c["actor"], receipt.job.id) is not None
+        with psycopg.connect(URL) as setup:
+            setup.execute("DELETE FROM ingestion_jobs WHERE id=%s", (receipt.job.id,))
+    assert (
+        asyncio.run(worker.run_one(actor_id=c["actor"], job_id=receipts[2].job.id)) == "not_claimed"
+    )
+    assert calls == []
+    with c["actor_tx"](c["actor"]) as db:
+        assert db.execute(
+            text("SELECT status,attempts,lease_token FROM ingestion_jobs WHERE id=:j"),
+            {"j": receipts[2].job.id},
+        ).one() == ("queued", 0, None)
+    with psycopg.connect(URL) as setup:
+        assert setup.execute(
+            "SELECT count(*) FROM upload_intents WHERE notebook_id=%s AND work_cancelled AND job_state='running' AND job_lease_expires_at>clock_timestamp()",
+            (c["notebook"],),
+        ).fetchone() == (2,)
+
+
+def test_readmission_never_reactivates_sticky_cancelled_work(upload_scene):
+    c = upload_scene
+    receipt = perform(c)
+    with psycopg.connect(URL) as setup:
+        setup.execute("DELETE FROM app_admissions WHERE user_id=%s", (c["actor"],))
+        setup.execute("INSERT INTO app_admissions VALUES (%s)", (c["actor"],))
+    calls = []
+
+    class Original:
+        async def read(self, actor_id, scope):
+            calls.append("read")
+            return b"hello"
+
+    worker = TextWorker(c["actor_engine"], store_factory=lambda auth: Original())
+    assert asyncio.run(worker.run_one(actor_id=c["actor"], job_id=receipt.job.id)) == "not_claimed"
+    assert calls == []
+    with psycopg.connect(URL) as setup:
+        assert setup.execute(
+            "SELECT work_cancelled,job_state,job_attempts FROM upload_intents WHERE job_id=%s",
+            (receipt.job.id,),
+        ).fetchone() == (True, "queued", 0)

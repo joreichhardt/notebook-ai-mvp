@@ -35,6 +35,7 @@ from app.documents.storage import (
     StorageError,
     SupabaseStorage,
 )
+from app.documents.transactions import QuotaUnavailable, short_transaction
 from app.ingestion.text import TextRejected, TextUpload, read_text_upload
 
 ActorTx = Callable[[UUID], AbstractContextManager[Session]]
@@ -126,28 +127,34 @@ class UploadService:
             raise DocumentError("authentication_required", 401)
         if self.actor_tx is None:
             raise DocumentError("database_unconfigured")
-        try:
-            with self.actor_tx(actor) as db:
-                self._role(db, "notebook_app")
-                subject = db.execute(
-                    text("SELECT current_setting('request.jwt.claim.sub',true)")
-                ).scalar_one()
-                if subject != str(actor):
-                    raise DocumentError("unsafe_actor_context")
-                if db.scalar(select(Admission.user_id).where(Admission.user_id == actor)) is None:
-                    raise DocumentError("admission_required", 403)
-                yield db
-        except SQLAlchemyError:
-            raise DocumentError("database_unavailable") from None
+        with self.actor_tx(actor) as db:
+            self._role(db, "notebook_app")
+            subject = db.execute(
+                text("SELECT current_setting('request.jwt.claim.sub',true)")
+            ).scalar_one()
+            if subject != str(actor):
+                raise DocumentError("unsafe_actor_context")
+            if db.scalar(select(Admission.user_id).where(Admission.user_id == actor)) is None:
+                raise DocumentError("admission_required", 403)
+            yield db
 
     @contextmanager
     def _io(self) -> Iterator[Session]:
         if self.io_tx is None:
             raise DocumentError("storage_unconfigured")
+        with self.io_tx() as db:
+            self._role(db, "notebook_storage_io")
+            yield db
+
+    def _db[T](self, actor: UUID, operation: Callable[[Session], T], *, io: bool = False) -> T:
+        def attempt() -> T:
+            with self._io() if io else self._actor(actor) as db:
+                return operation(db)
+
         try:
-            with self.io_tx() as db:
-                self._role(db, "notebook_storage_io")
-                yield db
+            return short_transaction(attempt)
+        except QuotaUnavailable as exc:
+            raise DocumentError(exc.code, 429 if exc.code == "quota_capacity" else 503) from None
         except SQLAlchemyError:
             raise DocumentError("database_unavailable") from None
 
@@ -190,7 +197,8 @@ class UploadService:
     ) -> list[DocumentDTO]:
         if type(limit) is not int or not 1 <= limit <= 100:
             raise DocumentError("invalid_limit", 422)
-        with self._actor(actor_id) as db:
+
+        def listing(db: Session):
             self._notebook(db, actor_id, notebook_id, write=False)
             rows = db.execute(
                 self._projection(notebook_id)
@@ -198,6 +206,8 @@ class UploadService:
                 .limit(limit)
             ).mappings()
             return [DocumentDTO(**row) for row in rows]  # NO raw/private job query for members
+
+        return self._db(actor_id, listing)
 
     async def upload(
         self,
@@ -212,8 +222,7 @@ class UploadService:
         expected_version_id: UUID | None = None,
     ) -> UploadReceipt:
         try:
-            with self._actor(actor_id) as db:
-                self._notebook(db, actor_id, notebook_id, write=True)
+            self._db(actor_id, lambda db: self._notebook(db, actor_id, notebook_id, write=True))
             if not self.configured:
                 raise DocumentError("storage_unconfigured")
             if connection_id is not None or index_profile_id is not None:
@@ -229,8 +238,9 @@ class UploadService:
             )
             if validated != upload:
                 raise DocumentError("invalid_upload", 422)
-            with self._actor(actor_id) as db:
-                intent = reserve_upload(
+
+            def reserve(db: Session):
+                return reserve_upload(
                     db,
                     notebook_id,
                     idempotency_key=idempotency_key,
@@ -239,14 +249,17 @@ class UploadService:
                     byte_count=len(upload.data),
                     media_type=upload.media_type,
                 )
+
+            intent = self._db(actor_id, reserve)
             scope = ObjectScope(
                 intent.workspace_id, intent.notebook_id, intent.document_id, intent.version_id
             )
             if scope.key != intent.storage_key:
                 raise DocumentError("invalid_upload_intent")
             if intent.state not in ("stored", "finalized"):
-                with self._io() as db:
-                    claim = claim_upload_io(db, intent.id, lease_seconds=120)
+                claim = self._db(
+                    actor_id, lambda db: claim_upload_io(db, intent.id, lease_seconds=120), io=True
+                )
                 if claim is None:
                     raise DocumentError("upload_in_progress")
                 if (claim.storage_key, claim.sha256, claim.byte_count, claim.media_type) != (
@@ -262,9 +275,10 @@ class UploadService:
                 ):
                     if actor != actor_id or target != scope or action not in ("read", "write"):
                         raise DocumentError("upload_forbidden", 403)
-                    with self._actor(actor_id) as db:
-                        if not check_upload_admission(db, intent.id, claim.token):
-                            raise DocumentError("upload_unavailable")
+                    if not self._db(
+                        actor_id, lambda db: check_upload_admission(db, intent.id, claim.token)
+                    ):
+                        raise DocumentError("upload_unavailable")
 
                 # No transaction spans external work.120s single-use lease leaves
                 # margin beyond two adapter30s action groups; never renew/reuse key.
@@ -280,12 +294,16 @@ class UploadService:
                         or sha256(original).hexdigest() != upload.sha256
                     ):
                         raise DocumentError("original_integrity_failed", 502)
-                with self._io() as db:
-                    if not confirm_upload_io(
+                if not self._db(
+                    actor_id,
+                    lambda db: confirm_upload_io(
                         db, intent.id, claim.token, sha256=upload.sha256, byte_count=len(original)
-                    ):
-                        raise DocumentError("upload_unavailable")
-            with self._actor(actor_id) as db:
+                    ),
+                    io=True,
+                ):
+                    raise DocumentError("upload_unavailable")
+
+            def finalize(db: Session):
                 self._notebook(db, actor_id, notebook_id, write=True)
                 result = finalize_upload(db, intent.id)
                 row = (
@@ -305,8 +323,9 @@ class UploadService:
                     .mappings()
                     .one()
                 )
-                receipt = UploadReceipt(document=DocumentDTO(**row), job=JobDTO(**job))
-            return receipt  # Final transaction COMMITTED before any accepted response.
+                return UploadReceipt(document=DocumentDTO(**row), job=JobDTO(**job))
+
+            return self._db(actor_id, finalize)  # COMMITTED before accepted response.
         except UploadConflict:
             raise DocumentError("upload_idempotency_conflict", 409) from None
         except UploadUnavailable:

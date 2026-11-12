@@ -24,6 +24,7 @@ from app.documents.storage import (
     StorageError,
     SupabaseStorage,
 )
+from app.documents.transactions import QuotaUnavailable, retry_transaction
 from app.ingestion.text import TextChunk, TextRejected, chunks, decode_text
 
 
@@ -88,6 +89,7 @@ class TextWorker:
                 raise LeaseLost("admission_revoked")
             yield session
 
+    @retry_transaction
     def _claim(self, actor: UUID, job_id: UUID) -> tuple[UUID, Source] | None:
         with self._session(actor) as db:
             # Cooperating callers serialize per actor, across notebooks/processes.
@@ -131,11 +133,13 @@ class TextWorker:
             )
             return token, source  # context exits and commits BEFORE any I/O
 
+    @retry_transaction
     def _pulse(self, actor: UUID, job: UUID, token: UUID) -> None:
         with self._session(actor) as db:
             if not heartbeat_job(db, job, token, lease_seconds=self.lease_seconds):
                 raise LeaseLost()
 
+    @retry_transaction
     def _finish(
         self, actor: UUID, job: UUID, token: UUID, status: Literal["failed", "cancelled"], code: str
     ) -> bool:
@@ -146,6 +150,7 @@ class TextWorker:
                 raise LeaseLost()
             return True
 
+    @retry_transaction
     def _publish(
         self, actor: UUID, job: UUID, token: UUID, source: Source, parts: tuple[TextChunk, ...]
     ) -> None:
@@ -178,7 +183,7 @@ class TextWorker:
         """Trusted actor-bound seam; never registers a route or discovers other actors."""
         try:
             claimed = await asyncio.to_thread(self._claim, actor_id, job_id)
-        except LeaseLost:
+        except (LeaseLost, QuotaUnavailable):
             return "not_claimed"
         if claimed is None:
             return "not_claimed"
@@ -221,16 +226,22 @@ class TextWorker:
                 return "succeeded"
             watcher.result()
             raise LeaseLost()
+        except QuotaUnavailable:
+            # A claim already committed. Keep its token/attempt/lease until a
+            # future fenced transition or real expiry; do not repeat source I/O.
+            return "yielded"
         except LeaseLost:
             return "lease_lost"
         except (TextRejected, StorageError) as exc:
             try:
                 self._finish(actor_id, job_id, token, "failed", exc.code)
                 return "failed"
+            except QuotaUnavailable:
+                return "yielded"
             except LeaseLost:
                 return "lease_lost"
         except asyncio.CancelledError:
-            with suppress(LeaseLost):
+            with suppress(LeaseLost, QuotaUnavailable):
                 self._finish(actor_id, job_id, token, "cancelled", "execution_cancelled")
             raise
         finally:
