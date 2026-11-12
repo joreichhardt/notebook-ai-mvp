@@ -1,103 +1,48 @@
-# Handoff · Notebook · Wave 3 / Pi-Konfigurationsreload
+# Fortsetzung · Notebook
 
-## Neuester Stand nach ausdrücklicher Fortsetzung
+## Einstieg
 
-**Aktualisierung F3a/A4:** F3a-01 (Medium Profilidentität) mit Migration 0004 korrigiert und unabhängig auf f46054b geschlossen. Reviewabschluss edcaf398 integriert als 2293330. Default pytest umfasst jetzt Sicherheitsregressionen: Main prüfte frische Migration 0004 und **176 bestandene Tests**, Ruff und vier aktive LSP-Pfade fehlerfrei. Pyright backend-Pfad sowie einheitliche app-Imports ergänzt. Test-DB entfernt, 55439 gestoppt. Details im Integrationslog; keine Produkt-/Produktionsfreigabe. Folgende 154-Test-Angabe beschreibt nur den vorherigen Meilenstein.
+1. In `/home/jre/orca/workspaces/gemini-nb-clone/notebook-integration`, Branch `integration/notebooklm`, arbeiten; zuerst Git-/Worktree-Status prüfen und Nutzeränderungen erhalten. Letzter integrierter Implementierungs-/Prüfstand: `f77255d`. Nachfolgende Dokumentationsänderungen sind kein neuer Implementierungsnachweis.
+2. [Dokumentationsindex](../README.md), `agent.md`, `AGENTS.md`, `multi-agent.md`, [Spezifikation](../product-spec.md), [Plan](../orchestration/plan.md), [Verträge](../architecture/contracts.md) und [Entscheidungen](../architecture/decisions.md) lesen. Aktueller Nutzerwunsch: Markdowns fortlaufend pflegen, kompakte notwendige Dokumentation unter `docs/`, diese Regel in AGENTS.md verbindlich erhalten.
+3. Nach Kompaktierung/Zusatzaufträgen den freigegebenen Hauptauftrag selbstständig fortsetzen; vorhandene B3-/A5-Worker nicht durch neue Worktrees oder doppelte Implementierung ersetzen. Main prüft/integriert und bearbeitet unabhängige Arbeit; bei reinen Worker-Abhängigkeiten Orca-Wakeup abwarten, nicht pollen.
+4. Nur Pi-Agents starten, auch über Orca explizit `--agent pi`. Nutzer hat kein bestimmtes Modell gewählt. UI ohne Entwicklungs-/Roadmap-/Freischaltungshinweise; nicht verfügbare Bedienelemente ausblenden, konkrete Fehler/Wiederholung erhalten.
 
-A3 und C3 sind inzwischen kontrolliert integriert: Candidate `f0937b1528b4903657fedc447c44afedfdb35a9f` (C3 final `bb00822`, A3 `eae387e`). Zentrale Ergänzungen in `06c56b6`. Zusätzlicher DB-Integrationstest prüft den echten restricted-role ExecutionService-Lookup und Widerruf während synthetischer Secret-Auflösung. 154 Backendtests mit isoliertem PostgreSQL, 17 Frontendtests, Build, Ruff und 9 Provisionertests bestanden. Test-DB gelöscht, Cluster auf 55439 wieder gestoppt. Keine Live-Provider-/Supabase-/Bitwarden-Abnahme, keine Container neu gebaut, kein Deployment. Details und verbleibende Grenzen in Plan/Integrationslog und A3/C3-Handoffs. Beide Workeraufträge erfolgreich beendet. Nächster Schritt: B3/E3 für echten Upload/private Storage/isoliertes Parsing, sicheren Actor-Dispatch und fenced Publish koordinieren; danach Chat/UI und unabhängige Abnahme. Die folgenden Reload-/Pauseabschnitte sind historisch und überholt, kein neuer Reload als Voraussetzung angeordnet.
+## Integriert und tatsächlich geprüft
 
-## Historischer Wiederaufnahmestand vor Integration
+- Auth/BFF, Zulassung, Notebook-/Workspace-Verwaltung, Einladungsannahme bestätigter Konten, Mitgliederrollen sowie persönliche Bitwarden-Providerverbindungen aus Welle 2.
+- A3/C3: Dokument-/Versions-/Chunk-/Job-/Indexprofil-Datenbasis, RLS, gefencete Lease-/Publikationshelfer sowie interne Streaming-/Embedding-Adapter und persönliche ExecutionService-Grenze. Noch keine fertige Upload-/Chat-Funktion.
+- A4/F3a: Profilidentitätsbefund F3a-01 durch Migration 0004 korrigiert und unabhängig auf `f46054b` geschlossen. Reviewabschluss `edcaf398` integriert; normale Testsuche erfasst Sicherheitsregressionen.
+- Main prüfte auf der kombinierten 0004-Basis frische Migrationen und **176 bestandene Tests**, Ruff für Backend/Security und vier aktive LSP-Pfade ohne Fehler. Eine vorhandene Starlette/httpx-Warnung bleibt. Frühere 17 Frontendtests/Build und 9 Provisionertests bestanden; für den backend-only Reviewabschluss nicht erneut ausgeführt.
+- Test-DB `notebook_wave3_review_verify` gelöscht, isolierter PostgreSQL16 unter `/tmp/notebook-auth-pg`, Port 55439, danach gestoppt. Vor Wiederaufnahme Status/Port prüfen, Socket-Verzeichnis explizit setzen und neue Wegwerf-DB verwenden. System-DB 5432 unverändert lassen. Details/Befehle im [Integrationslog](../orchestration/integration-log.md).
 
-Nutzerauftrag: sofort Handoff sichern, Pi wegen Konfigurationsänderungen reloaden, danach weiterarbeiten. Keine weitere Integration vor Reload. Ein Reload ist noch nicht nachgewiesen; in der Pi-Oberfläche `/reload` ausführen. Anschließend diesen Abschnitt und die referenzierten Worker-Handoffs lesen, Git-Status erneut prüfen.
+## Laufende Aufträge · vor Änderungen Rückmeldungen prüfen
 
-- Integrations-Worktree `/home/jre/orca/workspaces/gemini-nb-clone/notebook-integration`, Branch `integration/notebooklm`, letzter geprüfter sauberer HEAD `1bd22bd01182e8bc99e9116ef6173ca5746e46e5`. Dieser Commit enthält Wave-3-Verträge und Plan; Worker-Code noch NICHT integriert. Dieser Handoff folgt als eigene Dokumentationsänderung.
-- A3 fertig in `../notebook-data-v3`, Branch `notebook-data-v3`: `2be22c3`, `43e4356`, Handoff-HEAD `eae387ef523d7fdb7a705f7c0c99e0fcc5a449f6`. Bericht `docs/handoffs/A3.md` dort. Dokument-/Versions-/Chunk-/Indexprofil-/Job-ORM, Migration 0003, RLS und invoker-basierte Lease-/Publication-Helfer. Worker meldet 68 Auth-/91 Backendtests mit echtem isoliertem PostgreSQL, Ruff und geänderte LSP-Pfade bestanden. Diese Nachweise stammen aus dem Worker-Stand, NICHT aus Integration. PostgreSQL auf 55440 wurde laut Worker gestoppt; Details/temporärer Pfad im Bericht. 5432/55439 unberührt lassen. Untracked `.pi/` erhalten.
-- C3 Zwischenstand in `../notebook-provider-v3`, Branch `notebook-provider-v3`: Implementierung `3ef0902`, Pause-Handoff `4960609656288d80dca26b3ade2204b19b1839d3`. Bericht `docs/handoffs/C3.md` dort. Native Provider-Streams/Embeddings, numerischer kontrollierter Dial mit ursprünglichem TLS-Hostname und persönliche ExecutionService-Grenze. Worker meldete 72 Provider-Fixturetests und Ruff bestanden; keine Live-Provider-/Bitwarden-/DB-Abnahme. Abschlussreview/LSP/Edge Cases noch offen. Zuletzt war `backend/tests/providers/test_providers.py` uncommittet geändert; zusätzlich untracked `.pi/`: erhalten und prüfen.
-- Nach erster Nutzerpause wurde derselbe C3-Auftrag ausdrücklich wieder aufgenommen. Orca-Follow-up Dispatch `ctx_563d2cbc5e10`, Task `task_8c4bc25551ce`, Run `run_a6efa1e8f690`; bisher kein neuer Abschluss empfangen. Für den aktuellen Reload wurde mit Nachricht `msg_c70fb32dd233` geordnetes Anhalten und Sichern verlangt. Rückmeldung `msg_827f6822403d` bestätigt inzwischen den pausierten Checkpoint `d6348f228c446bf3de7f626a76b208831e57b052` einschließlich aktualisiertem C3-Handoff. Laut Worker 79 Providertests und Ruff bestanden, darunter echte kurzlebige Loopback-TLS-Hostname-/Mismatch-Prüfung und Revocation bei pausiertem Consumer. LSP: 20 Dateien geprüft, 15 clean, 4 nicht entscheidbar, ein unveränderter Optional-Narrowing-Befund in test_connections.py. Finale LSP-Nachprüfung/Abnahme/Integration offen; outcome failed bezeichnet unvollständigen Pauseabschluss. Kein Live-Provider-/Shared-DB-Nachweis. Aktuellen Git-Status vor Fortsetzung erneut prüfen; vorherige C3-SHAs/Testzahlen oben sind historische Zwischenstände.
-- Frühere Dispatches: A3 `ctx_9dd83404d0a4` erfolgreich; C3 `ctx_b217208e33ab` pausierter unvollständiger Checkpoint (outcome failed wegen Pause, kein vollständiger Abnahmeerfolg). Aktuelle CLI `/home/jre/.config/orca/linux-orca-cli-shim/orca`. Vor weiterer Nutzung Skills/versionspassenden Guide lesen. Nicht pollen; Orca weckt bei Nachrichten. Supervised Worker über Dispatch-Messaging, nicht Terminal-Eingaben steuern.
-- Hauptagent muss vor Integration noch explizit `httpcore>=1,<2` in Root-Abhängigkeiten/Lock aufnehmen und `app.auth.security.fail(...) -> typing.NoReturn` annotieren. C3 hat lokale Connection-Narrowing-Korrektur übernommen; allgemeine Baseline-LSP-Fehler nicht als A3-Regression darstellen. Diese zentralen Änderungen sind noch NICHT gemacht.
-- Nächste Schritte: C3-Abschluss/Pause prüfen; A3-/C3-Diffs und Zuständigkeiten prüfen, zentrale Ergänzungen durchführen, kontrolliert im Integration-Worktree mergen, reale migrations-/RLS-/ExecutionService-DB-Nachweise und Gesamtprüfung ausführen. Danach B3 für Upload/private Supabase-Storage/isoliertes Parsing/Worker/scoped Retrieval/Chat starten; D3/E3/F3 abhängig koordinieren. Kein kompletter Upload-bis-Antwort-Fluss vorhanden.
-- Offene Sicherheitsgrenzen A3: vertrauenswürdige Worker-/Actor-Auswahl, atomare Komposition `lock_job_for_publish` + Chunks + `finish_job`, Storage-Cleanup/Policies, Parser-Gesamtquoten und echte Profil-/Modellprüfung. Keine generischen BYPASSRLS-Worker hinzufügen. C3-Abbruch-/Revocation-/TLS-Verhalten vor Freigabe abschließend prüfen.
-- Taskliste: #1 Bestandsprüfung abgeschlossen; #2 Verträge abgeschlossen; #3 Worker-Implementierung in_progress (C3 unvollständig); #4 Integration/Prüfung pending. Nicht als vollständig erledigt markieren.
-- Nur Pi-Agents starten (`--agent pi`), keine Modellwahl durch diese Vorgabe. UI ohne Entwicklungs-/Roadmap-Hinweise erhalten. Kein Deployment, keine produktiven Zugänge, keine Veröffentlichung erfolgt. Ältere Runtime-/Testnachweise unten sind historisch, nicht erneut geprüft.
+Orca-Run `run_a6efa1e8f690`, CLI zuletzt `/home/jre/.config/orca/linux-orca-cli-shim/orca`. Vor CLI-Nutzung Skill und versionspassenden Guide laden. Nachrichten über Orchestrierungs-Dispatch, nicht per Terminal steuern; nicht pollen, Orca weckt bei Antworten.
 
-## Historischer Einstieg (Wave 2, nicht aktueller Arbeitsstand)
-
-Aktueller Auftrag: Handoff erstellen; danach bei Fortsetzung das Produkt weiterbauen. Das zuvor gesendete „weiter“ wurde unterbrochen; seit Welle 2 wurde keine weitere Implementierungswelle begonnen.
-
-1. Im Worktree `/home/jre/orca/workspaces/gemini-nb-clone/notebook-integration` arbeiten, Branch `integration/notebooklm`. Implementierungsstand: `0e6b0c8347f31729d49cffc854cb3ac23ec9fd7b`; dieser Handoff und die Pi-Regel folgen als Dokumentationsänderung.
-2. `agent.md`, `AGENTS.md`, `multi-agent.md`, `docs/product-spec.md`, `docs/orchestration/plan.md`, `docs/architecture/contracts.md`, `docs/architecture/decisions.md` und `docs/orchestration/integration-log.md` lesen. Vor Änderungen Git-/Worktree-Status erneut prüfen.
-3. **Alle künftig gestarteten Agents sind Pi**, auch durch Orca gestartete Agents: explizit `--agent pi`. Keine Codex-/Claude-Worker als Ersatz starten oder alte Sitzungen für neue Aufgaben wiederverwenden. Die Vorgabe betrifft die Agentensoftware; ein Modell wurde nicht festgelegt.
-4. Nutzerwunsch zur UI erhalten: keine Entwicklungs-, Roadmap- oder Freischaltungshinweise wie „Die Wissensfunktionen werden schrittweise freigeschaltet.“ Unverfügbare Bedienelemente ausblenden; konkrete Fehler und hilfreiche Wiederholungsaktionen bleiben sichtbar.
-
-## Arbeitsbereiche
-
-Der ursprüngliche Chat-Worktree `../gemini-nb-clone` ist nicht der aktuelle Implementierungsstand. Seine ungetrackten Dateien unter `docs/diagrams/` erhalten. Auch `/home/jre/orca/projects/gemini-nb-clone` (main) nicht als Integrationsbereich verwenden. Kein Git-Remote konfiguriert; keine Veröffentlichung oder Produktionseinführung erfolgt.
-
-Bestehende Worker-Worktrees liegen neben `notebook-integration`:
-
-| Rolle | Worktree | Branch | letzter bekannter Stand |
+| Auftrag | Worktree / Branch | Dispatch | Stand |
 | --- | --- | --- | --- |
-| A Auth/Daten | notebook-auth-data | agent/auth-data | 2914ad1 |
-| C Provider | notebook-providers | agent/providers | b752ad7 |
-| D Frontend | notebook-frontend | agent/frontend | 3c5eb91 |
-| E Betrieb | notebook-deploy | agent/deploy | 521a2da |
-| F Review | notebook-review | agent/review | 58eea05 |
+| B3 | `../notebook-upload-v3` / `notebook-upload-v3` | `ctx_67e121724725` | Strict TXT/MD, begrenzter privater Storage-Adapter, trusted actor-bound run_one. Checkpoint `29a1abec26eb4397dd75d568c41f00cc5cbd70ed`; Worker meldet echte kube1-Reporting-race-Regression: alte Variante1RED, committed Worker1GREEN (1.81s), Runtime-Limits/Isolation geprüft, eigenes Remote-Projekt und native55443 gestoppt, Daten/Logs erhalten. Main hat Kernmodule/Delta gelesen, kein bestätigter neuer Befund. **Noch nicht integriert**, A5-/Full-Flow-Gates offen. Dependency-Cherry-pick exakt als `da48884` abgeschlossen, Handoff separat in **`c113824`**. Worker entwickelt jetzt nur freigegebene bounded Multipart-/Spooltests; zwei AST-identische Testformatierungen uncommittet erhalten. Neuer endgültiger SHA nach diesen Tests folgt, kein A5-/Routenwiring. |
+| A5 | `../notebook-upload-data-v3` / `notebook-upload-data-v3` | `ctx_0212865c10e4` | Kandidat **`47f3d6b347a57a6f252b5cfcef80fb3ff6fe79f3`**: Worker meldet frische0005 +238Defaulttests/Ruff auf kube1 grün. Statusforgery vierRED und Zweitjob-Bypass zweiRED reproduziert, beide ohne neue Rechte behoben; Main hat Guard-Delta gelesen, kein weiterer bestätigter Befund. Finale LSP-/Runtime-/Cleanup-/Handoff-Belege und worker_done noch ausstehend; **nicht integriert**. |
 
-Vor Wiederverwendung Working Tree prüfen und Integrationsstand kontrolliert übernehmen. Nur der Hauptagent erstellt/integriert Worktrees und pflegt gemeinsame Verträge. A besitzt sämtliche ORM-Modelle und Migrationen, auch für Provider/RAG. B (Dokumente/RAG) ist noch nicht gestartet. Pro aktivem Agent eigener Branch und Worktree; Parallelität nach verfügbaren Plätzen begrenzen.
+B3 reserviert Testport 55443, A5 55444, jeweils eigene Umgebung/DB; alte Worker-Umgebungen und untracked `.pi/` erhalten. Nur Main integriert und pflegt gemeinsame Dokumente; A besitzt alle ORM-/Migrationsänderungen. Bereichsberichte in den jeweiligen Worktrees: `docs/handoffs/B3.md` und `A5.md`, sobald angelegt/aktualisiert. Meldungen/aktuelle SHAs erneut prüfen, nicht aus dieser Momentaufnahme ableiten.
 
-Orca-Skill vor Starts lesen. Zuletzt funktionierende CLI: `/home/jre/.config/orca/linux-orca-cli-shim/orca`. Für eine neue Pi-Sitzung in einem vorhandenen Worktree `agent launch --agent pi --worktree <geprüfter Selektor> --prompt <Auftrag> --json` verwenden; Selektor aus Orca ermitteln. Dieses Dokument startet selbst keinen Agenten.
+## Nächste Schritte und Freischaltungsgrenzen
 
-## Implementiert und geprüft
+- **Unmittelbar weiter:** A5 muss Schlussbelege/worker_done für `47f3d6b` liefern; dann endgültigen SHA/Diff prüfen, A5 in Main integrieren. B3 folgt erst mit geklärtem Dependency-Cherry-pick und exaktem Kandidaten-SHA; gemeinsame Tests ausschließlich auf kube1 im Main-Projekt (A5s scoped Testcompose kann mit explizitem `-p notebook-test-main` wiederverwendet werden, fremdes A5-Projekt unberührt). B3 hat eigene Reporting-race-Regression und Dependency-Cherry-pick geschlossen; scoped Multipart-/Spooltests laufen, danach neuen exakten SHA und Remote-Belege melden. Noch kein A5-Integrations-/Routeauftrag. Danach Kandidaten/Tests prüfen, A5 vor B3 integrieren und enge privilegierte Seams unabhängig reviewen lassen.
+- Main hat `python-multipart==0.0.33` in `bac1ad6` mit minimalem Lockdiff gepinnt, offizielle PyPI-Metadaten verifiziert und API-Image daraus auf kube1 gebaut. Echter Starlette1.10.0/FastAPI0.162.4 Multipart-Parse plus Spoolclose grün; kein Raw-Limit-/Abbruch-/HTTP-Uploadnachweis. Main-Testprojekt danach beendet.
+- A5 liefert durable Upload-Intents, geschützte Zustände/Receipts, atomare Finalisierung mit Commit-Guard, enge I/O-/Verifikationsrollen und member-sichtbaren aktuellen Versionsstatus ohne raw-job-RLS-Ausweitung. B3 setzt den [genehmigten Vertrag](../architecture/contracts.md#b3a5-upload-lifecycle-approved-design-not-integrated) um. Exakte APIs aus A5-Code/Handoff verifizieren.
+- B3-I/O: actor reserve/commit → I/O claim/commit → frische Actor-/Intent-/Lease-Prüfung → private bucket/non-upsert exact-key write, 30s Gesamtdeadline → begrenzter Readback/hash/bytes → gefencetes Receipt → autorisierte atomare Finalisierung/commit vor 202. Keine offenen DB-Transaktionen über Netzwerk-I/O.
+- Ambige/abgebrochene Writes bleiben dauerhaftes Reconciliation-Thema. Timeout/Leaseende beweist keine Remote-Quieszenz; alte Keys nicht neu vergeben, Cleanup-Tombstones für spätere Orphan-/Abwesenheitsprüfungen behalten. Echte Storage-Policies und Cleanup-Runtime noch nachzuweisen.
+- Globalquoten **offen**: outstanding 10 Actor/Notebook, 50 Notebook; aktiv 2 Actor, 4 Notebook. Actor-private Counts genügen nicht. Kein spontanes globales Job-SELECT/BYPASSRLS/Counter-Recht. Separater Entwurf/Review vor Freigabe.
+- Zunächst nur neue TXT-/Markdown-Dokumente; keine PDF-/Embedding-/Replacement-/Delete-/Retry-HTTP-Routen. Upload bleibt fail-closed/unregistriert und Dokument-/Chat-Capabilities aus, bis Lifecycle/Storage/Actor-Dispatch/Quoten geprüft sind. PDF braucht isolierten Parser. Danach UI/Chat, E3-Betrieb und unabhängige Full-Flow-Abnahme koordinieren.
+- Weitere Produktarbeit: Registrierung neuer Konten/Google OAuth/Recovery, Session-Refresh, Einladungsliste/-widerruf, Audit/Rate-Limits, persönliche Standards/Key-Ersetzung, Vektor-/Graphretrieval. Nicht als fertig darstellen.
 
-- FastAPI/SQLAlchemy/Alembic, React/TypeScript, gepinnte Python-/npm-Abhängigkeiten.
-- Supabase-Passwortlogin und serverseitige Identitätsprüfung; HttpOnly-Sitzung, Origin-/CSRF-Prüfung, App-Zulassung, Workspace-Rollen und Notebook-CRUD mit RLS.
-- Einladungsannahme für bereits vorhandene verifizierte Konten, einmaliger Admin-Bootstrap, Mitgliederrollen und Schutz des letzten Owners. Migrationen 0001/0002.
-- Persönliche Provider-Verbindungen: Bitwarden-Speicherung, konfigurierte Provider-Auswahl, Modellabfrage/-auswahl, Verbindungstest und Trennen mit wiederholbarer Secret-Bereinigung. Keine Klartext-Secrets in Responses oder DB.
-- Frontend für diese Abläufe, ohne Entwicklungsankündigungen; fehlgeschlagene Capability-Abfrage erneut ausführbar.
-- bws-Host-Provisionierung, non-root/read-only Container, lokale Compose-Grundlage, CI mit PostgreSQL-/RLS-Tests, Trivy-Gates und SBOM-Konfiguration.
+## Betrieb und erhaltene Bestände
 
-Detailübergaben: `docs/handoffs/A2.md`, `C.md`, `D2.md`, `E.md`. Unabhängiger Review `docs/review/wave2.md`: beide Findings geschlossen. Bitwarden-Löschung prüft auch Einzelresultate; HTTP-/SDK-Gesamterfolg allein genügt nicht.
+**Neue Nutzervorgabe:** Docker-Testmaschinen/-builds ausschließlich kube1, Laptop zu schwach. SSH/Docker/Compose verifiziert und private Bereiche `/home/jre/notebook-tests/{main,b3,a5}` angelegt. [Testbetriebs-Runbook](../operations/testing-kube1.md) ist maßgeblich für Projekt-/Portzuordnung und Snapshot-Transfer. Foundation-Snapshot `c1214957df79` remote gebaut und per HTTP/Runtime-Metadaten geprüft, eigenes Main-Testprojekt anschließend beendet; [Prüfprotokoll](../orchestration/integration-log.md) beachten. Worker zum geordneten Stoppen eigener lokaler nativer DBs nach Abschluss laufender Tests angewiesen; Daten/Logs erhalten und Stilllegung im jeweiligen Handoff bestätigen lassen. Auf dem Laptop waren beide Notebook-Foundation-Container bereits gestoppt; fremde laufende Container erhalten.
 
-## Nachweise und lokale Laufzeit
+Kein Produktionsrollout, Live-Supabase-/Bitwarden-/Provider-Erfolg oder GitHub-Workflow-Lauf nachgewiesen. Kein Remote eingerichtet. Frühere lokale Vorschau `http://127.0.0.1:18080`, Compose `notebook-foundation-verify`, war Welle-2-Stand ohne Live-Auth-Konfiguration; aktuell nicht erneut geprüft oder neu gebaut. Non-root ist kein Rootless-Nachweis.
 
-Letzte vollständige Implementierungsprüfung: **50 Backendtests mit echtem isoliertem PostgreSQL, 17 Frontendtests, 9 Provisionierungstests**, Ruff und TypeScript/Vite-Build erfolgreich. Diese Ergebnisse stammen aus Welle 2; für den Dokumentationshandoff wurden die Tests nicht erneut ausgeführt. Eine upstream Starlette/httpx-Deprecation-Warnung bleibt.
+Bitwarden bleibt verbindlich; persönliche Secrets nur serverseitig/nutzergebunden, Host-Secrets über gepinnte bws CLI. Vor Infrastrukturarbeit die Homeserver-READMEs gemäß AGENTS.md lesen. Fehlende produktive Konfiguration/Release-Gates stehen im Plan/Integrationslog; keine geheimen Werte im Chat anfordern.
 
-Beim Handoff erneut geprüft: Compose-Projekt `notebook-foundation-verify`, API und Frontend healthy. Vorschau: `http://127.0.0.1:18080`. Supabase/Bitwarden sind dort nicht live konfiguriert; Login deshalb nicht verfügbar. Keine authentifizierten Browser-E2E oder Live-Provider-Erfolge behaupten.
-
-Test-PostgreSQL16 unter `/tmp/notebook-auth-pg`, Port 55439, wurde nach den Tests gestoppt; Datenverzeichnis für Wiederaufnahme erhalten. System-PostgreSQL auf 5432 nicht verändern. Bei erneuten DB-Tests zuerst Status prüfen, isolierte Instanz starten und frische Testdatenbank migrieren. Die zuletzt verwendete Wegwerf-Datenbank `notebook_wave2_verify` wurde gelöscht.
-
-Prüfkommandos aus dem Integrations-Worktree, nach Bereitstellung der Testdatenbank:
-
-```sh
-NOTEBOOK_TEST_POSTGRES_URL=postgresql://jre@127.0.0.1:55439/postgres uv run pytest -q
-uv run ruff check backend
-npm test --prefix frontend
-npm run build --prefix frontend
-python -m unittest discover -s deploy/tests
-docker compose -p notebook-foundation-verify ps
-```
-
-Die CI und `docs/operations/foundation.md` sind maßgeblich für Migration/Testsetup. Browserprüfung über Orca; zuletzt Seite `7d4d5a85-e4d0-4b44-8841-0f16f5d780a3`. Flüchtige IDs/Pfade vor Wiederverwendung prüfen.
-
-## Nächster Implementierungsschritt
-
-Ziel bleibt ein echter vertikaler Durchstich: Anmeldung → eigenes Notebook → persönliche Modellverbindung → Dokument → Antwort mit Quellen. Vor parallelem Start einen kleinen Vertrag für Upload, Dokumentversionen, Jobs, Indexprofil und Streaming vervollständigen.
-
-1. A und B koordinieren Dokument-/Job-/Chunk-Schema, RLS und Storage-Policies; A liefert Migrationen, B Upload, isoliertes Parsing und Jobverarbeitung. Jobs tragen Nutzer, Workspace, Dokumentversion und Connection-ID, keine Secrets; Berechtigungen zur Ausführungszeit erneut prüfen.
-2. C ergänzt echte Generation/Streaming und Embeddings; vorhandene Verbindungstests prüfen bislang nur Modellabfrage. D integriert funktionierende Upload-/Quellen-/Chat-Abläufe erst gegen den vereinbarten Vertrag.
-3. E ergänzt die tatsächliche lokale Supabase-Integration und Betriebsnachweise. Danach unabhängigen Review des integrierten Upload-bis-Antwort-Flusses mit fremden Workspace-/Credential-Zugriffen durchführen.
-
-Weitere offene Produktarbeit: neue Konten über Einladung, Google OAuth, Recovery/Session-Refresh, Einladungsliste/Widerruf, Audit/Rate-Limits, persönliches Standardmodell, Key-Ersetzung, belegter Graph. Nicht als bereits implementiert darstellen.
-
-## Secrets und Release-Grenzen
-
-Bitwarden Secrets Manager ist verbindlich, Supabase Vault entfällt. Auf kube1 Host-Provisionierung über gepinnte bws CLI. Dynamische persönliche Keys über offizielles Bitwarden-SDK im Prozess: CLI-Erstellung würde Werte in Argumenten exponieren. Getrennte minimal berechtigte Machine Accounts für Lesen bei Deployment und persönliche Secret-Verwaltung. Konfiguration/Variablennamen stehen in `.env.example` und den Verträgen; keine Werte in Chat, Logs, Git oder Worker-Prompts.
-
-Vor Infrastrukturarbeit `~/dev/homeserver/README.md` und `~/dev/homeserver/secrets/README.md` lesen; relevante Runbooks gezielt nachladen. Bestehende kube1-Dienste erhalten. Zuletzt war Docker auf kube1 nicht rootless; non-root Container sind kein Rootless-Nachweis.
-
-Offene Release-Gates: Live-Supabase/Bitwarden; Provider-DNS-Prüfung und Verbindungsaufbau gegen DNS-Wechsel absichern; SDK-Deadlines; verwaiste Secrets bei DB-/Vault-Teilfehlern bereinigen; Rootless/Parser-Isolation, tatsächliche Scans, Backup/Restore, Release/Rollback und öffentliche Smoke-Tests. GitHub-Remote/Actions, anwendungseigene Bitwarden-Zugänge, SMTP/Google-Konfiguration und Routing zu `note.yokoma.de` sind noch einzurichten bzw. zu bestätigen. Es gab keinen Produktionsrollout.
-
-## Excalidraw-Kontext
-
-Das Wiring-Diagramm liegt auf `draw.yokoma.de` auf kube1 und zeigt die geplante Architektur. Die vorherige Szene wurde gesichert und als eigene `.excalidrawlib` exportiert; der Import in die Browser-Library ist noch offen, da der verfügbare MCP keine Library-Setter-Methode hatte. Backups im ursprünglichen Worktree erhalten. Lokaler MCP-Zugang über SSH wurde verwendet; Hilfsskript zuletzt `/tmp/draw_local.py`. Vor Nutzung Verfügbarkeit und Inhalt prüfen. Ein Diagramm ist kein Nachweis eines laufenden Stacks.
+Ursprünglichen Chat-Worktree `../gemini-nb-clone` samt untracked `docs/diagrams/` erhalten; auch `/home/jre/orca/projects/gemini-nb-clone` (main) nicht als Integrationsbereich verwenden. Historische Worker-/Reviewberichte bleiben in Git und unter `handoffs/`/`review/`; sie sind standbezogen, keine aktuellen Arbeitsanweisungen. Excalidraw-Szene auf `draw.yokoma.de` ist Architekturplanung, kein Laufzeitnachweis. Diagrammbackups im ursprünglichen Worktree erhalten; Library-Import war offen. Flüchtige Browser-/MCP-IDs und `/tmp`-Hilfsskripte vor Wiederverwendung prüfen.

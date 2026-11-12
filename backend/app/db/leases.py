@@ -21,8 +21,26 @@ def _duration(seconds: int) -> int:
     return seconds
 
 
+def _lock_source(session: Session, job_id: UUID) -> bool:
+    return (
+        session.execute(
+            text("""
+        SELECT d.id FROM public.documents d
+        JOIN public.document_versions v ON v.id=d.current_version_id AND v.document_id=d.id
+        JOIN public.ingestion_jobs j ON j.document_version_id=v.id
+        WHERE j.id=:job FOR UPDATE OF d SKIP LOCKED
+    """),
+            {"job": job_id},
+        ).scalar_one_or_none()
+        is not None
+    )
+
+
 def claim_job(session: Session, job_id: UUID, *, lease_seconds: int = 60) -> UUID | None:
     """Claim a specific actor-owned job, or recover an expired lease, at most 5 times."""
+    _duration(lease_seconds)
+    if not _lock_source(session, job_id):
+        return None
     token = uuid4()
     return session.execute(
         text("""
@@ -105,6 +123,8 @@ def finish_job(
     """Fenced terminal transition; a false result MUST roll back publication."""
     if status not in ("succeeded", "failed", "cancelled"):
         raise ValueError("terminal status required")
+    if not lock_job_for_publish(session, job_id, token):
+        return False
     return (
         session.execute(
             text("""

@@ -2,6 +2,8 @@
 
 Private Notebooks mit nachvollziehbaren Quellenantworten. Python/FastAPI, React/TypeScript und selbst gehostetes Supabase; Secrets aus Bitwarden Secrets Manager über `bws`.
 
+Dokumentation: [Übersicht und Einstieg](docs/README.md).
+
 ## Entwicklungsstand
 
 Implementiert sind Authentifizierung, Workspace-/Notebook-Verwaltung, Einladungsannahme für bestätigte Konten, Mitgliederrollen und persönliche Anbieter-Verbindungen mit Modellprüfung. Zusätzlich sind die Datenbasis für Dokumentversionen, Chunks und abgeschirmte Jobs (Migrationen 0003/0004) sowie interne Streaming-/Embedding-Adapter mit persönlicher Ausführungsprüfung integriert. Diese Bausteine sind noch nicht als Upload-/Chat-Funktionen freigeschaltet. Dies ist noch kein produktionsfertiger NotebookLM-Klon. Upload, belegte Modellantworten, Graphretrieval und die Registrierung neuer Konten sind noch offen. Persönliche Anbieter-Verbindungen benötigen eine konfigurierte Bitwarden-Instanz und freigegebene Endpoints. Es gibt keine fingierten Antworten oder Produktions-Auth-Mocks.
@@ -34,10 +36,8 @@ Produktionsziel: `https://note.yokoma.de`, Docker Compose auf kube1. Bestehende 
 
 [Verträge](docs/architecture/contracts.md) · [Entscheidungen](docs/architecture/decisions.md). Normale Nutzerabfragen laufen mit eingeschränkter Datenbankrolle und transaktionslokalem Nutzerkontext. Supabase-Identität allein gewährt keinen App-Zugang. Persönliche Modell-Credentials bleiben strikt nutzergebunden; die Datenbank speichert nur Referenzen.
 
-## Lokaler Container-Stand
+## Container-Tests auf kube1
 
-```sh
-docker compose -p notebook-foundation-verify up -d --build --wait
-```
+Docker-Builds und Compose-Teststacks laufen ausschließlich auf **kube1**, nicht auf dem Laptop. Anleitung inklusive isoliertem Testprojekt und SSH-Zugriff: [kube1-Testbetrieb](docs/operations/testing-kube1.md).
 
-Oberfläche: http://127.0.0.1:18080 . Dieser Stack enthält derzeit API und statisches Frontend, noch kein Supabase; er ermöglicht die Prüfung von Start, Darstellung und sicherem Verhalten bei fehlender Konfiguration. Die echte Anmeldung benötigt anschließend Supabase, Zulassung und HTTPS. Frontend separat: `npm --prefix frontend ci`, `npm --prefix frontend run dev`.
+Der Foundation-Teststack enthält API und statisches Frontend, noch kein Supabase. Er prüft Start, Darstellung und sicheres Verhalten bei fehlender Konfiguration; echte Anmeldung benötigt Supabase, Zulassung und HTTPS. Kein Produktionsrollout. Frontend-Quellcode: `frontend/`.

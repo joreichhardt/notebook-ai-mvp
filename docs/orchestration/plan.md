@@ -1,5 +1,19 @@
 # Implementation plan
 
+## Aktuell laufend
+
+**Testhost:** Docker-Builds und containerisierte Tests ausschließlich auf kube1; Laptop ohne neue Containerlast. SSH/Docker/Compose geprüft, getrennte private Bereiche für Main/B3/A5 angelegt; Zuordnung und Kommandos im [Testbetriebs-Runbook](../operations/testing-kube1.md). Eigene native lokale Worker-DBs nach laufenden Tests geordnet stoppen und erhalten, neue schwere Tests remote. Bestehende Ports 55443/55444 unten sind historische lokale Reservierungen, keine kube1-Portfreigabe.
+
+Integrationsbasis `f77255d`: Daten-/Provider-Seam samt unabhängiger F3a-Nachprüfung integriert. Aktuelle Prüfnachweise stehen im [Integrationslog](integration-log.md); Einstieg in alle Anleitungen: [Dokumentationsindex](../README.md).
+
+- **B3** in `../notebook-upload-v3`, Branch `notebook-upload-v3`, Dispatch `ctx_67e121724725`: TXT/Markdown, begrenzter privater Storage-Adapter und explizit actorgebundener Einzeljob-Worker. Arbeitet unabhängig weiter, Checkpoint `29a1abe` vorhanden, Main-Codeprüfung bisher ohne bestätigten neuen Befund; eigene Reporting-race-DB-Regression auf kube1 per RED/GREEN geschlossen. Dependency-Cherry-pick nach gezieltem shared-doc-Konfliktruling als `da48884` abgeschlossen, Handoff `c113824`; scoped Multipart-/Spooltests und deren endgültiger SHA folgen. Upload-/Statusverdrahtung wartet auf reviewten A5-Integrationsstand. Main-Dependencycommit `bac1ad6` für scoped Multiparttests freigegeben, keine Routefreigabe.
+- **A5** in `../notebook-upload-data-v3`, Branch `notebook-upload-data-v3`, Dispatch `ctx_0212865c10e4`: genehmigter Entwurf für dauerhaften Upload-Lebenszyklus und sichere Quellenstatus-Projektion; Kandidat `47f3d6b` behebt Statusforgery und kanonischen Zweitjob-Bypass ohne neue Rechte; Worker meldet frische0005/238Defaulttests/Ruff auf kube1 grün. Main hat Fix-Delta geprüft; endgültige LSP-/Runtime-/Cleanup-/Handoff-Belege und worker_done vor Integration ausstehend. Eng begrenzte I/O-/Finalisierungsrollen, geschützte Zustandsübergänge und Commit-Guard statt generischer Workerprivilegien. Details im [Vertrag](../architecture/contracts.md).
+- Beide im Orca-Run `run_a6efa1e8f690`, nur Pi, getrennte Umgebungen. B3 reserviert Testport 55443, A5 55444; Bestandsinstanzen bleiben unberührt. Gemeinsame Dokumente pflegt Main; Worker liefern aktuelle eigene Handoffs.
+- **Freischaltung blockiert:** dauerhafte Finalisierung/Reconciliation, echte private Supabase-Storage-Policies/I/O, sichere Actor-Dispatch-Laufzeit und Quoten. Zielgrenzen: outstanding 10 pro Actor/Notebook und 50 pro Notebook; aktiv 2 pro Actor und 4 pro Notebook. Noch kein Nachweis; actor-private Counts sind kein globales Limit. A5 liefert zunächst Lifecycle/Status, Quoten-Seam wird separat geprüft.
+- Erster Slice: nur neue TXT-/Markdown-Dokumente, keine PDF-, Embedding-, Ersetzungs-, Lösch- oder Retry-HTTP-Routen. Dokument-/Chat-Capabilities bleiben aus. PDF benötigt isolierten Parser; anschließend D3/E3 und unabhängiger Full-Flow-Review.
+
+## Historische Meilensteine
+
 Baseline: `0c75d3c89fe50bd576fe123ec831d59eaa073556`. Integration: `integration/notebooklm`, worktree `../notebook-integration`. Main agent owns root config, app/main.py, architecture and orchestration docs.
 
 | Task | Owner | Paths | Status |
@@ -31,7 +45,8 @@ Resume baseline: `1fe389732d59acaaddcb1463b1ab726fd30805a9` (clean). Contract pr
 |---|---|---|---|
 | A3 | Pi data / notebook-data-v3 | ORM + migration 0003 for documents, versions, chunks, profiles, fenced jobs; RLS/integrity tests | integrated / verified; HEAD eae387e |
 | C3 | Pi providers / notebook-provider-v3 | Typed generation/streaming, embeddings, owned execution boundary, cancellation and egress tests | integrated / verified; HEAD bb00822 |
-| B3 | Pi RAG / assigned after A3 | Upload/storage, isolated parsing, durable worker and scoped text retrieval/chat | todo; A3, C3 |
+| B3 | Pi RAG / notebook-upload-v3 | TXT/MD-Upload, Storage und actorgebundene Verarbeitung | in_progress; Verdrahtung benötigt A5 |
+| A5 | Pi Daten / notebook-upload-data-v3 | Dauerhafte Upload-Intents/Finalisierung/Cleanup und Quellenstatus | in_progress; noch nicht integriert |
 | D3 | Pi frontend / assigned after backend seam | Working upload/status/source/chat flow, no development notices | todo; B3 |
 | E3 | Pi deployment / assigned separately | Actual Supabase/storage and isolated parser runtime, local integration evidence | todo; parser requirements |
 | F3a | Independent Pi review / notebook-seam-review-v3 | Persistence/execution seam review | closed F3a-01 after A4; integrated edcaf398; full-flow review still pending |

@@ -1,4 +1,5 @@
-# Development/integration foundation only; Supabase and release wiring remain separate gates.
+# Development/integration foundation only.
+# Supabase and release wiring remain separate gates.
 name: notebook-foundation
 x-runtime: &runtime
   read_only: true
@@ -28,7 +29,7 @@ services:
       api:
         condition: service_healthy
     networks: [internal, edge]
-    ports: ["127.0.0.1:18080:8080"]
+    ports: ["127.0.0.1:${NOTEBOOK_TEST_PORT:-18080}:8080"]
 networks:
   edge: {}
   internal:
