@@ -4,7 +4,8 @@
 
 1. In `/home/jre/orca/workspaces/gemini-nb-clone/notebook-integration`, Branch `integration/notebooklm`, arbeiten; zuerst Git-/Worktree-Status prüfen und Nutzeränderungen erhalten. Letzter integrierter Implementierungs-/Prüfstand: `f77255d`. Nachfolgende Dokumentationsänderungen sind kein neuer Implementierungsnachweis.
 2. [Dokumentationsindex](../README.md), `agent.md`, `AGENTS.md`, `multi-agent.md`, [Spezifikation](../product-spec.md), [Plan](../orchestration/plan.md), [Verträge](../architecture/contracts.md) und [Entscheidungen](../architecture/decisions.md) lesen. Aktueller Nutzerwunsch: Markdowns fortlaufend pflegen, kompakte notwendige Dokumentation unter `docs/`, diese Regel in AGENTS.md verbindlich erhalten.
-3. Nur Pi-Agents starten, auch über Orca explizit `--agent pi`. Nutzer hat kein bestimmtes Modell gewählt. UI ohne Entwicklungs-/Roadmap-/Freischaltungshinweise; nicht verfügbare Bedienelemente ausblenden, konkrete Fehler/Wiederholung erhalten.
+3. Nach Kompaktierung/Zusatzaufträgen den freigegebenen Hauptauftrag selbstständig fortsetzen; vorhandene B3-/A5-Worker nicht durch neue Worktrees oder doppelte Implementierung ersetzen. Main prüft/integriert und bearbeitet unabhängige Arbeit; bei reinen Worker-Abhängigkeiten Orca-Wakeup abwarten, nicht pollen.
+4. Nur Pi-Agents starten, auch über Orca explizit `--agent pi`. Nutzer hat kein bestimmtes Modell gewählt. UI ohne Entwicklungs-/Roadmap-/Freischaltungshinweise; nicht verfügbare Bedienelemente ausblenden, konkrete Fehler/Wiederholung erhalten.
 
 ## Integriert und tatsächlich geprüft
 
@@ -20,13 +21,15 @@ Orca-Run `run_a6efa1e8f690`, CLI zuletzt `/home/jre/.config/orca/linux-orca-cli-
 
 | Auftrag | Worktree / Branch | Dispatch | Stand |
 | --- | --- | --- | --- |
-| B3 | `../notebook-upload-v3` / `notebook-upload-v3` | `ctx_67e121724725` | Strict TXT/MD, begrenzter privater Storage-Adapter, trusted actor-bound run_one. Worker meldet Commits `0df6fcd`, `3fb6930` und 29 fokussierte Tests; **noch nicht integriert/nachgeprüft**. Route fehlt absichtlich, wartet auf A5. |
-| A5 | `../notebook-upload-data-v3` / `notebook-upload-data-v3` | `ctx_0212865c10e4` | Genehmigter Lifecycle-/Statusentwurf, Migration 0005 in Arbeit; noch kein abgeschlossener Implementierungsnachweis. |
+| B3 | `../notebook-upload-v3` / `notebook-upload-v3` | `ctx_67e121724725` | Strict TXT/MD, begrenzter privater Storage-Adapter, trusted actor-bound run_one. Checkpoint `ff84356` umfasst `0df6fcd`, `3fb6930`, `8343ef4`; Worker meldet 30 leichte Tests, weitere historische DB-Läufe separat im B3-Handoff. Main hat vier Kernmodule gelesen, kein bestätigter neuer Befund. **Noch nicht integriert**, finale Reporting-race-DB-Regression auf kube1 läuft/steht aus. Route fehlt absichtlich, wartet auf A5. |
+| A5 | `../notebook-upload-data-v3` / `notebook-upload-data-v3` | `ctx_0212865c10e4` | Checkpoint `cddae38fa7a81e072628fbd359442457a42c3cbf` enthält Migration0005/API/Tests/Handoff; noch nicht final review-ready. Remote zunächst228passed/1Concurrency-Testerwartung, Anpassung/finaler Lauf offen. Cached-finalize-Race mit Zwei-Session-Test laut Worker behoben. Main prüft direkten cross-actor Status-UPDATE/INSERT als vorläufigen Schutzbedarf (msg_56c679b7f436). |
 
 B3 reserviert Testport 55443, A5 55444, jeweils eigene Umgebung/DB; alte Worker-Umgebungen und untracked `.pi/` erhalten. Nur Main integriert und pflegt gemeinsame Dokumente; A besitzt alle ORM-/Migrationsänderungen. Bereichsberichte in den jeweiligen Worktrees: `docs/handoffs/B3.md` und `A5.md`, sobald angelegt/aktualisiert. Meldungen/aktuelle SHAs erneut prüfen, nicht aus dieser Momentaufnahme ableiten.
 
 ## Nächste Schritte und Freischaltungsgrenzen
 
+- **Unmittelbar weiter:** A5 muss Remote-Regression und vorläufigen Main-Statusbefund klären; B3 führt eigene Reporting-race-Regression remote aus und darf Main-Dependencycommit `bac1ad6` für scoped Multipart-/Spooltests cherry-picken. Noch kein A5-Integrations-/Routeauftrag. Danach Kandidaten/Tests prüfen, A5 vor B3 integrieren und enge privilegierte Seams unabhängig reviewen lassen.
+- Main hat `python-multipart==0.0.33` in `bac1ad6` mit minimalem Lockdiff gepinnt, offizielle PyPI-Metadaten verifiziert und API-Image daraus auf kube1 gebaut. Echter Starlette1.10.0/FastAPI0.162.4 Multipart-Parse plus Spoolclose grün; kein Raw-Limit-/Abbruch-/HTTP-Uploadnachweis. Main-Testprojekt danach beendet.
 - A5 liefert durable Upload-Intents, geschützte Zustände/Receipts, atomare Finalisierung mit Commit-Guard, enge I/O-/Verifikationsrollen und member-sichtbaren aktuellen Versionsstatus ohne raw-job-RLS-Ausweitung. B3 setzt den [genehmigten Vertrag](../architecture/contracts.md#b3a5-upload-lifecycle-approved-design-not-integrated) um. Exakte APIs aus A5-Code/Handoff verifizieren.
 - B3-I/O: actor reserve/commit → I/O claim/commit → frische Actor-/Intent-/Lease-Prüfung → private bucket/non-upsert exact-key write, 30s Gesamtdeadline → begrenzter Readback/hash/bytes → gefencetes Receipt → autorisierte atomare Finalisierung/commit vor 202. Keine offenen DB-Transaktionen über Netzwerk-I/O.
 - Ambige/abgebrochene Writes bleiben dauerhaftes Reconciliation-Thema. Timeout/Leaseende beweist keine Remote-Quieszenz; alte Keys nicht neu vergeben, Cleanup-Tombstones für spätere Orphan-/Abwesenheitsprüfungen behalten. Echte Storage-Policies und Cleanup-Runtime noch nachzuweisen.

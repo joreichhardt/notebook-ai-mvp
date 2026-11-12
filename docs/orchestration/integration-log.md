@@ -1,5 +1,12 @@
 # Integration log
 
+## Main Multipart-Abhängigkeit und laufende Kandidatenprüfung
+
+- `bac1ad6` pinnt main-owned `python-multipart==0.0.33`, ohne andere Lockversionen zu ändern. Quelle `https://pypi.org/pypi/python-multipart/0.0.33/json` tatsächlich abgefragt: Python>=3.11, nicht zurückgezogen; Wheel-SHA stimmt mit uv.lock überein. Keine Uploadroute registriert.
+- Snapshot `bac1ad609b8f` per git archive in privaten kube1-Main-Bereich übertragen, API-Image dort gebaut. Ein tatsächlicher `Request.form(max_files=1,max_fields=0)` mit synthetischer Datei lief im unveränderten Non-root-Runtime-Container gegen Starlette1.10.0/FastAPI0.162.4/python-multipart0.0.33 erfolgreich; Bytes geprüft und Spool nach Formkontext geschlossen. Kein Raw-Limit-/Cancellation-/End-to-End-Uploadnachweis. One-off-Container automatisch entfernt, ausschließlich eigenes Main-Testprojekt anschließend down.
+- Main las B3s Text-, Bodybudget-, Storage- und Worker-Kernmodule aus Checkpoint `ff84356`; kein bestätigter neuer Befund, finale Remote-DB-Regression/Full-Flow-Gates bleiben offen. B3 darf Dependencycommit `bac1ad6` für scoped Parser-/Spooltests übernehmen, keine A5-Provisionalfiles oder Routefreigabe.
+- A5 meldet Checkpoint `cddae38`, geordneten Stopp der nativen lokalen PG55444, frische/seeded0004-Remote-Migrationen und behobenen gleichzeitigen Finalize-Replay. Finaler Remote-Lauf noch offen. Main prüfte Lifecycle-DDL und meldete **vorläufig**: neue direkte Status-UPDATE-Grants könnten einem Editor das Fälschen der Projektion eines anderen Uploaders erlauben; auch INSERT berücksichtigen. Nachricht `msg_56c679b7f436` verlangt reale Negativtests und geschützte Ableitung ohne breite neue Rechte vor Integration. Noch kein abschließender unabhängiger Review oder integrierter Kandidat.
+
 ## Docker-Testbetrieb nach kube1 verlagert
 
 - Nutzer verlangt keine Docker-Testmaschinen/-builds auf dem schwachen Laptop. Regel in AGENTS.md, README und [Runbook](../operations/testing-kube1.md) verbindlich dokumentiert; aktive B3/A5-Worker informiert und eigene private Serverbereiche `/home/jre/notebook-tests/{main,b3,a5}` mit Modus0700 sowie explizite Projektgrenzen zugewiesen. Stilllegung eigener nativer lokaler Worker-DBs angewiesen, Belege im jeweiligen Handoff nachverfolgen.
