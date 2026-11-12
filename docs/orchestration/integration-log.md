@@ -1,5 +1,12 @@
 # Integration log
 
+## B3 liefert312grün; enges Direct-login-Review-Followup vor Integration
+
+- B3code`32a0e2381639b670047b945a385be8bce41da584`, Handoff`ddd6986`: aufeigenemkube1SCRAMPostgreSQL16.15 Fixture1/Service12/Watchdog1/default312grün, bestehendeStarletteWarnung, Ruff/14aktiveLSPgrün. EigenesProjekt/Secretsbereinigt. Mainfixture`9d5a9d0` als`6a082db`mitengfreigegebenerRunbookkonfliktlösungenthalten. **Workerbeleg, nochkeineMainintegration/-FullSuite.**
+- Main lasService/Storage/Multipart/Text/Workerkontrollpfade undkritischeCommit-/factoryTests. B3-R1: UploadServiceverifiziertcurrent_user UNDsession_user; TextWorker._sessionprüftnurcurrent_user/Rollenflags undwürdeeinenprivilegiertenSessionloginhinterSETROLEnotebook_appnichtabweisen. Fail-closedFehlkonfigurationsguard, keinbelegterBrowserexploit. KleineKorrekturvorIntegrationangefordert: echtesREDvorClaim/I/O, direkterAppSessionUserGuard, neueFullSuite. BestehendeDurability-/DTO-/Storage-/Quieszenzgatesbleibenerhalten.
+- ErfolgreicherVorgänger`ctx_79ff6c3876b7`warbereitsautomatischfreigegeben; keep-open meldetealready_released, PID592627nachweislichweg/keinB3PiimWorktree. DanachFollowup`ctx_9a5bad119e28`/Task`task_0d70f66497ae`/Terminal`term_652317b9-e5a5-4410-afea-b98574dda208` frisch`--agent pi --keep-open` im **selbenB3Worktree**, keinErsatzworktree/keineparalleleInstanz. Scope nurWorker/eigeneTests/Handoff/ggf.eigenerRunner; keineA-/Root-/DDL-/Routeränderungen.
+- NutzerbestätigungA5Exitwurdegeprüft: alterPID497167tatsächlichnochlebend, keinRetrygestartet. MainhatteeinenfalschenBeendenbefehlgenanntundkorrigierteihnausdrücklich: Pi1.5.2unterstützt **`/quit`**, NICHT`/exit` (installierteCommands/Handlergeprüft). NutzerumkorrektengeordnetenExitzerbeten. KeineSchutzumgehung/rohenKills; A5bleibtseparatblockiert.
+
 ## Pi-Kompaktierung gezielt korrigiert; B3 kontrolliert fortgesetzt
 
 - Nutzerautorisierte Diagnose belegte Pi1.5.2-Mismatch: `sol-astra-auto` wählt physischeModelle, AgentSession las dazu virtuelleSettings mit16384Standardreserve statt konfiguriertSol315000/Astra171360. Lokaler installierterCorepatch außerhalbRepo reicht das physischeModell durch automatische Checks und Preparation; globaleSettings/Router/Abbruchsemantik unverändert. Originaldatei/Patch/Regressionstests/Hashes/Rollback in`~/.pi/agent/local-patches/1.5.2-physical-compaction/`. Original3passed/9failed → Patch12passed/0failed, Syntax/FreshCLI erfolgreich. SynthetischeKontrollpfadtests, keineLiveProvider-/neueWorkerCompactionbehauptung. [Betriebsnachweis](../operations/agent-runtime.md).
