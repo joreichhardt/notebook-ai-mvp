@@ -26,7 +26,7 @@ def configure_test_role() -> None:
 
     with psycopg.connect(os.environ["NOTEBOOK_TEST_POSTGRES_URL"]) as db:
         db.execute(sql.SQL("ALTER ROLE notebook_app PASSWORD {}").format(
-            sql.Literal(os.environ["NOTEBOOK_TEST_RUNTIME_PASSWORD"])
+            sql.Literal(Path("/work/private/runtime").read_text())
         ))
 
 
@@ -43,7 +43,8 @@ def main() -> None:
             shutil.copytree(original, SOURCE / name)
         else:
             shutil.copyfile(original, SOURCE / name)
-    env = {**os.environ, "UV_NO_CACHE": "1", "UV_LINK_MODE": "copy",
+    (SOURCE.parent / "tmp").mkdir()
+    env = {**os.environ, "TMPDIR": "/work/tmp", "UV_NO_CACHE": "1", "UV_LINK_MODE": "copy",
            "UV_PYTHON_DOWNLOADS": "never", "UV_CONCURRENT_DOWNLOADS": "2",
            "UV_CONCURRENT_INSTALLS": "2", "RAYON_NUM_THREADS": "2",
            "UV_PROJECT_ENVIRONMENT": str(SOURCE / ".venv"),
@@ -51,13 +52,23 @@ def main() -> None:
     run(sys.executable, "-m", "pip", "install", "--quiet", "--no-cache-dir",
         "--disable-pip-version-check", "--target", "/work/tools", "uv==0.9.9", env=env)
     run("/work/tools/bin/uv", "sync", "--frozen", "--quiet", env=env)
-    password = PASSWORD_FILE.read_text().strip()
-    # Generated hex is passed only in this test process's environment, never CLI/logs.
-    if len(password) != 48 or any(c not in "0123456789abcdef" for c in password):
+    material = PASSWORD_FILE.read_text().strip()
+    if len(material) != 48 or any(c not in "0123456789abcdef" for c in material):
         raise RuntimeError("invalid synthetic test credential")
-    env["NOTEBOOK_TEST_RUNTIME_PASSWORD"] = secrets.token_hex(24)
-    env["NOTEBOOK_TEST_POSTGRES_URL"] = f"postgresql://postgres:{password}@database/notebook_b3_test"
-    env["NOTEBOOK_MIGRATION_DATABASE_URL"] = f"postgresql+psycopg://postgres:{password}@database/notebook_b3_test"
+    private = Path("/work/private")
+    private.mkdir(mode=0o700)
+    runtime = secrets.token_hex(24)
+    for name, value in {
+        "runtime": runtime,
+        "pgpass": f"database:5432:notebook_b3_test:postgres:{material}\n"
+        f"database:5432:notebook_b3_test:notebook_app:{runtime}\n",
+    }.items():
+        with os.fdopen(os.open(private / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as target:
+            target.write(value)
+    # libpq reads mode0600 per-role synthetic credentials; no secret in URL/env/CLI.
+    env["PGPASSFILE"] = str(private / "pgpass")
+    env["NOTEBOOK_TEST_POSTGRES_URL"] = "postgresql://postgres@database/notebook_b3_test"
+    env["NOTEBOOK_MIGRATION_DATABASE_URL"] = "postgresql+psycopg://postgres@database/notebook_b3_test"
     python = str(SOURCE / ".venv/bin/python")
     run(str(SOURCE / ".venv/bin/alembic"), "-c", "backend/migrations/alembic.ini", "upgrade", "head", env=env)
     run(python, __file__, "--configure-test-role", env=env)

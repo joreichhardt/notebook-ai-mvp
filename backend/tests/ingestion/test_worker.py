@@ -28,10 +28,7 @@ def scene():
             admin.execute("INSERT INTO workspace_members VALUES (%s,%s,%s)", (workspace, uid, role))
         admin.execute("INSERT INTO notebooks VALUES (%s,%s,'text')", (notebook, workspace))
     engine = create_engine(
-        make_url(URL).set(
-            drivername="postgresql+psycopg", username="notebook_app",
-            password=os.getenv("NOTEBOOK_TEST_RUNTIME_PASSWORD") or make_url(URL).password,
-        ),
+        make_url(URL).set(drivername="postgresql+psycopg", username="notebook_app"),
         hide_parameters=True,
     )
     worker = TextWorker(engine)
