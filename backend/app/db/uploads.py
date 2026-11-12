@@ -31,7 +31,11 @@ class UploadIntent:
     media_type: str
 
 
-_COLUMNS = "id,document_id,version_id,job_id,workspace_id,notebook_id,storage_key,state,filename,sha256,byte_count,media_type"
+_INTENT_BY_ID = text("""
+    SELECT id,document_id,version_id,job_id,workspace_id,notebook_id,
+           storage_key,state,filename,sha256,byte_count,media_type
+    FROM public.upload_intents WHERE id=:i
+""")
 
 
 def reserve_upload(
@@ -89,9 +93,11 @@ def reserve_upload(
     )
     row = (
         session.execute(
-            text(
-                f"SELECT {_COLUMNS} FROM public.upload_intents WHERE notebook_id=:n AND idempotency_key=:k"
-            ),
+            text("""
+                SELECT id,document_id,version_id,job_id,workspace_id,notebook_id,
+                       storage_key,state,filename,sha256,byte_count,media_type
+                FROM public.upload_intents WHERE notebook_id=:n AND idempotency_key=:k
+            """),
             params,
         )
         .mappings()
@@ -123,13 +129,7 @@ def finalize_upload(session: Session, intent_id: UUID) -> UploadResult:
     """
     from app.db.models import Document, DocumentVersion, IngestionJob
 
-    row = (
-        session.execute(
-            text(f"SELECT {_COLUMNS} FROM public.upload_intents WHERE id=:i"), {"i": intent_id}
-        )
-        .mappings()
-        .one_or_none()
-    )
+    row = session.execute(_INTENT_BY_ID, {"i": intent_id}).mappings().one_or_none()
     if row is None or row["state"] not in ("stored", "finalized"):
         raise UploadUnavailable("upload_unavailable")
     intent = UploadIntent(**row)
@@ -142,13 +142,7 @@ def finalize_upload(session: Session, intent_id: UUID) -> UploadResult:
         raise UploadUnavailable("upload_unavailable")
     # READ COMMITTED fresh row after waiting for the parent lock; never replay
     # the pre-lock state or an ORM identity-map object from a competing request.
-    row = (
-        session.execute(
-            text(f"SELECT {_COLUMNS} FROM public.upload_intents WHERE id=:i"), {"i": intent_id}
-        )
-        .mappings()
-        .one_or_none()
-    )
+    row = session.execute(_INTENT_BY_ID, {"i": intent_id}).mappings().one_or_none()
     if row is None or row["state"] not in ("stored", "finalized"):
         raise UploadUnavailable("upload_unavailable")
     intent = UploadIntent(**row)

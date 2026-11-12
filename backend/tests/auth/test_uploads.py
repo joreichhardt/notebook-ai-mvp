@@ -826,7 +826,7 @@ def test_cleanup_reclaim_fences_old_token_and_preserves_tombstone(scope):
 
 
 def test_timeout_reconciler_cannot_turn_committing_finalized_source_into_cleanup(scope):
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from concurrent.futures import ThreadPoolExecutor
     from threading import Event
 
     from app.db.uploads import finalize_upload
@@ -852,13 +852,48 @@ def test_timeout_reconciler_cannot_turn_committing_finalized_source_into_cleanup
             session.execute(text("SELECT pg_sleep(1.1)"))
             future = pool.submit(reconcile)
             assert started.wait(3)
-            # Reconciler sees an expired precommit stored row, but must wait for
-            # the finalization ledger lock, then re-evaluate its state predicate.
-            with pytest.raises(TimeoutError):
-                future.result(timeout=0.1)
+            # Expiry discovery uses SKIP LOCKED: the locked precommit stored
+            # row is skipped, NOT converted to cleanup or remotely deleted.
+            assert (intent.id,) not in future.result(timeout=3)
         assert (intent.id,) not in future.result(timeout=5)
     with io() as db:
+        assert (intent.id,) not in db.execute("SELECT * FROM list_cleanup(100)").fetchall()
         assert db.execute("SELECT * FROM claim_cleanup(%s,60)", (intent.id,)).fetchone() is None
+    with app(scope[0]) as session:
+        assert (
+            session.execute(
+                text("SELECT state FROM upload_intents WHERE id=:i"), {"i": intent.id}
+            ).scalar_one()
+            == "finalized"
+        )
+
+
+def test_skipped_expired_intent_is_reconciled_after_lock_release(scope):
+    with app(scope[0]) as session:
+        intent = reserve(session, scope[5])
+    with psycopg.connect(URL) as db:
+        db.execute(
+            "UPDATE upload_intents SET expires_at=clock_timestamp()-interval '1 second' WHERE id=%s",
+            (intent.id,),
+        )
+    with psycopg.connect(URL) as locker:
+        locker.execute("SELECT id FROM upload_intents WHERE id=%s FOR UPDATE", (intent.id,))
+        with io() as db:
+            assert (intent.id,) not in db.execute("SELECT * FROM list_cleanup(100)").fetchall()
+    with io() as db:
+        db.execute("SELECT * FROM list_cleanup(100)")
+    with psycopg.connect(URL) as db:
+        assert db.execute(
+            "SELECT state FROM upload_intents WHERE id=%s", (intent.id,)
+        ).fetchone() == ("cleanup_pending",)
+        db.execute(
+            "UPDATE upload_intents SET reconcile_at=clock_timestamp()-interval '1 second' WHERE id=%s",
+            (intent.id,),
+        )
+    with io() as db:
+        assert (intent.id,) in db.execute("SELECT * FROM list_cleanup(100)").fetchall()
+        claim = db.execute("SELECT * FROM claim_cleanup(%s,60)", (intent.id,)).fetchone()
+        assert claim is not None and claim[2] == intent.storage_key
 
 
 def test_finalized_version_content_cannot_be_recycled_under_same_bound_id(scope):
