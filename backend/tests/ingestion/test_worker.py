@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import secrets
 from hashlib import sha256
 from uuid import uuid4
 
@@ -10,7 +11,8 @@ import pytest
 from app.db.models import Chunk, Document, DocumentVersion, IngestionJob
 from app.documents.storage import StorageError
 from app.workers.text import TextWorker
-from sqlalchemy import create_engine, select, text
+from psycopg import sql
+from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.engine import make_url
 
 URL = os.getenv("NOTEBOOK_TEST_POSTGRES_URL", "")
@@ -90,6 +92,87 @@ class SyntheticStore:
     async def read(self, actor_id, scope):
         self.calls += 1
         return self.data
+
+
+@pytest.fixture(params=["superuser", "bypassrls"])
+def switched_engine(request, tmp_path):
+    """Misconfigured trusted engine, not a browser-controlled role switch."""
+    role = f"b3_bypass_{uuid4().hex}"
+    passfile = tmp_path / "pgpass"
+    url = make_url(URL).set(drivername="postgresql+psycopg")
+    options = {}
+    engine = None
+    try:
+        if request.param == "bypassrls":
+            material = secrets.token_hex(24)
+            with psycopg.connect(URL, cursor_factory=psycopg.ClientCursor) as admin:
+                admin.execute(
+                    sql.SQL("CREATE ROLE {} LOGIN NOSUPERUSER BYPASSRLS PASSWORD %s").format(
+                        sql.Identifier(role)
+                    ),
+                    (material,),
+                )
+                admin.execute(sql.SQL("GRANT notebook_app TO {}").format(sql.Identifier(role)))
+            url = url.set(username=role, password=None)
+            fields = [url.host or "localhost", str(url.port or 5432), url.database, role, material]
+            with os.fdopen(
+                os.open(passfile, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
+            ) as f:
+                f.write(
+                    ":".join(str(v).replace("\\", "\\\\").replace(":", "\\:") for v in fields)
+                    + "\n"
+                )
+            assert passfile.stat().st_mode & 0o777 == 0o600
+            options["passfile"] = str(passfile)
+        engine = create_engine(url, connect_args=options, hide_parameters=True)
+
+        @event.listens_for(engine, "connect")
+        def switch_role(connection, record):
+            with connection.cursor() as cursor:
+                cursor.execute("SET ROLE notebook_app")
+            connection.commit()
+
+        with engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    "SELECT current_user,session_user,c.rolsuper,c.rolbypassrls,"
+                    "s.rolsuper,s.rolbypassrls FROM pg_roles c JOIN pg_roles s "
+                    "ON s.rolname=session_user WHERE c.rolname=current_user"
+                )
+            ).one()
+            assert row[:4] == ("notebook_app", url.username, False, False)
+            assert row[4:] == ((True, True) if request.param == "superuser" else (False, True))
+        yield engine
+    finally:
+        if engine is not None:
+            engine.dispose()
+        passfile.unlink(missing_ok=True)
+        if request.param == "bypassrls":
+            with psycopg.connect(URL) as admin:
+                admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role)))
+
+
+def test_privileged_session_set_role_rejected_before_claim_and_io(scene, switched_engine):
+    actor, _, _, _, _, direct_worker = scene
+    _, version, job = persisted_job(scene)
+    store = SyntheticStore(b"hello")
+    factories = []
+
+    def factory(authorize):
+        factories.append(authorize)
+        return store
+
+    worker = TextWorker(switched_engine, store_factory=factory)
+    with pytest.raises(RuntimeError, match="^unsafe_database_role$"):
+        asyncio.run(worker.run_one(actor_id=actor, job_id=job))
+    assert factories == []
+    assert store.calls == 0
+    with direct_worker._session(actor) as db:
+        queued = db.get(IngestionJob, job)
+        assert queued.status == "queued"
+        assert queued.attempts == 0
+        assert queued.lease_token is None
+        assert db.scalars(select(Chunk).where(Chunk.document_version_id == version)).all() == []
 
 
 def test_real_job_claim_chunks_and_finish_commit_atomically(scene):

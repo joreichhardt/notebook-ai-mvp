@@ -104,6 +104,15 @@ def main() -> None:
         env=env,
     )
     run(python, __file__, "--configure-test-role", env=env)
+    run(
+        python,
+        "-m",
+        "pytest",
+        "backend/tests/ingestion/test_worker.py::test_privileged_session_set_role_rejected_before_claim_and_io",
+        "-q",
+        "--tb=short",
+        env=env,
+    )
     worker = SOURCE / "backend/app/workers/text.py"
     fixed = worker.read_text()
     new = """            if work in done:
