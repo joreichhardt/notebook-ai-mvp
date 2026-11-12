@@ -127,7 +127,7 @@ export const api = {
     request<Connection>(`/connections/${encodeURIComponent(id)}`, "PATCH", {
       model,
     }),
-  authConfig: (signal?: AbortSignal) =>
+  authConfig: (signal?: AbortSignal): Promise<AuthConfig> =>
     request<{
       auth: { password_login: boolean };
       invitations: boolean;
