@@ -1,5 +1,21 @@
 # Implementation plan
 
+## Aktuell laufend
+
+**Pi-Runtime:** Nutzerautorisierter lokaler1.5.2-Corepatch ordnet Kompaktierung dem physischen Modell zu; Original3grün/9rot → Patch12grün, globale Settings/Router unverändert. B3 nach Checkpoint`4dbfb1f` guardedgestoppt/alterPIDweg und im selben Task/Worktree frisch als`ctx_79ff6c3876b7` gestartet; lieferte312grün. Nach dessenAutoRelease/PIDExit engesReview-Followup`ctx_9a5bad119e28` im selbenWorktree gestartet, keinparallelerVorgänger. A5 guardstop/release ohne Prozessaktion, operatorseitigerExit/Identitätsreparatur nötig. Supervisor noch alterCore. [Details, Tests und Aktivierung](../operations/agent-runtime.md).
+
+**Testhost:** Docker-Builds und containerisierte Tests ausschließlich auf kube1; Laptop ohne neue Containerlast. SSH/Docker/Compose geprüft, getrennte private Bereiche für Main/B3/A5 angelegt; Zuordnung und Kommandos im [Testbetriebs-Runbook](../operations/testing-kube1.md). Eigene native lokale Worker-DBs nach laufenden Tests geordnet stoppen und erhalten, neue schwere Tests remote. Bestehende Ports 55443/55444 unten sind historische lokale Reservierungen, keine kube1-Portfreigabe.
+
+Aktueller geprüfter Integrationsstand **`8862a1e2636d`**: A5-Lifecycle/Status nach finalem worker_done integriert, auf kube1 frisch0005/238Defaulttests/Ruff und sechs aktive LSP-Pfade verifiziert. Daten-/Provider-Seam samt F3a-Nachprüfung bildet die Vorgängerbasis `f77255d`. Aktuelle Prüfnachweise stehen im [Integrationslog](integration-log.md); Einstieg in alle Anleitungen: [Dokumentationsindex](../README.md).
+
+- **B3** in `../notebook-upload-v3`, Branch `notebook-upload-v3`: getesteterCode`32a0e2381639`/Handoff`ddd6986`, privateStorage-/TXT-/Multipart-/Worker-/Service-Seams, kurzeActorTx/separateIoTx und sichereMemberDTOs. Kube1SCRAM: Fixture1/Service12/Watchdog1/Default312grün, Ruff/14aktiveLSPgrün, eigeneRessourcen/Secretsentfernt. **NochNICHTintegriert.** MainReviewB3-R1: TextWorker._session prüftnurcurrent_user, nichtSessionloginhinterprivilegiertemSETROLE (UploadServicebereitsstrikter). EngesFollowup`ctx_9a5bad119e28`/Task`task_0d70f66497ae`, frischPi/keep-open imselbenWorktree nachbelegtemExitdesfreigegebenenVorgängers: RED/GREEN+direkterAppSessionUserGuard+neueFullSuite, nurWorker/eigeneTests/Handoff. KeinBrowserexploitbehauptet. Rootenv/Engines/Rollen Main; Routerunregistriert/Capabilitiesfalse.
+- **A5** in `../notebook-upload-data-v3`, Branch `notebook-upload-data-v3`: Lifecycle/Status `da6b4c0` integriert/verifiziert. Präzisierter Quotenentwurf `84ab1f7` dokumentations-only übernommen; enger0006-Auftrag inkl. Legacy-Preflight/fail-closed nonterminal/fester Gate-Role-Allowlist freigegeben. **Zustellung blockiert/unklar:** Follow-up`ctx_19d0c7a4c97e`, Task`task_7890065e88b5`, failed stage=agent_readiness/liveness=unverifiable nachTimeout, gleiches bestehendes Terminal. Guardedstop/release bestätigten keine Prozessaktion (`alreadySettled`/`no_owned_resource`); operatorseitig bestehendenPi mit **`/quit`** geordnet beenden oder Identität reparieren (Mainkorrigierte`/exit`; Nutzerbestätigunggeprüft, PID497167nochlebend). KeinExit bewiesen, keine roheKill-/Close-/Retry-/Ersatzaktion. Keine0006-Integration oder Tests behauptet. Bestehender Worktree/Worker, keine neue Infrastruktur. Details im [Vertrag](../architecture/contracts.md).
+- Beide im Orca-Run `run_a6efa1e8f690`, nur Pi, getrennte Umgebungen. B3 reserviert Testport 55443, A5 55444; Bestandsinstanzen bleiben unberührt. Gemeinsame Dokumente pflegt Main; Worker liefern aktuelle eigene Handoffs.
+- **Freischaltung blockiert:** dauerhafte Finalisierung/Reconciliation, echte private Supabase-Storage-Policies/I/O, sichere Actor-Dispatch-Laufzeit und Quoten. Zielgrenzen: outstanding 10 pro Actor/Notebook und 50 pro Notebook; aktiv 2 pro Actor und 4 pro Notebook. Noch kein Nachweis; actor-private Counts sind kein globales Limit. A5 liefert zunächst Lifecycle/Status, Quoten-Seam wird separat geprüft.
+- Erster Slice: nur neue TXT-/Markdown-Dokumente, keine PDF-, Embedding-, Ersetzungs-, Lösch- oder Retry-HTTP-Routen. Dokument-/Chat-Capabilities bleiben aus. PDF benötigt isolierten Parser; anschließend D3/E3 und unabhängiger Full-Flow-Review.
+
+## Historische Meilensteine
+
 Baseline: `0c75d3c89fe50bd576fe123ec831d59eaa073556`. Integration: `integration/notebooklm`, worktree `../notebook-integration`. Main agent owns root config, app/main.py, architecture and orchestration docs.
 
 | Task | Owner | Paths | Status |
@@ -31,7 +47,8 @@ Resume baseline: `1fe389732d59acaaddcb1463b1ab726fd30805a9` (clean). Contract pr
 |---|---|---|---|
 | A3 | Pi data / notebook-data-v3 | ORM + migration 0003 for documents, versions, chunks, profiles, fenced jobs; RLS/integrity tests | integrated / verified; HEAD eae387e |
 | C3 | Pi providers / notebook-provider-v3 | Typed generation/streaming, embeddings, owned execution boundary, cancellation and egress tests | integrated / verified; HEAD bb00822 |
-| B3 | Pi RAG / assigned after A3 | Upload/storage, isolated parsing, durable worker and scoped text retrieval/chat | todo; A3, C3 |
+| B3 | Pi RAG / notebook-upload-v3 | TXT/MD-Upload, Storage und actorgebundene Verarbeitung | in_progress; Verdrahtung benötigt A5 |
+| A5 | Pi Daten / notebook-upload-data-v3 | Dauerhafte Upload-Intents/Finalisierung/Cleanup und Quellenstatus | integrated / verified `8862a1e`; Quoten-Folgeentwurf in_progress |
 | D3 | Pi frontend / assigned after backend seam | Working upload/status/source/chat flow, no development notices | todo; B3 |
 | E3 | Pi deployment / assigned separately | Actual Supabase/storage and isolated parser runtime, local integration evidence | todo; parser requirements |
 | F3a | Independent Pi review / notebook-seam-review-v3 | Persistence/execution seam review | closed F3a-01 after A4; integrated edcaf398; full-flow review still pending |

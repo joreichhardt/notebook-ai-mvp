@@ -1,6 +1,6 @@
 # Deployment foundation — not a production release
 
-The integration Compose file starts only API and static frontend. It binds localhost:18080 on the development host; use a distinct project/port for parallel tests. It intentionally contains no Supabase, credentials, tunnel, migration runner or release workflow. `/auth/v1/` returns 503 until its audited route allowlist and Supabase integration exist. Do not use this file to claim a live deployment.
+The integration Compose file starts only API and static frontend. **Run container builds/test stacks on kube1 only**, not on the laptop; see [kube1 testing](testing-kube1.md). Use `compose.test.yaml`, an explicit project and assigned `NOTEBOOK_TEST_PORT`; main uses kube1 loopback port 18190. The base fallback port 18080 is occupied by an unrelated kube1 service and must not be used there. It intentionally contains no Supabase, credentials, tunnel, migration runner or release workflow. `/auth/v1/` returns 503 until its audited route allowlist and Supabase integration exist. Do not use this file to claim a live deployment.
 
 Verified 2026-11-11: API image builds from the lockfile, imports as UID 10001 with read-only root filesystem, dropped capabilities, no network and no-new-privileges. This is not a rootless-daemon test. Parent's kube1 inventory reports Docker 29.1.3, Compose 2.40.3+ds1-0ubuntu1, no rootless marker, no current Supabase container, occupied mailcow ports 80/443, and an installed bws CLI. Existing services remain untouched.
 
