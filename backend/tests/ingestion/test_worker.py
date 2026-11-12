@@ -4,11 +4,13 @@ import asyncio
 import os
 import secrets
 from hashlib import sha256
+from time import sleep
 from uuid import uuid4
 
 import psycopg
 import pytest
 from app.db.models import Chunk, Document, DocumentVersion, IngestionJob
+from app.db.uploads import finalize_upload, reserve_upload
 from app.documents.storage import StorageError
 from app.workers.text import TextWorker
 from psycopg import sql
@@ -17,6 +19,22 @@ from sqlalchemy.engine import make_url
 
 URL = os.getenv("NOTEBOOK_TEST_POSTGRES_URL", "")
 pytestmark = pytest.mark.skipif(not URL, reason="Isolated PostgreSQL required")
+
+
+@pytest.fixture(autouse=True)
+def historical_pdf_database(request, monkeypatch):
+    if request.node.name != "test_pdf_job_has_explicit_unsupported_failure_without_io":
+        yield
+        return
+    import app.workers.text as module
+
+    from backend.tests.auth import database_versions, leases_0005
+
+    with database_versions.isolated_database(URL, "0005") as legacy_url:
+        monkeypatch.setattr(__import__(__name__), "URL", legacy_url)
+        for name in ("claim_job", "heartbeat_job", "lock_job_for_publish", "finish_job"):
+            monkeypatch.setattr(module, name, getattr(leases_0005, name))
+        yield
 
 
 @pytest.fixture
@@ -43,45 +61,32 @@ def scene():
 
 
 def persisted_job(scene, data=b"hello", *, key="initial", media="text/plain"):
-    actor, _, _, workspace, notebook, worker = scene
-    document, version, job = uuid4(), uuid4(), uuid4()
+    actor, _, _, _, notebook, worker = scene
+    digest = sha256(data).hexdigest()
     with worker._session(actor) as db:
-        db.add(
-            Document(
-                id=document,
-                workspace_id=workspace,
-                notebook_id=notebook,
-                created_by=actor,
-                filename="example.txt",
-                current_version_id=version,
-            )
+        intent = reserve_upload(
+            db,
+            notebook,
+            idempotency_key=key,
+            filename="example.txt",
+            sha256=digest,
+            byte_count=len(data),
+            media_type=media,
         )
-        db.flush()
-        db.add(
-            DocumentVersion(
-                id=version,
-                document_id=document,
-                notebook_id=notebook,
-                workspace_id=workspace,
-                version=1,
-                media_type=media,
-                byte_count=len(data),
-                sha256=sha256(data).hexdigest(),
-                storage_key=f"{workspace}/{notebook}/{document}/{version}/original",
-            )
-        )
-        db.flush()
-        db.add(
-            IngestionJob(
-                id=job,
-                document_version_id=version,
-                notebook_id=notebook,
-                workspace_id=workspace,
-                actor_user_id=actor,
-                idempotency_key=key,
-            )
-        )
-    return document, version, job
+    # Synthetic receipt provisioning only, not runtime login/Storage acceptance.
+    # Use real fixed RPCs and committed boundaries; never insert raw queued jobs.
+    with psycopg.connect(URL) as setup:
+        setup.execute("SET LOCAL ROLE notebook_storage_io")
+        claim = setup.execute("SELECT * FROM claim_upload_io(%s,60)", (intent.id,)).fetchone()
+        assert claim is not None
+    with psycopg.connect(URL) as setup:
+        setup.execute("SET LOCAL ROLE notebook_storage_io")
+        assert setup.execute(
+            "SELECT confirm_upload_io(%s,%s,%s,%s)", (intent.id, claim[1], digest, len(data))
+        ).fetchone() == (True,)
+    with worker._session(actor) as db:
+        result = finalize_upload(db, intent.id)
+    return result.document_id, result.version_id, result.job_id
 
 
 class SyntheticStore:
@@ -243,6 +248,9 @@ def test_inflight_revocation_or_reclaimed_lease_cannot_publish(scene, mode):
     actor, _, _, workspace, _, worker = scene
     document, version, job = persisted_job(scene)
     worker.heartbeat_seconds = 0.03
+    if mode == "reclaim":
+        # Let the real lease expire before the next watchdog tick, then reclaim.
+        worker.lease_seconds, worker.heartbeat_seconds = 1, 2
 
     async def run():
         entered = asyncio.Event()
@@ -270,10 +278,8 @@ def test_inflight_revocation_or_reclaimed_lease_cannot_publish(scene, mode):
             with worker._session(actor) as db:
                 db.execute(text("SELECT notebook_delete_document(:d)"), {"d": document})
         else:
-            with psycopg.connect(URL) as admin:
-                admin.execute(
-                    "UPDATE ingestion_jobs SET lease_token=%s WHERE id=%s", (uuid4(), job)
-                )
+            await asyncio.sleep(1.05)
+            assert worker._claim(actor, job) is not None
         assert await asyncio.wait_for(task, timeout=3) == "lease_lost"
         assert cancelled.is_set()
 
@@ -316,15 +322,12 @@ def test_false_finish_rolls_back_every_chunk(scene, monkeypatch):
 def test_actor_concurrency_limit_is_serialized_and_expired_leases_do_not_consume_slot(scene):
     actor, _, _, _, _, worker = scene
     jobs = [persisted_job(scene, key=f"limit-{i}")[2] for i in range(3)]
+    worker.lease_seconds = 1
     assert worker._claim(actor, jobs[0]) is not None
+    worker.lease_seconds = 30
     assert worker._claim(actor, jobs[1]) is not None
     assert worker._claim(actor, jobs[2]) is None
-    with psycopg.connect(URL) as admin:
-        admin.execute(
-            "UPDATE ingestion_jobs SET lease_expires_at=clock_timestamp()-interval '1s' "
-            "WHERE id=%s",
-            (jobs[0],),
-        )
+    sleep(1.05)
     assert worker._claim(actor, jobs[2]) is not None
 
 
@@ -385,15 +388,12 @@ def test_crash_reclaim_is_bounded_and_old_worker_cannot_publish(scene):
 
     actor, _, _, _, _, worker = scene
     _, version, job = persisted_job(scene)
+    worker.lease_seconds = 1
     initial = worker._claim(actor, job)
     assert initial is not None
     old_token, source = initial
-    with psycopg.connect(URL) as admin:
-        admin.execute(
-            "UPDATE ingestion_jobs SET lease_expires_at=clock_timestamp()-interval '1s' "
-            "WHERE id=%s",
-            (job,),
-        )
+    sleep(1.05)
+    worker.lease_seconds = 30
     worker.store_factory = lambda auth: SyntheticStore(b"hello")
     assert asyncio.run(worker.run_one(actor_id=actor, job_id=job)) == "succeeded"
     with pytest.raises(LeaseLost):
@@ -404,14 +404,56 @@ def test_crash_reclaim_is_bounded_and_old_worker_cannot_publish(scene):
         assert len(db.scalars(select(Chunk).where(Chunk.document_version_id == version)).all()) == 1
 
     _, _, exhausted = persisted_job(scene, key="exhausted")
-    with psycopg.connect(URL) as admin:
-        admin.execute("UPDATE ingestion_jobs SET attempts=5 WHERE id=%s", (exhausted,))
+    worker.lease_seconds = 1
+    for _ in range(5):
+        assert worker._claim(actor, exhausted) is not None
+        sleep(1.05)
     assert asyncio.run(worker.run_one(actor_id=actor, job_id=exhausted)) == "not_claimed"
+    with worker._session(actor) as db:
+        assert db.get(IngestionJob, exhausted).attempts == 5
 
 
 def test_pdf_job_has_explicit_unsupported_failure_without_io(scene):
     actor, _, _, _, _, worker = scene
-    _, _, job = persisted_job(scene, b"%PDF-1.7", media="application/pdf")
+    # Historical0005 only: exact old unsupported-media worker regression.
+    _, _, _, workspace, notebook, _ = scene
+    document, version, job = uuid4(), uuid4(), uuid4()
+    with worker._session(actor) as db:
+        db.add(
+            Document(
+                id=document,
+                workspace_id=workspace,
+                notebook_id=notebook,
+                created_by=actor,
+                filename="old.pdf",
+                current_version_id=version,
+            )
+        )
+        db.flush()
+        db.add(
+            DocumentVersion(
+                id=version,
+                document_id=document,
+                workspace_id=workspace,
+                notebook_id=notebook,
+                version=1,
+                media_type="application/pdf",
+                byte_count=8,
+                sha256=sha256(b"%PDF-1.7").hexdigest(),
+                storage_key=f"{workspace}/{notebook}/{document}/{version}/original",
+            )
+        )
+        db.flush()
+        db.add(
+            IngestionJob(
+                id=job,
+                document_version_id=version,
+                workspace_id=workspace,
+                notebook_id=notebook,
+                actor_user_id=actor,
+                idempotency_key="legacy-pdf",
+            )
+        )
     store = SyntheticStore(b"%PDF-1.7")
     worker.store_factory = lambda auth: store
     assert asyncio.run(worker.run_one(actor_id=actor, job_id=job)) == "failed"
