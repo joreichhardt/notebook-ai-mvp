@@ -4,7 +4,7 @@
 
 Worktree `/home/jre/orca/workspaces/gemini-nb-clone/notebook-source-status-ui`, branch `notebook-source-status-ui`; verified starting HEAD `a0ee89e4b66fe510a0e6b4fb86a29678a78489a2` (Main application acceptance `dc34927`). Starting status contained only pre-existing untracked `.pi/`, preserved. Dispatch `ctx_d00062dfceac`, task `task_7d5badea2d3b`; no helpers.
 
-## Implemented (not yet runtime-accepted)
+## Implemented (focused frontend verification passed; not full-flow accepted)
 
 - Existing `/api/capabilities` documents boolean passes through discovery; only literal `true` renders the source reader. False/absent sends no document request and shows no product rollout notices.
 - Read-only contracted `GET /api/notebooks/{id}/documents`, using existing same-origin request/session/CSRF handling and AbortSignal. No DTO additions beyond the existing contract, no backend changes/enablement.
@@ -44,4 +44,12 @@ Protected metadata/log roots `/home/jre/notebook-tests/d3a/.runtime-<full-SHA>[-
 3. Attempt3: imageverify0/configsmoke0/network0/install0/Vitest1; Main-requested `--minWorkers=1` unsupported by locked Vitest5.1.0, zero assertions, tsc unrun. No source RED/GREEN claim for these infrastructure/CLI failures.
 4. Attempt4: imageverify0/configsmoke0/network0/install0/help0; installed help proves `--maxWorkers` support. **Vitest0, 2files/33tests passed in5.19s** (App25/api8), tsc1: four real mock-typing errors because inferred `api.authConfig` return required documents while public AuthConfig permits absent capability. Vitest reports2isolated workers spawned across2files; maxWorkers1 bounds concurrent workers, not total lifetime processes. This run is **FAILED**, not acceptance.
 
-Narrow follow-up source correction annotates discovery `Promise<AuthConfig>` explicitly, aligning existing optional-capability contract/mocks without changing runtime gating; follow-up verification not yet run/authorized. No frontend build, backend/DB/Storage/integration/end-to-end/provider/production check ran. Remaining gates: independently validate corrected source with focused Vitest+tsc, Main source/integration review; real route/capability/Storage/full-flow acceptance separate, D3 incomplete. No deployment requested or performed.
+### Final source verification: 76f488756e57a9d211e8dfb851c0be62ff5efd56
+
+Main reviewed the exact one-line return annotation correction (`frontend/src/api.ts:130`, `Promise<AuthConfig>`) and authorized one new immutable-SHA verification. No casts, suppression, test deletion, runtime gate change or strictness change. New source snapshot, fresh idle preflight23:02:47CET (~26GiB available), same pinned Node22.23.5/Vitest5.1.0 and successful attempt4 layout/config.
+
+**PASS:** imageverify0/configsmoke0/network0/install0/help0, focused **Vitest0: 2files/33tests (App25/api8),5.39s**, **tsc0**, supervisor exit0. Exact commands remain `./node_modules/.bin/vitest run src/App.test.tsx src/api.test.ts --maxWorkers=1` and `./node_modules/.bin/tsc --noEmit`; no minWorkers, no hidden retry. **Cleanup0 and own containers/networks/volumes0/0/0**, disposable app/cache removed; slot released in native message `msg_ca9f1ed9197a`. Protected metadata: `/home/jre/notebook-tests/d3a/.runtime-76f488756e57a9d211e8dfb851c0be62ff5efd56-verification1/results.json`, exact argv/native logs under sibling `logs/`. Immutable archive/image retained. This result is distinct from failed f6 runs; counts are not summed across attempts.
+
+Local LSP cascades in main/Sharing/Connections remain dependency-context findings (no local React/test dependencies); successful remote strict `tsc --noEmit` covers the actual committed frontend source and tests. No dependency installation or unrelated edits made locally to silence those findings.
+
+No frontend build, backend/DB/Storage/integration/end-to-end/provider/production check ran. Remaining gates: Main full UI source review/integration and any separately authorized build/browser/real API/full-flow checks; route/capability/Storage acceptance remains separate, D3 incomplete. Main owns plan/index update and should link this handoff. No deployment requested or performed.
