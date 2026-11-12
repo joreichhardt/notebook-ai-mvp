@@ -5,6 +5,7 @@ fresh notebook_app context for an already verified actor and commit on exit;
 IoTx must be a SEPARATE nonprivileged login pinned to notebook_storage_io.
 No engine/role/credential provisioning, HTTP registration or cleanup finality here.
 """
+
 import asyncio
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
@@ -69,7 +70,9 @@ class UploadReceipt(BaseModel):
 
 
 class UploadStore(Protocol):
-    async def put(self, actor_id: UUID, scope: ObjectScope, data: bytes, media_type: str) -> None: ...
+    async def put(
+        self, actor_id: UUID, scope: ObjectScope, data: bytes, media_type: str
+    ) -> None: ...
     async def read(self, actor_id: UUID, scope: ObjectScope) -> bytes: ...
 
 
@@ -78,29 +81,41 @@ class _BufferedUpload:
         self.data, self.offset = data, 0
 
     async def read(self, size: int) -> bytes:
-        result = self.data[self.offset:self.offset + size]
+        result = self.data[self.offset : self.offset + size]
         self.offset += len(result)
         return result
 
 
 class UploadService:
-    def __init__(self, *, actor_tx: ActorTx | None = None, io_tx: IoTx | None = None,
-                 storage: StorageConfig | None = None,
-                 store_factory: Callable[[Authorize], UploadStore] | None = None):
+    def __init__(
+        self,
+        *,
+        actor_tx: ActorTx | None = None,
+        io_tx: IoTx | None = None,
+        storage: StorageConfig | None = None,
+        store_factory: Callable[[Authorize], UploadStore] | None = None,
+    ):
         self.actor_tx, self.io_tx = actor_tx, io_tx
         self.configured = io_tx is not None and (storage is not None or store_factory is not None)
         # Explicit synthetic injection is for tests only. No default in-memory store.
-        self.store_factory = store_factory or (lambda auth: SupabaseStorage(storage, authorize=auth))
+        self.store_factory = store_factory or (
+            lambda auth: SupabaseStorage(storage, authorize=auth)
+        )
 
     @staticmethod
     def _role(db: Session, expected: str):
-        role = db.execute(text(
-            "SELECT current_user,session_user,c.rolsuper,c.rolbypassrls,s.rolsuper,s.rolbypassrls "
-            "FROM pg_roles c JOIN pg_roles s ON s.rolname=session_user WHERE c.rolname=current_user"
-        )).one()
-        if (role[0] != expected or any(role[2:])
-                or (expected == "notebook_app" and role[1] != expected)
-                or (expected == "notebook_storage_io" and role[1] == "notebook_app")):
+        role = db.execute(
+            text(
+                "SELECT current_user,session_user,c.rolsuper,c.rolbypassrls,s.rolsuper,s.rolbypassrls "
+                "FROM pg_roles c JOIN pg_roles s ON s.rolname=session_user WHERE c.rolname=current_user"
+            )
+        ).one()
+        if (
+            role[0] != expected
+            or any(role[2:])
+            or (expected == "notebook_app" and role[1] != expected)
+            or (expected == "notebook_storage_io" and role[1] == "notebook_app")
+        ):
             raise DocumentError("unsafe_database_role")
         db.execute(text("SET LOCAL statement_timeout='3s'"))
         db.execute(text("SET LOCAL lock_timeout='1s'"))
@@ -114,7 +129,9 @@ class UploadService:
         try:
             with self.actor_tx(actor) as db:
                 self._role(db, "notebook_app")
-                subject = db.execute(text("SELECT current_setting('request.jwt.claim.sub',true)")).scalar_one()
+                subject = db.execute(
+                    text("SELECT current_setting('request.jwt.claim.sub',true)")
+                ).scalar_one()
                 if subject != str(actor):
                     raise DocumentError("unsafe_actor_context")
                 if db.scalar(select(Admission.user_id).where(Admission.user_id == actor)) is None:
@@ -139,34 +156,61 @@ class UploadService:
         workspace = db.scalar(select(Notebook.workspace_id).where(Notebook.id == notebook))
         if workspace is None:
             raise DocumentError("notebook_not_found", 404)
-        role = db.scalar(select(Member.role).where(Member.workspace_id == workspace, Member.user_id == actor))
+        role = db.scalar(
+            select(Member.role).where(Member.workspace_id == workspace, Member.user_id == actor)
+        )
         if role is None or (write and role not in ("owner", "editor")):
-            raise DocumentError("write_required" if write else "notebook_not_found", 403 if write else 404)
+            raise DocumentError(
+                "write_required" if write else "notebook_not_found", 403 if write else 404
+            )
 
     @staticmethod
     def _projection(notebook: UUID):
-        return select(
-            Document.id, Document.notebook_id, Document.filename,
-            DocumentVersion.id.label("version_id"),
-            DocumentVersion.processing_status.label("status"), DocumentVersion.error_code,
-        ).join(DocumentVersion, (Document.current_version_id == DocumentVersion.id)
-               & (Document.id == DocumentVersion.document_id)
-               & (Document.notebook_id == DocumentVersion.notebook_id)
-               & (Document.workspace_id == DocumentVersion.workspace_id)).where(
-                   Document.notebook_id == notebook, Document.deleted_at.is_(None))
+        return (
+            select(
+                Document.id,
+                Document.notebook_id,
+                Document.filename,
+                DocumentVersion.id.label("version_id"),
+                DocumentVersion.processing_status.label("status"),
+                DocumentVersion.error_code,
+            )
+            .join(
+                DocumentVersion,
+                (Document.current_version_id == DocumentVersion.id)
+                & (Document.id == DocumentVersion.document_id)
+                & (Document.notebook_id == DocumentVersion.notebook_id)
+                & (Document.workspace_id == DocumentVersion.workspace_id),
+            )
+            .where(Document.notebook_id == notebook, Document.deleted_at.is_(None))
+        )
 
-    def list_documents(self, *, actor_id: UUID, notebook_id: UUID, limit: int = 100) -> list[DocumentDTO]:
+    def list_documents(
+        self, *, actor_id: UUID, notebook_id: UUID, limit: int = 100
+    ) -> list[DocumentDTO]:
         if type(limit) is not int or not 1 <= limit <= 100:
             raise DocumentError("invalid_limit", 422)
         with self._actor(actor_id) as db:
             self._notebook(db, actor_id, notebook_id, write=False)
-            rows = db.execute(self._projection(notebook_id).order_by(Document.created_at, Document.id).limit(limit)).mappings()
+            rows = db.execute(
+                self._projection(notebook_id)
+                .order_by(Document.created_at, Document.id)
+                .limit(limit)
+            ).mappings()
             return [DocumentDTO(**row) for row in rows]  # NO raw/private job query for members
 
-    async def upload(self, *, actor_id: UUID, notebook_id: UUID, idempotency_key: str,
-                     upload: TextUpload, connection_id: UUID | None = None,
-                     index_profile_id: UUID | None = None, document_id: UUID | None = None,
-                     expected_version_id: UUID | None = None) -> UploadReceipt:
+    async def upload(
+        self,
+        *,
+        actor_id: UUID,
+        notebook_id: UUID,
+        idempotency_key: str,
+        upload: TextUpload,
+        connection_id: UUID | None = None,
+        index_profile_id: UUID | None = None,
+        document_id: UUID | None = None,
+        expected_version_id: UUID | None = None,
+    ) -> UploadReceipt:
         try:
             with self._actor(actor_id) as db:
                 self._notebook(db, actor_id, notebook_id, write=True)
@@ -176,16 +220,28 @@ class UploadService:
                 raise DocumentError("unsupported_embedding", 415)
             if document_id is not None or expected_version_id is not None:
                 raise DocumentError("unsupported_replacement", 415)
-            if not 1 <= len(idempotency_key) <= 128 or any(c in idempotency_key for c in "\r\n\x00"):
+            if not 1 <= len(idempotency_key) <= 128 or any(
+                c in idempotency_key for c in "\r\n\x00"
+            ):
                 raise DocumentError("invalid_idempotency_key", 422)
-            validated = await read_text_upload(_BufferedUpload(upload.data), upload.filename, upload.media_type)
+            validated = await read_text_upload(
+                _BufferedUpload(upload.data), upload.filename, upload.media_type
+            )
             if validated != upload:
                 raise DocumentError("invalid_upload", 422)
             with self._actor(actor_id) as db:
-                intent = reserve_upload(db, notebook_id, idempotency_key=idempotency_key,
-                                        filename=upload.filename, sha256=upload.sha256,
-                                        byte_count=len(upload.data), media_type=upload.media_type)
-            scope = ObjectScope(intent.workspace_id, intent.notebook_id, intent.document_id, intent.version_id)
+                intent = reserve_upload(
+                    db,
+                    notebook_id,
+                    idempotency_key=idempotency_key,
+                    filename=upload.filename,
+                    sha256=upload.sha256,
+                    byte_count=len(upload.data),
+                    media_type=upload.media_type,
+                )
+            scope = ObjectScope(
+                intent.workspace_id, intent.notebook_id, intent.document_id, intent.version_id
+            )
             if scope.key != intent.storage_key:
                 raise DocumentError("invalid_upload_intent")
             if intent.state not in ("stored", "finalized"):
@@ -194,11 +250,16 @@ class UploadService:
                 if claim is None:
                     raise DocumentError("upload_in_progress")
                 if (claim.storage_key, claim.sha256, claim.byte_count, claim.media_type) != (
-                    scope.key, upload.sha256, len(upload.data), upload.media_type,
+                    scope.key,
+                    upload.sha256,
+                    len(upload.data),
+                    upload.media_type,
                 ):
                     raise DocumentError("invalid_upload_claim")
 
-                async def authorize(actor: UUID, target: ObjectScope, action: Literal["read", "write"]):
+                async def authorize(
+                    actor: UUID, target: ObjectScope, action: Literal["read", "write"]
+                ):
                     if actor != actor_id or target != scope or action not in ("read", "write"):
                         raise DocumentError("upload_forbidden", 403)
                     with self._actor(actor_id) as db:
@@ -214,19 +275,36 @@ class UploadService:
                     await authorize(actor_id, scope, "read")
                     original = await store.read(actor_id, scope)
                     await authorize(actor_id, scope, "read")
-                    if len(original) != len(upload.data) or sha256(original).hexdigest() != upload.sha256:
+                    if (
+                        len(original) != len(upload.data)
+                        or sha256(original).hexdigest() != upload.sha256
+                    ):
                         raise DocumentError("original_integrity_failed", 502)
                 with self._io() as db:
-                    if not confirm_upload_io(db, intent.id, claim.token,
-                                             sha256=upload.sha256, byte_count=len(original)):
+                    if not confirm_upload_io(
+                        db, intent.id, claim.token, sha256=upload.sha256, byte_count=len(original)
+                    ):
                         raise DocumentError("upload_unavailable")
             with self._actor(actor_id) as db:
                 self._notebook(db, actor_id, notebook_id, write=True)
                 result = finalize_upload(db, intent.id)
-                row = db.execute(self._projection(notebook_id).where(Document.id == result.document_id)).mappings().one()
+                row = (
+                    db.execute(
+                        self._projection(notebook_id).where(Document.id == result.document_id)
+                    )
+                    .mappings()
+                    .one()
+                )
                 # Only the uploader's canonical job, never member-wide raw job discovery.
-                job = db.execute(select(IngestionJob.id, IngestionJob.status).where(
-                    IngestionJob.id == result.job_id, IngestionJob.actor_user_id == actor_id)).mappings().one()
+                job = (
+                    db.execute(
+                        select(IngestionJob.id, IngestionJob.status).where(
+                            IngestionJob.id == result.job_id, IngestionJob.actor_user_id == actor_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
                 receipt = UploadReceipt(document=DocumentDTO(**row), job=JobDTO(**job))
             return receipt  # Final transaction COMMITTED before any accepted response.
         except UploadConflict:
@@ -234,7 +312,13 @@ class UploadService:
         except UploadUnavailable:
             raise DocumentError("upload_unavailable") from None
         except TextRejected as exc:
-            status = 415 if exc.code == "unsupported_media" else 413 if exc.code.endswith("too_large") else 422
+            status = (
+                415
+                if exc.code == "unsupported_media"
+                else 413
+                if exc.code.endswith("too_large")
+                else 422
+            )
             raise DocumentError(exc.code, status) from None
         except StorageError:
             raise DocumentError("storage_unavailable") from None

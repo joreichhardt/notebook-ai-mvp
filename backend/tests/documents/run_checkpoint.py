@@ -82,8 +82,7 @@ def main() -> None:
     runtime = secrets.token_hex(24)
     for name, value in {
         "runtime": runtime,
-        "pgpass": f"database:5432:*:postgres:{material}\n"
-        f"database:5432:*:notebook_app:{runtime}\n",
+        "pgpass": f"database:5432:*:postgres:{material}\ndatabase:5432:*:notebook_app:{runtime}\n",
     }.items():
         with os.fdopen(
             os.open(private / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
@@ -134,7 +133,15 @@ def main() -> None:
         worker.write_text(fixed)
     run(*command, env=env)
     print("Reporting regression GREEN: committed worker, real restricted-role PostgreSQL.")
-    run(python, "-m", "pytest", "backend/tests/documents/test_service.py", "-q", "--tb=short", env=env)
+    run(
+        python,
+        "-m",
+        "pytest",
+        "backend/tests/documents/test_service.py",
+        "-q",
+        "--tb=short",
+        env=env,
+    )
     run(python, "-m", "pytest", "-q", "--tb=short", env=env)
     run(str(SOURCE / ".venv/bin/ruff"), "check", "--no-cache", "backend", "tests/security", env=env)
 
