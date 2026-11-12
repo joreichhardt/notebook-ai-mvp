@@ -14,7 +14,7 @@ from app.auth.supabase import Identity
 from app.db import session as session_layer
 from app.main import app
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import make_url
 from test_uploads import URL
 
@@ -107,3 +107,69 @@ def test_mutation_busy_is_opaque_503_without_mutation(
     )
     assert client.get(path).json() == before.json()
     assert client.get(members_path).json() == before_members.json()
+
+
+def test_superuser_original_login_cannot_hide_behind_set_role(http_runtime, monkeypatch):
+    client, scope = http_runtime
+    path = f"/api/workspaces/{scope[4]}/notebooks"
+    before = client.get(path).json()
+    privileged = create_engine(make_url(URL).set(drivername="postgresql+psycopg"))
+
+    @event.listens_for(privileged, "begin")
+    def switch_role(connection):
+        connection.exec_driver_sql("SET ROLE notebook_app")
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(session_layer, "engine", lambda: privileged)
+            response = client.post(path, json={"title": "unsafe original login"})
+    finally:
+        privileged.dispose()
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "unsafe_database_role"
+    assert client.get(path).json() == before
+
+
+def test_committed_notebook_and_invitation_flow_preserves_accept_without_admission(http_runtime):
+    from uuid import uuid4
+
+    client, scope = http_runtime
+    path = f"/api/workspaces/{scope[4]}/notebooks"
+    created = client.post(path, json={"title": "committed notebook"})
+    assert created.status_code == 201
+    notebook = created.json()["id"]
+    assert notebook in {item["id"] for item in client.get(path).json()["items"]}
+    renamed = client.patch(f"/api/notebooks/{notebook}", json={"title": "committed rename"})
+    assert renamed.status_code == 200 and renamed.json()["title"] == "committed rename"
+    assert client.delete(f"/api/notebooks/{notebook}").status_code == 204
+    assert notebook not in {item["id"] for item in client.get(path).json()["items"]}
+
+    recipient = uuid4()
+    try:
+        invited = client.post(
+            "/api/invitations",
+            json={"email": "invitee@example.test", "workspace_id": str(scope[4]), "role": "viewer"},
+        )
+        assert invited.status_code == 201
+        app.dependency_overrides[session_layer.identity] = lambda: Identity(
+            recipient, "invitee@example.test"
+        )
+        accepted = client.post("/api/invitations/accept", json={"token": invited.json()["token"]})
+        assert accepted.status_code == 200
+        assert client.get("/api/auth/admission").json() == {"admitted": True}
+        assert client.get(path).status_code == 200
+        app.dependency_overrides[session_layer.identity] = lambda: Identity(
+            scope[0], "http-mutation@example.test"
+        )
+        member = f"/api/workspaces/{scope[4]}/members/{recipient}"
+        assert client.patch(member, json={"role": "editor"}).status_code == 200
+        assert client.delete(member).status_code == 204
+        app.dependency_overrides[session_layer.identity] = lambda: Identity(
+            recipient, "invitee@example.test"
+        )
+        assert client.get(path).status_code == 403
+    finally:
+        # Dispose only this fixture's newly accepted user's personal workspace/admission.
+        with psycopg.connect(URL) as cleanup:
+            cleanup.execute("DELETE FROM workspaces WHERE personal_owner_id=%s", (recipient,))
+            cleanup.execute("DELETE FROM app_admissions WHERE user_id=%s", (recipient,))
