@@ -163,7 +163,12 @@ loadMigrationFiles(process.argv[2]).then(rows=>{
         check=True,
     )
     assert not result.stderr
-    assert json.loads(result.stdout) == {
+    actual = json.loads(result.stdout)
+    assert (actual["count"], actual["fingerprint"]) == (
+        SOURCE["migration_count"],
+        SOURCE["migration_ids_names_sha256"],
+    ), "manifest_does_not_match_actual_integrity_checked_loader"
+    assert actual == {
         "count": len(sql) + 1,
         "min_id": 0,
         "max_id": 79,

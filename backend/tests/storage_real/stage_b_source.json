@@ -1,8 +1,8 @@
 {
   "storage_source": "1c49b6a4cb123c5f0edf05505a846956820a5e67",
-  "migration_count": 79,
+  "migration_count": 80,
   "migration_latest": [79, "lifecycle-writer-coordination"],
-  "migration_ids_names_sha256": "810bfa988e7432531f4160a12ec3ed7fa25f05d995a8e8b6b8bb4c558e421975",
+  "migration_ids_names_sha256": "a679dd223ed23d35f0e3b859b70dd73923033bf0cacfa8daa431fc8f4cc5ecb8",
   "migration_fingerprint_format": "sha256(utf8(json(sorted [[id,name]], separators comma/colon)))",
   "entrypoint": {"workdir": "/app", "argv": ["node", "dist/start/server.js"]},
   "secret_environment_keys": ["DATABASE_URL", "AUTH_JWT_SECRET", "ANON_KEY", "SERVICE_KEY"],
