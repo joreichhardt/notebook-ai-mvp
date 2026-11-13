@@ -42,6 +42,29 @@ CASES = (
     "cleanup",
     "complete",
 )
+ACL_CHECKPOINTS = (
+    "catalog_relation_ids",
+    "catalog_function_ids",
+    "relation_owners",
+    "function_owners",
+    "actor_owner_membership",
+    "actor_helper_denial",
+    "actor_sequence_denial",
+    "actor_table_denial",
+    "actor_select_denial",
+    "actor_function_denial",
+    "helper_exact_grants",
+    "storage_membership_graph",
+    "storage_role_flags",
+    "storage_table_owner_rls",
+    "storage_migration_count",
+    "storage_migration_fingerprint",
+    "storage_schema_owner",
+    "migrator_disabled_flags",
+    "migrator_password_null",
+    "migrator_membership_none",
+    "runtime_set_graph",
+)
 CURRENT = "prepare"
 BUCKET = "a5-private"
 ENDPOINT = "http://gateway:10000/storage/v1"
@@ -127,10 +150,16 @@ def prepare():
     passed()
 
 
+def acl_checkpoint(name):
+    assert type(name) is str and name in ACL_CHECKPOINTS
+    print("STAGE_B_ACL_CHECKPOINT=" + name, flush=True)
+
+
 def post_storage_acl():
     catalog = json.loads((ROOT / "catalog.json").read_text())
     source = json.loads(Path(__file__).with_name("stage_b_source.json").read_text())
     with phase_a.connect("supabase_admin", ROOT / "supabase_admin.pgpass") as db:
+        acl_checkpoint("catalog_relation_ids")
         assert (
             db.execute(
                 "SELECT count(*) FROM pg_class WHERE oid=ANY(%s)",
@@ -138,6 +167,7 @@ def post_storage_acl():
             ).fetchone()[0]
             == 14
         )
+        acl_checkpoint("catalog_function_ids")
         assert (
             db.execute(
                 "SELECT count(*) FROM pg_proc WHERE oid=ANY(%s)",
@@ -146,6 +176,7 @@ def post_storage_acl():
             == 26
         )
         for oid, _, _, owner in catalog["tables"]:
+            acl_checkpoint("relation_owners")
             assert (
                 db.execute(
                     "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid=%s", (oid,)
@@ -153,6 +184,7 @@ def post_storage_acl():
                 == owner
             )
         for oid, _, owner in catalog["functions"]:
+            acl_checkpoint("function_owners")
             assert (
                 db.execute(
                     "SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid=%s", (oid,)
@@ -161,32 +193,40 @@ def post_storage_acl():
             )
         for role in phase_a.ACTORS:
             for protected in catalog["owners"]:
+                acl_checkpoint("actor_owner_membership")
                 assert not db.execute(
                     "SELECT pg_has_role(%s,%s,'MEMBER') OR pg_has_role(%s,%s,'SET')",
                     (role, protected, role, protected),
                 ).fetchone()[0]
+            acl_checkpoint("actor_helper_denial")
             phase_a.deny_helper(db, role)
             for oid, name, kind, _ in catalog["tables"]:
                 if kind == "S":
+                    acl_checkpoint("actor_sequence_denial")
                     assert not db.execute(
                         "SELECT has_sequence_privilege(%s,%s,'USAGE,SELECT,UPDATE')", (role, oid)
                     ).fetchone()[0]
                 else:
+                    acl_checkpoint("actor_table_denial")
                     assert not db.execute(
                         "SELECT has_table_privilege(%s,%s,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') OR has_any_column_privilege(%s,%s,'SELECT,INSERT,UPDATE,REFERENCES')",
                         (role, oid, role, oid),
                     ).fetchone()[0]
+                    acl_checkpoint("actor_select_denial")
                     phase_a.deny_select(db, role, name)
             for oid, _, _ in catalog["functions"]:
+                acl_checkpoint("actor_function_denial")
                 assert not db.execute(
                     "SELECT has_function_privilege(%s,%s,'EXECUTE')", (role, oid)
                 ).fetchone()[0]
         for oid, name, _ in catalog["functions"]:
+            acl_checkpoint("helper_exact_grants")
             grants = db.execute(
                 "SELECT CASE WHEN x.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(x.grantee) END FROM pg_proc p,LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x WHERE p.oid=%s AND x.privilege_type='EXECUTE' AND x.grantee<>p.proowner",
                 (oid,),
             ).fetchall()
             assert {r[0] for r in grants} == phase_a.EXPECTED_EXEC.get(name, set())
+        acl_checkpoint("storage_membership_graph")
         graph = {
             r[0]
             for r in db.execute(
@@ -200,23 +240,29 @@ def post_storage_acl():
             "authenticated",
             "service_role",
         }
+        acl_checkpoint("storage_role_flags")
         flags = db.execute(
             "SELECT rolcanlogin,rolinherit,rolsuper,rolbypassrls,rolcreaterole FROM pg_roles WHERE rolname='supabase_storage_admin'"
         ).fetchone()
         assert flags == (True, False, False, False, True)
         for name in ("buckets", "objects"):
+            acl_checkpoint("storage_table_owner_rls")
             assert db.execute(
                 "SELECT pg_get_userbyid(relowner),relrowsecurity FROM pg_class WHERE oid=to_regclass(%s)",
                 ("storage." + name,),
             ).fetchone() == ("supabase_storage_admin", True)
+        acl_checkpoint("storage_migration_count")
         migrations = db.execute("SELECT id,name FROM storage.migrations ORDER BY id").fetchall()
         fingerprint = sha256(json.dumps(migrations, separators=(",", ":")).encode()).hexdigest()
         assert len(migrations) == source["migration_count"]
+        acl_checkpoint("storage_migration_fingerprint")
         assert fingerprint == source["migration_ids_names_sha256"]
+        acl_checkpoint("storage_schema_owner")
         schema_owner = db.execute(
             "SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname='storage'"
         ).fetchone()[0]
         assert schema_owner == "supabase_admin"
+        acl_checkpoint("migrator_disabled_flags")
         assert (
             db.execute(
                 "SELECT rolcanlogin,rolsuper,rolcreaterole,rolcreatedb,rolreplication,rolbypassrls FROM pg_roles WHERE rolname=%s",
@@ -224,9 +270,11 @@ def post_storage_acl():
             ).fetchone()
             == (False,) * 6
         )
+        acl_checkpoint("migrator_password_null")
         assert db.execute(
             "SELECT rolpassword IS NULL FROM pg_authid WHERE rolname=%s", (phase_a.MIGRATOR,)
         ).fetchone()[0]
+        acl_checkpoint("migrator_membership_none")
         assert (
             db.execute(
                 "SELECT count(*) FROM pg_auth_members WHERE member=(SELECT oid FROM pg_roles WHERE rolname=%s) OR roleid=(SELECT oid FROM pg_roles WHERE rolname=%s)",
@@ -243,6 +291,7 @@ def post_storage_acl():
                 allowed = principal == target or (
                     principal == phase_a.IO_LOGIN and target == "notebook_storage_io"
                 )
+                acl_checkpoint("runtime_set_graph")
                 assert (
                     db.execute("SELECT pg_has_role(%s,%s,'SET')", (principal, target)).fetchone()[0]
                     == allowed

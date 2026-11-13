@@ -23,6 +23,29 @@ else:
     from diagnostics import selected_state, supervise
     from launch import STATE_FORMAT
 
+ACL_CHECKPOINTS = (
+    "catalog_relation_ids",
+    "catalog_function_ids",
+    "relation_owners",
+    "function_owners",
+    "actor_owner_membership",
+    "actor_helper_denial",
+    "actor_sequence_denial",
+    "actor_table_denial",
+    "actor_select_denial",
+    "actor_function_denial",
+    "helper_exact_grants",
+    "storage_membership_graph",
+    "storage_role_flags",
+    "storage_table_owner_rls",
+    "storage_migration_count",
+    "storage_migration_fingerprint",
+    "storage_schema_owner",
+    "migrator_disabled_flags",
+    "migrator_password_null",
+    "migrator_membership_none",
+    "runtime_set_graph",
+)
 PROJECT = "notebook-test-a5-storage"
 CASES = (
     "prepare",
@@ -73,6 +96,9 @@ TYPES = (
 def safe_line(line):
     if type(line) is not str or len(line) > 1024:
         return None
+    if line.startswith("STAGE_B_ACL_CHECKPOINT="):
+        value = line.split("=", 1)[1]
+        return {"acl_checkpoint": value} if value in ACL_CHECKPOINTS else None
     if line.startswith("STAGE_B_BEGIN="):
         value = line.split("=", 1)[1]
         return {"begin": value} if value in CASES else None
