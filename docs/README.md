@@ -28,7 +28,7 @@
 - [Lokale Konfigurationsvorlage](../.env.example): ausschließlich Platzhalter; keine echten Werte in Dokumente, Chat oder Git übernehmen.
 - [Betriebsgrundlage](operations/foundation.md): vorhandenes Setup und Prüfkommandos. Fehlende Live-, Restore-, Rootless- und Release-Nachweise bleiben im Plan und Integrationslog sichtbar.
 - [D3a Quellenstatus-Oberfläche](handoffs/D3a.md): capability-gesperrte lesende UI, sichere Fehler-/Wechselzustände, exakter kube1-Nachweis von 33 Tests und TypeScript; kein Full-Flow-/Freischaltungsnachweis.
-- [A5 isolierte Phase-A-Diagnose](handoffs/A5.md): integrierte feste Diagnoseausgabe und lokale Supervisorregressionen; echter Runnerfehler/ACL-Abnahme weiter offen, kein Remote-Startauftrag.
+- [A5 native Phase-A-/ACL-Abnahme](handoffs/A5.md): DB-/Parserproblem gelöst; immutable `88ad94d` bestanden, Main verifizierte Evidence/69 Quelldateien/Cleanup unabhängig. Echte Storage-HTTP-/Upload-Abnahme ist der nächste separate Schritt, keine neue allgemeine DB-Diagnose.
 - [Bereichsübergaben](handoffs/CONTINUE.md): Einstieg zu den relevanten Worker-Berichten; diese sind technische Detailnachweise, keine zusätzliche Bedienungsanleitung.
 
 ## Dokumentationsprinzip

@@ -1,5 +1,11 @@
 # Docker-Tests auf kube1
 
+## Aktueller Prüfgate · DB gelöst, Storage/HTTP separat
+
+kube1 ist für die fortgesetzten isolierten Upload-/Quellenstatus-Prüfungen ausdrücklich freigegeben; dieselbe Freigabe nicht erneut verlangen. A5 PhaseA auf `88ad94d52ac3c2e3800d3ecb19eb48a0f8308979` bestanden, von Main anhand 69 tatsächlicher Quelldateien, Safe-Evidencehashes/Erfolgsmarkern und aktuellem Cleanup0/0/0 unabhängig geprüft. Native ACL-Matrix: 14 Relationen/26 Funktionen/3 Actors; keine allgemeine DB-Diagnose ohne neuen Fehler. [Belege](../handoffs/A5.md).
+
+Nächster A5-Prüfpacket-Entwurf: eigene DB/Runner/Storage/Envoy, kein REST/imgproxy bei überprüfter Direkt-DB-Anbindung/abgeschalteter Bildtransformation. Main genehmigte Implementierung/fixture-only DB-claim→echtes DELETE→bestätigte Abwesenheit→finish_cleanup, nicht einen Produktionscleanupworker. Vor neuem Remotelauf konkrete committete Manifest-/Wrapper-/Ressourcen-/Privilegreview; diese technische Kontrolle ist keine erneute Nutzerfreigabe. B4/B5 arbeiten parallel lokal an geschlossenen Quellen-GET/Upload-POST-Adaptern; Main vergibt gemeinsame Remote-Slots seriell. Produktion/öffentliche Capabilities bleiben aus.
+
 ## Verbindlicher Ort und Isolation
 
 Docker-Builds, Compose-Teststacks und containerisierte Integrationstests laufen auf **kube1**, nicht auf dem Laptop. Leichte Entwicklungsprüfungen können lokal bleiben. Dies ist Testbetrieb, kein Produktionsrollout und keine Freigabe von Upload/Chat.
