@@ -29,7 +29,8 @@
 - [Betriebsgrundlage](operations/foundation.md): vorhandenes Setup und Prüfkommandos. Fehlende Live-, Restore-, Rootless- und Release-Nachweise bleiben im Plan und Integrationslog sichtbar.
 - [D3a Quellenstatus-Oberfläche](handoffs/D3a.md): capability-gesperrte lesende UI, sichere Fehler-/Wechselzustände, exakter kube1-Nachweis von 33 Tests und TypeScript; kein Full-Flow-/Freischaltungsnachweis.
 - [B5 geschlossener Upload-HTTP-Adapter](handoffs/B5.md): mit Quellen-GET in ASGI montiert, echte Identity/CSRF/kurze Preauthorization vor Body; Capability bleibtfalse, aktuelle HTTP-Key-Grammatik in den [Verträgen](architecture/contracts.md). [Unabhängiger Review](review/b5-upload-adapter.md): P2-Registrierungstestfehler durch echte Root-Kontrollen ersetzt; keine Storage-Freischaltung.
-- [A5 native Phase-A-/ACL-Abnahme](handoffs/A5.md): DB-/Parserproblem gelöst; immutable `88ad94d` bestanden, Main verifizierte Evidence/69 Quelldateien/Cleanup unabhängig. Echte Storage-HTTP-/Upload-Abnahme ist der nächste separate Schritt, keine neue allgemeine DB-Diagnose.
+- [A5 native DB-/Storage-Abnahme](handoffs/A5.md): Direct-Storage-Fixture818deb3 bestanden und unabhängig geprüft, integriert8ba4f1a; kein Combined-/Produktionsnachweis und keine neue allgemeine DB-Diagnose.
+- [D4 TXT-/Markdown-Uploadoberfläche](handoffs/D4.md): source-reviewt/in2c90ce1 integriert, explizite scoped Uploads/sichere Receipts; tatsächliche Vitest-/tsc-/Build-/Browserabnahme noch offen.
 - [Bereichsübergaben](handoffs/CONTINUE.md): Einstieg zu den relevanten Worker-Berichten; diese sind technische Detailnachweise, keine zusätzliche Bedienungsanleitung.
 
 ## Dokumentationsprinzip
