@@ -4,6 +4,7 @@ import asyncio
 import importlib
 from contextlib import contextmanager
 from types import SimpleNamespace
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -11,9 +12,10 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 
-def exchange(module, *, headers=(), content=b"payload", notebook=None):
-    app = FastAPI()
-    app.include_router(module.router)
+def exchange(module, *, headers=(), content=b"payload", notebook=None, app=None):
+    if app is None:
+        app = FastAPI()
+        app.include_router(module.router)
     reads = []
 
     async def stream():
@@ -587,12 +589,37 @@ def test_duplicate_content_type_rejected_without_upload(opened):
     assert opened.calls == ["auth", "service", "authorize"]
 
 
-def test_upload_route_is_closed_and_unregistered():
+def test_main_upload_gate_precedes_identity_service_and_body(monkeypatch):
     module = importlib.import_module("app.documents.upload_router")
-    assert module.router.prefix == "/api/notebooks"
     from app.main import app
 
-    assert not any(getattr(r, "endpoint", None) is module.upload_document for r in app.routes)
+    def forbidden(*args):
+        pytest.fail("closed_root_upload_resolved_dependency", pytrace=False)
+
+    for name in ("identity", "upload_service", "authenticated_session_factory", "storage_io"):
+        monkeypatch.setattr(module, name, forbidden)
+    response, reads = exchange(module, app=app)
+    assert response.status_code == 404
+    assert response.json() == {"detail": {"code": "not_found", "message": "Nicht gefunden."}}
+    assert reads == []
+
+
+def test_main_upload_and_reader_coexist_with_effective_positive_control(opened):
+    from app.main import app
+
+    # FastAPI's lazy included-router representation defeats endpoint-loop tests.
+    # Schema and actual HTTP behavior supply independent positive controls.
+    operations = app.openapi()["paths"]["/api/notebooks/{notebook_id}/documents"]
+    assert "get" in operations and "post" in operations
+    response, reads = exchange(
+        opened.module, app=app, headers=HEADERS, content=BODY, notebook=opened.notebook
+    )
+    assert response.status_code == 202
+    assert response.json() == opened.receipt.model_dump(mode="json")
+    assert reads == [True]
+    assert opened.calls == ["auth", "service", "authorize", "upload", "synthetic committed"]
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
 
 
 @pytest.mark.parametrize("flag", [None, False, 0, 1, "true", [], {}])
@@ -672,3 +699,100 @@ def test_authorization_preflight_before_payload(monkeypatch, mode):
     assert response.status_code == 403
     assert reads == []
     assert calls == (["auth", "service", "authorize"] if mode == "nonmember" else ["auth"])
+
+
+@pytest.mark.parametrize("mode,status", [("commit", 503), ("admission", 403), ("viewer", 403)])
+def test_real_preflight_failure_precedes_root_body(opened, monkeypatch, mode, status):
+    from app.documents.service import ActorTx, UploadService
+    from app.main import app
+    from sqlalchemy.exc import SQLAlchemyError
+
+    events = []
+    workspace = uuid4()
+
+    class DB:
+        def execute(self, query):
+            statement = str(query)
+            if "SELECT current_user" in statement:
+                return SimpleNamespace(
+                    one=lambda: ("notebook_app", "notebook_app", False, False, False, False)
+                )
+            if "current_setting" in statement:
+                return SimpleNamespace(scalar_one=lambda: str(opened.user.id))
+            assert statement.startswith("SET LOCAL")
+
+        def scalar(self, query):
+            statement = str(query)
+            if "app_admissions" in statement:
+                return None if mode == "admission" else opened.user.id
+            if "notebooks.workspace_id" in statement:
+                return workspace
+            if "workspace_members.role" in statement:
+                return "viewer" if mode == "viewer" else "editor"
+            raise AssertionError("unexpected_preflight_query")
+
+    @contextmanager
+    def actor_tx(actor):
+        assert actor == opened.user.id
+        events.append("open")
+        try:
+            yield DB()
+            events.append("commit attempted")
+            if mode == "commit":
+                raise SQLAlchemyError("synthetic_preflight_commit")
+            events.append("committed")
+        except BaseException:
+            events.append("rollback")
+            raise
+        finally:
+            events.append("close")
+
+    # The scripted session implements only the real preflight's SQL boundary.
+    service = UploadService(actor_tx=cast(ActorTx, actor_tx))
+    monkeypatch.setattr(opened.module, "upload_service", lambda original: service)
+    response, reads = exchange(
+        opened.module, app=app, headers=HEADERS, content=BODY, notebook=opened.notebook
+    )
+    assert response.status_code == status and reads == []
+    assert (
+        response.json()["detail"]["code"]
+        == {
+            "commit": "upload_unavailable",
+            "admission": "admission_required",
+            "viewer": "write_required",
+        }[mode]
+    )
+    assert events == (
+        ["open", "commit attempted", "rollback", "close"]
+        if mode == "commit"
+        else ["open", "rollback", "close"]
+    )
+    assert opened.calls == ["auth"]
+
+
+@pytest.mark.parametrize("key", ["x" * 128, "safe.Key_with-dash:42"])
+def test_allowed_http_idempotency_boundary_is_forwarded_unchanged(opened, key):
+    async def upload(**kwargs):
+        assert kwargs["idempotency_key"] == key
+        return opened.receipt
+
+    opened.service.upload = upload
+    headers = [(name, value) for name, value in HEADERS if name != "Idempotency-Key"]
+    response, reads = exchange(
+        opened.module,
+        headers=headers + [("Idempotency-Key", key)],
+        content=BODY,
+        notebook=opened.notebook,
+    )
+    assert response.status_code == 202 and reads == [True]
+
+
+def test_mixed_case_duplicate_idempotency_header_rejected_before_body(opened):
+    response, reads = exchange(
+        opened.module,
+        headers=HEADERS + [("iDeMpOtEnCy-KeY", "second")],
+        content=BODY,
+        notebook=opened.notebook,
+    )
+    assert response.status_code == 422 and reads == []
+    assert response.json()["detail"]["code"] == "invalid_idempotency_key"
