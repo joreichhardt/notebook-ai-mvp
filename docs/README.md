@@ -16,7 +16,7 @@
 - [Architekturentscheidungen](architecture/decisions.md): Gründe und verbindliche Präzisierungen.
 - [Bestandsaufnahme](architecture/inventory.md): ermittelter Infrastrukturstand; kein Ersatz für aktuelle Live-Prüfungen.
 - [Sicherheitsregeln und Betriebsgrenzen](../SECURITY.md).
-- [F4 Disconnect-/Discovery-Grenze](review/disconnect-boundary.md): integrierte Revalidierung und feste Fehlercodes, synthetische Nachweise, offene PostgreSQL-/Parallelitätsabnahme.
+- [F4 Disconnect-/Discovery-Grenze](review/disconnect-boundary.md): integrierte Revalidierung/feste Fehlercodes; begrenzte kube1-Abnahme mit 30 PostgreSQL-/ASGI-HTTP- und 135 fokussierten Fällen, verbleibende Liveprovider-/Transport-/Modelljobgrenzen.
 - [Mainreview Quoten0006/B3](review/quota-v6.md): Rollen-/RLS-/Gateprüfung, Altlease-Preflightkorrektur, getrennte Quieszenzgrenze und noch offene kombinierte Callertests.
 - [Review des Daten-/Provider-Durchstichs](review/seam-v3.md): Befund, Reproduktion und unabhängige Nachprüfung. Weitere Reviews unter `review/` beziehen sich auf ihre jeweiligen Kandidaten.
 

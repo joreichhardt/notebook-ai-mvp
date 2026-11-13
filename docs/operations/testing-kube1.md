@@ -91,6 +91,12 @@ Bei SCRAM mit rollenbezogenen `0600`-pgpass-Dateien übernimmt ein nachträglich
 
 Main korrigierte so ausschließlich `test_fresh_admission_check_and_python_storage_helpers` in `9d5a9d0`. B3 verifizierte die exakte Fixture und seine volle314erSuite unter SCRAM auf `ea704f48fc81`; das ist kein eigenständiger Main-Integrationsnachweis. Echte Ergebnisse stehen im Integrationslog. Für den parametrisierten DDL-Aufruf nutzt die Fixture den offiziellen [Psycopg-ClientCursor](https://www.psycopg.org/psycopg3/docs/advanced/cursors.html#client-side-binding-cursors), da PostgreSQL DDL nicht serverseitig mit `$1` bindet. Offizielle Quellreferenz: `psycopg/psycopg`, `docs/advanced/cursors.rst` (Dokumentationswebsite beim Prüfen HTTP403, offizielles GitHub-Original erfolgreich gelesen).
 
+## F4: isolierte Discovery-/Disconnect-Abnahme
+
+Der eigene opt-in Runner liegt unter `tests/security/disconnect_boundary/{compose.f4.yaml,operator_f4.py,run_f4.py}`; genaue Kommandos und Grenzen stehen im [F4-Bericht](../review/disconnect-boundary.md). Kein unverändertes A5-Trustmanifest verwenden. Operator nur aus einem neu archivierten vollständigen reviewed SHA unter `/home/jre/notebook-tests/main/<sha>` auf kube1 ausführen; vorher Main-Slot und leeren eigenen Namensraum prüfen. Eigene synthetische DB `notebook_f4_<sha12>`, SCRAM und rollenbezogene0600Passfiles, interne DB-Verbindung, keine Hostports; keine Produktionszugänge. Lauf und Evidenzpfad sind exklusiv, keine Wiederverwendung/Blindreruns.
+
+Am 2026-11-13 wurde unter ausdrücklicher Nutzerfreigabe exakt `276f1baa52cfaad812a1d47adaacc5c8e35d94ba` einmalig geprüft: Migration/Rolle0, **30 echte PostgreSQL-/In-process-ASGI-HTTP-Fälle +135fokussierte Tests**,0Fehler/0Skips,Operator0 und Cleanup0/0/0/Credentialsentfernt. Main bestätigte danach unabhängig Safe-Evidencehash und aktuellen leeren Namespace; [Prüfprotokoll](../orchestration/integration-log.md). Externe Auth/Secret/Provider bleiben synthetisch, keine vollständige Backend-/Produktionsabnahme. Diese abgeschlossene Freigabe ist kein Dauerauftrag für neue Läufe oder eine A5-/Storagefreigabe.
+
 ## Nachweis und Aufräumen
 
 Snapshot-SHA, Compose-Projekt, Prüfkommandos, Resultate und Grenzen im [Integrationslog](../orchestration/integration-log.md) bzw. Worker-Handoff festhalten. Container nach dem Test stoppen; Volumes nur nach geprüftem Bedarf und explizit im eigenen Projekt entfernen. Kein `docker system prune`, kein pauschales Containerstoppen und kein fremdes `compose down`.
