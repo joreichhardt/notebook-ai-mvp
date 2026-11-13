@@ -281,7 +281,7 @@ def verify_phase_a(trace: RunnerTrace | None = None):
             protected = [
                 r[0]
                 for r in db.execute(
-                    "SELECT rolname FROM pg_roles WHERE rolname LIKE 'notebook_%' OR rolname=%s",
+                    "SELECT rolname FROM pg_roles WHERE rolname LIKE 'notebook_%%' OR rolname=%s",
                     (MIGRATOR,),
                 )
             ]
