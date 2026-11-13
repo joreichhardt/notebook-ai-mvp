@@ -28,6 +28,7 @@ vi.mock("./api", async (importOriginal) => {
       workspaces: vi.fn(),
       notebooks: vi.fn(),
       documents: vi.fn(),
+      uploadDocument: vi.fn(),
       create: vi.fn(),
       rename: vi.fn(),
       remove: vi.fn(),
@@ -336,6 +337,136 @@ async function openNotebook(title = "Erstes") {
   await userEvent.click(await screen.findByRole("button", { name: `Notebook öffnen: ${title}` }));
 }
 describe("Current source list", () => {
+  it("uploads on explicit action, retains the same key on ambiguous failure and refreshes once after 202", async () => {
+    sourceSetup();
+    vi.mocked(api.uploadDocument).mockRejectedValueOnce(new Error("private detail"))
+      .mockResolvedValueOnce({ document: source() });
+    render(<App />);
+    await openNotebook();
+    const input = screen.getByLabelText("TXT- oder Markdown-Datei");
+    const file = new File(["# Notes"], "Notes.md");
+    await userEvent.upload(input, file);
+    expect(api.uploadDocument).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Quelle hochladen" }));
+    expect(await screen.findByRole("alert")).not.toHaveTextContent("private detail");
+    expect(api.uploadDocument).toHaveBeenCalledTimes(1);
+    const first = vi.mocked(api.uploadDocument).mock.calls[0];
+    expect(first[0]).toBe("n");
+    expect(first[1]).toBe(file);
+    expect(first[2]).toMatch(/^[a-f0-9-]{36}$/);
+    await userEvent.click(screen.getByRole("button", { name: "Upload erneut versuchen" }));
+    await screen.findByText("Quelle wurde hochgeladen. Die Verarbeitung kann noch ausstehen.");
+    expect(vi.mocked(api.uploadDocument).mock.calls[1][2]).toBe(first[2]);
+    expect(api.documents).toHaveBeenCalledTimes(2);
+    expect(input).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Quelle hochladen" })).toBeDisabled();
+  });
+  it.each(["owner", "editor"] as const)("offers uploads for a known %s with the explicit capability", async (role) => {
+    sourceSetup();
+    vi.mocked(api.workspaces).mockResolvedValue({ items: [{ id: "w", name: "Team", role }] });
+    render(<App />);
+    await openNotebook();
+    expect(screen.getByLabelText("TXT- oder Markdown-Datei")).toBeVisible();
+  });
+  it.each(["viewer", undefined] as const)("hides upload controls for role %s", async (role) => {
+    render(<Sources notebookId="n" userId="u" role={role} documentsEnabled />);
+    await screen.findByText("In diesem Notebook gibt es noch keine Quellen.");
+    expect(screen.queryByLabelText("TXT- oder Markdown-Datei")).not.toBeInTheDocument();
+    expect(api.uploadDocument).not.toHaveBeenCalled();
+  });
+  it.each([false, undefined])("denies upload without explicit capability %s", (documentsEnabled) => {
+    render(<Sources notebookId="n" userId="u" role="owner" documentsEnabled={documentsEnabled} />);
+    expect(screen.queryByLabelText("TXT- oder Markdown-Datei")).not.toBeInTheDocument();
+  });
+  it("rejects unsupported and oversized selections without sending or decoding contents", async () => {
+    render(<Sources notebookId="n" userId="u" role="owner" documentsEnabled />);
+    const user = userEvent.setup({ applyAccept: false });
+    const input = screen.getByLabelText("TXT- oder Markdown-Datei");
+    await user.upload(input, new File(["%PDF"], "no.pdf", { type: "application/pdf" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Erlaubt sind TXT und Markdown");
+    await user.upload(input, new File([new Uint8Array(25 * 1024 * 1024 + 1)], "large.txt"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("25 MiB");
+    expect(screen.getByRole("button", { name: "Quelle hochladen" })).toBeDisabled();
+    expect(api.uploadDocument).not.toHaveBeenCalled();
+  });
+  it("requires intentional discard before a new selection and creates a fresh key", async () => {
+    vi.mocked(api.uploadDocument).mockRejectedValue(new Error("private"));
+    render(<Sources notebookId="n" userId="u" role="editor" documentsEnabled />);
+    const input = screen.getByLabelText("TXT- oder Markdown-Datei");
+    const file = new File(["notes"], "notes.txt");
+    await userEvent.upload(input, file);
+    await userEvent.click(screen.getByRole("button", { name: "Quelle hochladen" }));
+    await screen.findByRole("alert");
+    expect(input).toBeDisabled();
+    const first = vi.mocked(api.uploadDocument).mock.calls[0][2];
+    await userEvent.click(screen.getByRole("button", { name: "Auswahl verwerfen" }));
+    await userEvent.upload(input, file);
+    await userEvent.click(screen.getByRole("button", { name: "Quelle hochladen" }));
+    await screen.findByRole("alert");
+    expect(vi.mocked(api.uploadDocument).mock.calls[1][2]).not.toBe(first);
+    expect(api.documents).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    [401, "Bitte melde dich erneut an."],
+    [403, "Du hast für diesen Upload keine Berechtigung."],
+    [404, "Dieses Notebook ist nicht mehr verfügbar."],
+    [409, "Der Upload steht im Konflikt mit einer früheren Anfrage."],
+    [413, "Die Datei darf höchstens 25 MiB groß sein."],
+    [422, "Bitte prüfe die Datei: Erlaubt sind TXT und Markdown als UTF-8-Text."],
+    [429, "Zu viele Anfragen. Bitte warte vor einem neuen Versuch."],
+  ] as const)("renders fixed upload error for %s, not server detail", async (status, text) => {
+    vi.mocked(api.uploadDocument).mockRejectedValue(new ApiError(status, "private", "private-detail"));
+    const { container } = render(<Sources notebookId="n" userId="u" role="owner" documentsEnabled />);
+    const filename = '<img src=x onerror="alert(1)">.txt';
+    await userEvent.upload(screen.getByLabelText("TXT- oder Markdown-Datei"), new File(["notes"], filename));
+    expect(screen.getByText(filename)).toBeVisible();
+    expect(container.querySelector("img")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Quelle hochladen" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(text);
+    expect(screen.queryByText("private-detail")).not.toBeInTheDocument();
+    expect(api.uploadDocument).toHaveBeenCalledTimes(1);
+  });
+  it.each(["workspace", "logout"])("isolates late upload receipt when App starts %s change", async (change) => {
+    sourceSetup();
+    vi.mocked(api.workspaces).mockResolvedValue({ items: [
+      { id: "w", name: "First", role: "owner" }, { id: "w2", name: "Second", role: "viewer" },
+    ] });
+    vi.mocked(api.logout).mockReturnValue(new Promise(() => {}));
+    const pending = deferred<{ document: SourceDocument }>();
+    vi.mocked(api.uploadDocument).mockReturnValue(pending.promise);
+    render(<App />);
+    await openNotebook();
+    await userEvent.upload(screen.getByLabelText("TXT- oder Markdown-Datei"), new File(["notes"], "notes.txt"));
+    await userEvent.click(screen.getByRole("button", { name: "Quelle hochladen" }));
+    const signal = vi.mocked(api.uploadDocument).mock.calls[0][3]!;
+    if (change === "workspace") await userEvent.selectOptions(screen.getByRole("combobox", { name: "Workspace" }), "w2");
+    else await userEvent.click(screen.getByRole("button", { name: "Abmelden" }));
+    expect(signal.aborted).toBe(true);
+    await act(async () => { pending.resolve({ document: source() }); });
+    expect(api.documents).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Quelle wurde hochgeladen. Die Verarbeitung kann noch ausstehen.")).not.toBeInTheDocument();
+  });
+  it.each(["user", "notebook", "role", "capability", "unmount"])("aborts in-flight upload on %s change and rejects late committed response", async (change) => {
+    const pending = deferred<{ document: SourceDocument }>();
+    vi.mocked(api.uploadDocument).mockReturnValue(pending.promise);
+    const { rerender, unmount } = render(<Sources notebookId="n" userId="u" role="owner" documentsEnabled />);
+    await userEvent.upload(screen.getByLabelText("TXT- oder Markdown-Datei"), new File(["notes"], "notes.txt"));
+    await userEvent.click(screen.getByRole("button", { name: "Quelle hochladen" }));
+    const signal = vi.mocked(api.uploadDocument).mock.calls[0][3]!;
+    expect(screen.getByLabelText("TXT- oder Markdown-Datei")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Upload erneut versuchen" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Auswahl verwerfen" })).toBeDisabled();
+    if (change === "unmount") unmount();
+    else rerender(<Sources notebookId={change === "notebook" ? "n2" : "n"}
+      userId={change === "user" ? "u2" : "u"} role={change === "role" ? "viewer" : "owner"}
+      documentsEnabled={change !== "capability"} />);
+    expect(signal.aborted).toBe(true);
+    const reads = vi.mocked(api.documents).mock.calls.length;
+    await act(async () => { pending.resolve({ document: source() }); });
+    expect(api.documents).toHaveBeenCalledTimes(reads);
+    expect(screen.queryByText("Quelle wurde hochgeladen. Die Verarbeitung kann noch ausstehen.")).not.toBeInTheDocument();
+    expect(api.uploadDocument).toHaveBeenCalledTimes(1);
+  });
   it("drops rows on user change and ignores stale results after unmount", async () => {
     const pending = deferred<{ items: SourceDocument[] }>();
     vi.mocked(api.documents).mockResolvedValueOnce({ items: [source()] })

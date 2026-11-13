@@ -5,6 +5,77 @@ afterEach(() => {
   setCsrfToken();
 });
 describe("API security boundary", () => {
+  it("uploads exactly one typed file with cookie, CSRF, key and browser multipart boundary", async () => {
+    const document = { id: "d", notebook_id: "n/id", version_id: "v", filename: "Notes.md", status: "queued", error_code: null };
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ document, job: { id: "private" }, storage_key: "private" }), { status: 202 }));
+    vi.stubGlobal("fetch", fetch);
+    setCsrfToken("csrf-test");
+    const signal = new AbortController().signal;
+    await expect(api.uploadDocument("n/id", new File(["# Notes"], "Notes.md"), "test-key", signal)).resolves.toEqual({ document });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/notebooks/n%2Fid/documents");
+    expect(options).toMatchObject({ method: "POST", credentials: "same-origin", signal,
+      headers: { Accept: "application/json", "X-CSRF-Token": "csrf-test", "Idempotency-Key": "test-key" } });
+    expect(options.headers).not.toHaveProperty("Content-Type");
+    expect([...options.body.keys()]).toEqual(["file"]);
+    expect(options.body.get("file").type).toBe("text/markdown");
+    expect(options.body.get("file").name).toBe("Notes.md");
+  });
+  it.each(["", "bad key", "é", "comma,key", "newline\n", "x".repeat(129)])("rejects invalid upload key %j without fetch", async (key) => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(api.uploadDocument("n", new File(["text"], "n.txt"), key)).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["n.pdf", "application/pdf"], ["n.txt", "application/octet-stream"], ["n.md", "text/plain"],
+  ])("rejects unsupported file %s before fetch", async (name, type) => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(api.uploadDocument("n", new File(["text"], name, { type }), "key")).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("enforces the actual byte bound and accepts the exact 25 MiB boundary", async () => {
+    const document = { id: "d", notebook_id: "n", version_id: "v", filename: "n.txt", status: "queued", error_code: null };
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ document }), { status: 202 }));
+    vi.stubGlobal("fetch", fetch);
+    const bytes = new Uint8Array(25 * 1024 * 1024);
+    await expect(api.uploadDocument("n", new File([bytes, "x"], "n.txt"), "key")).rejects.toThrow("25 MiB");
+    expect(fetch).not.toHaveBeenCalled();
+    await api.uploadDocument("n", new File([bytes], "n.txt"), "key");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][1].body.get("file").size).toBe(25 * 1024 * 1024);
+    expect(fetch.mock.calls[0][1].body.get("file").type).toBe("text/plain");
+  });
+  it.each([200, 204, 409, 413, 422, 429, 503])("does not accept a non-202 upload response %s", async (status) => {
+    const fetch = vi.fn().mockResolvedValue(new Response(status === 204 ? null : "private-detail", { status }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(api.uploadDocument("n", new File(["text"], "n.txt"), "key")).rejects.not.toThrow("private-detail");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it.each(["notes.txt", "notes.md", "notes.markdown"])("derives an empty browser MIME type for %s", async (name) => {
+    const document = { id: "d", notebook_id: "n", version_id: "v", filename: name, status: "queued", error_code: null };
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ document }), { status: 202 }));
+    vi.stubGlobal("fetch", fetch);
+    await api.uploadDocument("n", new File(["notes"], name), "key");
+    expect(fetch.mock.calls[0][1].body.get("file").type).toBe(name.endsWith(".txt") ? "text/plain" : "text/markdown");
+  });
+  it("preserves cancellation without retrying a POST", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const aborted = new DOMException("aborted", "AbortError");
+    const fetch = vi.fn().mockRejectedValue(aborted);
+    vi.stubGlobal("fetch", fetch);
+    await expect(api.uploadDocument("n", new File(["notes"], "n.txt"), "key", controller.signal)).rejects.toBe(aborted);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it("rejects a cross-notebook receipt without consuming raw job data", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      document: { id: "d", notebook_id: "other", filename: "n.txt", version_id: "v", status: "queued", error_code: null },
+      job: { lease_token: "private-detail" },
+    }), { status: 202 })));
+    await expect(api.uploadDocument("n", new File(["text"], "n.txt"), "key")).rejects.toThrow("nicht bestätigt");
+  });
   it.each([true, false, undefined])("consumes only explicit documents capability %s", async (documents) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       auth: { password_login: true }, invitations: true, members: true, documents,
