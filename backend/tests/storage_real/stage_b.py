@@ -95,7 +95,7 @@ def prepare():
                     (UUID(fixture[workspace]),),
                 )
                 db.execute(
-                    "INSERT INTO public.notebooks(id,workspace_id,name) VALUES (%s,%s,'StageB synthetic')",
+                    "INSERT INTO public.notebooks(id,workspace_id,title) VALUES (%s,%s,'StageB synthetic')",
                     (UUID(fixture[notebook]), UUID(fixture[workspace])),
                 )
                 for user, role in members:

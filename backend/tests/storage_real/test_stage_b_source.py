@@ -2,6 +2,7 @@
 
 import ast
 import asyncio
+import re
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +12,59 @@ from uuid import uuid4
 import pytest
 from psycopg import ClientCursor, ProgrammingError
 from psycopg.adapt import Transformer
+
+
+def test_actual_prepare_insert_columns_exist_in_actual_foundation_migration():
+    base = Path(__file__)
+    migration = ast.parse((base.parents[2] / "migrations/versions/0001_foundation.py").read_text())
+    schema = {}
+    for node in ast.walk(migration):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "op"
+            and node.func.attr == "create_table"
+        ):
+            continue
+        table = ast.literal_eval(node.args[0])
+        schema[table] = {
+            ast.literal_eval(column.args[0])
+            for column in node.args[1:]
+            if isinstance(column, ast.Call)
+            and isinstance(column.func, ast.Attribute)
+            and column.func.attr == "Column"
+        }
+    fixture = ast.parse(base.with_name("stage_b.py").read_text())
+    prepare = next(
+        node
+        for node in fixture.body
+        if isinstance(node, ast.FunctionDef) and node.name == "prepare"
+    )
+    seen = set()
+    for node in ast.walk(prepare):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "execute"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and type(node.args[0].value) is str
+        ):
+            continue
+        sql = node.args[0].value
+        if not sql.startswith("INSERT "):
+            continue
+        matched = re.match(r"INSERT INTO public\.([a-z_]+)\(([^)]+)\) VALUES ", sql)
+        assert matched is not None, "unrecognized_fixture_insert"
+        table, raw_columns = matched.groups()
+        columns = raw_columns.split(",")
+        assert len(columns) == len(set(columns)), "duplicate_fixture_insert_column"
+        assert table in schema and set(columns) <= schema[table], (
+            "fixture_column_missing_from_actual_migration"
+        )
+        seen.add(table)
+    assert seen == {"app_admissions", "workspaces", "notebooks", "workspace_members"}
 
 
 def test_actual_packet_client_queries_compile_and_sqlalchemy_text_is_literal():
