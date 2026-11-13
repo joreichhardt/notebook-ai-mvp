@@ -6,6 +6,7 @@ from app.auth.invitations import router as invitations_router
 from app.auth.router import router as auth_router
 from app.capabilities import router as capabilities_router
 from app.connections.router import router as connections_router
+from app.documents.router import router as documents_router
 from app.notebooks.router import router as notebooks_router
 from app.workspaces.router import router as workspaces_router
 
@@ -44,3 +45,7 @@ app.include_router(capabilities_router)
 app.include_router(invitations_router)
 
 app.include_router(connections_router)
+
+# Registration does not enable the feature: the document dependency remains
+# literal-True capability gated before authentication or service construction.
+app.include_router(documents_router)

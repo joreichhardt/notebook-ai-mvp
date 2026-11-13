@@ -15,7 +15,6 @@ from app.auth.security import SESSION_COOKIE
 from app.auth.supabase import Identity, SupabaseAuth
 from app.documents.service import DocumentError, UploadService
 from fastapi import FastAPI, HTTPException
-from starlette.routing import Route
 
 
 @pytest.fixture(autouse=True)
@@ -379,14 +378,35 @@ def test_uuid_cookie_is_not_authentication(scene):
     assert scene.auth_calls == 1 and not scene.sessions
 
 
-def test_no_mutation_routes_and_main_remains_unregistered(scene):
+def test_reader_module_has_no_mutation_routes(scene):
     assert request(scene.app, scene.path, method="POST").status_code == 405
+
+
+def test_main_mounts_reader_but_default_gate_precedes_authentication(scene):
     from app.main import app
 
-    assert not any(
-        isinstance(route, Route) and route.path == "/api/notebooks/{notebook_id}/documents"
-        for route in app.routes
-    )
+    response = request(app, scene.path)
+    assert response.status_code == 404
+    # Exercise the real HTTP boundary, not FastAPI's version-dependent lazy
+    # included-router representation. An unmounted route returns another body.
+    assert response.json() == {"detail": {"code": "not_found", "message": "Nicht gefunden."}}
+    assert scene.auth_calls == 0 and not scene.sessions
+
+
+def test_main_explicit_test_gate_uses_verified_reader_and_committed_projection(scene):
+    from app.main import app
+
+    previous = dict(app.dependency_overrides)
+    try:
+        app.dependency_overrides[scene.adapter.documents_enabled] = lambda: None
+        response = request(app, scene.path + "?limit=1")
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
+    assert response.status_code == 200
+    assert response.json() == {"items": []}
+    assert scene.auth_calls == 1 and scene.limit == 1
+    assert scene.events == ["open", "begin", "listing", "commit", "close"]
 
 
 @pytest.mark.parametrize("fault", ["subject", "session-user", "superuser", "bypassrls"])
