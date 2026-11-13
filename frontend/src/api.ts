@@ -40,6 +40,19 @@ export type SourceDocument = {
   status: "queued" | "processing" | "ready" | "failed";
   error_code: string | null;
 };
+// The UI consumes only the member-safe document projection, never the job.
+export type UploadReceipt = { document: SourceDocument };
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+export function uploadMediaType(file: File): string {
+  const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+  const expected = extension === ".txt" ? "text/plain"
+    : extension === ".md" || extension === ".markdown" ? "text/markdown" : "";
+  if (!expected || (file.type && file.type.toLowerCase().trim() !== expected))
+    throw new ApiError(422, "unsupported_media", "Bitte wähle eine TXT- oder Markdown-Datei.");
+  if (file.size > MAX_UPLOAD_BYTES)
+    throw new ApiError(413, "upload_too_large", "Die Datei darf höchstens 25 MiB groß sein.");
+  return expected;
+}
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -58,9 +71,12 @@ export async function request<T>(
   method = "GET",
   body?: unknown,
   signal?: AbortSignal,
+  upload?: { key: string },
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const multipart = body instanceof FormData;
+  if (body !== undefined && !multipart) headers["Content-Type"] = "application/json";
+  if (upload) headers["Idempotency-Key"] = upload.key;
   if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
   let response: Response;
   try {
@@ -68,7 +84,7 @@ export async function request<T>(
       method,
       headers,
       credentials: "same-origin",
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : multipart ? body : JSON.stringify(body),
       signal,
     });
   } catch (error) {
@@ -97,6 +113,8 @@ export async function request<T>(
         "Die Anfrage konnte nicht abgeschlossen werden.",
     );
   }
+  if (upload && response.status !== 202)
+    throw new ApiError(0, "upload_unconfirmed", "Der Upload konnte nicht bestätigt werden.");
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
@@ -190,6 +208,25 @@ export const api = {
       undefined,
       signal,
     ),
+  uploadDocument: async (id: string, file: File, key: string, signal?: AbortSignal): Promise<UploadReceipt> => {
+    const media = uploadMediaType(file);
+    if (!key.length || key.length > 128 || /[^A-Za-z0-9._:-]/.test(key))
+      throw new ApiError(422, "invalid_key", "Der Upload konnte nicht vorbereitet werden.");
+    const form = new FormData();
+    // Browser types may be empty; preserve bytes without decoding their contents.
+    form.append("file", file.type === media ? file : file.slice(0, file.size, media), file.name);
+    const receipt = await request<UploadReceipt>(
+      `/notebooks/${encodeURIComponent(id)}/documents`, "POST", form, signal, { key },
+    );
+    const doc = receipt?.document;
+    if (!doc || doc.notebook_id !== id || typeof doc.id !== "string" ||
+        typeof doc.version_id !== "string" || typeof doc.filename !== "string" ||
+        !["queued", "processing", "ready", "failed"].includes(doc.status) ||
+        !(doc.error_code === null || typeof doc.error_code === "string"))
+      throw new ApiError(0, "upload_unconfirmed", "Der Upload konnte nicht bestätigt werden.");
+    return { document: { id: doc.id, notebook_id: doc.notebook_id, filename: doc.filename,
+      version_id: doc.version_id, status: doc.status, error_code: doc.error_code } };
+  },
   create: (workspace: string, title: string) =>
     request<Notebook>(
       `/workspaces/${encodeURIComponent(workspace)}/notebooks`,
