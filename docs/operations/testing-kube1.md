@@ -6,6 +6,8 @@ kube1 ist für die fortgesetzten isolierten Upload-/Quellenstatus-Prüfungen aus
 
 Nächster A5-Prüfpacket-Entwurf: eigene DB/Runner/Storage/Envoy, kein REST/imgproxy bei überprüfter Direkt-DB-Anbindung/abgeschalteter Bildtransformation. Main genehmigte Implementierung/fixture-only DB-claim→echtes DELETE→bestätigte Abwesenheit→finish_cleanup, nicht einen Produktionscleanupworker. Vor neuem Remotelauf konkrete committete Manifest-/Wrapper-/Ressourcen-/Privilegreview; diese technische Kontrolle ist keine erneute Nutzerfreigabe. B4/B5 arbeiten parallel lokal an geschlossenen Quellen-GET/Upload-POST-Adaptern; Main vergibt gemeinsame Remote-Slots seriell. Produktion/öffentliche Capabilities bleiben aus.
 
+**Neuester serialisierter Schnitt:** Main reviewte/integrierte B4-Paket5eef385 und echten lokalen umask077-RED→FD-Modusfix e6c721 in **054f6fd4c110e068c52a48ca5cd355cd48aa2213**; unabhängig244passed/37PGskips/1Warnung8.41s/Ruff/Format3/aktiveLSP3clean. Genau ein autorisierter B4-Lauf **task_d93defbf8574/ctx_93be6f775e81** meldet auf054f migrate0006/role0, **7realPG+50focused bestanden,0Fehler/0Skips**,20.391398s/Operator0/Cleanup0/0/0/Bootstrapweg. Main-Evidenz-/Source-/aktuelleCleanup-Nachprüfung noch offen; kein zweiter Lauf. PG7 isolierte Router-ASGI, Root50synthetisch, keine Storage-/Vollbackendabnahme. [B4-Paket und Belege](../handoffs/B4.md). A5-StageB derzeit lokaler Guard-HOLD; unabhängige Prüfung eines tatsächlichen gepinnten passwortlosen Storage-/PGPASSFILE-Vertrags statt Scannerumgehung, keine allgemeine DB-Diagnose. B5-Livefixture0c95477 und D4-Frontend659648f noch Mainreview/echteAusführung offen. E meldet eigene DNS/Cloudflare/Owner-Access-Nutzerfreigabe, noch kein konkreter Remoteplan/Slot. Alle weiteren Tests/Liveeingriffe zuerst technische Source-/Target-/Secret-/Kapazitätsreview und Main-Slot; keine erneute pauschale Nutzerfrage für bereits autorisierte Schritte.
+
 ## Verbindlicher Ort und Isolation
 
 Docker-Builds, Compose-Teststacks und containerisierte Integrationstests laufen auf **kube1**, nicht auf dem Laptop. Leichte Entwicklungsprüfungen können lokal bleiben. Dies ist Testbetrieb, kein Produktionsrollout und keine Freigabe von Upload/Chat.
@@ -16,6 +18,7 @@ SSH-Zugang `ssh kube1` wurde nichtinteraktiv geprüft: Docker 29.1.3, Compose 2.
 | --- | --- | --- | --- |
 | Main Integration | `/home/jre/notebook-tests/main/<commit>` | `notebook-test-main` | Foundation: `127.0.0.1:18190`; DB/Runner: keine |
 | B3 | `/home/jre/notebook-tests/b3/<commit>` | `notebook-test-b3` | keiner für DB/Runner; weitere Ports erst abstimmen |
+| B4 Quellen-GET | `/home/jre/notebook-tests/b4/<fullSHA>`; Evidence `.runtime-b4-<fullSHA>` | `notebook-test-b4` | keiner |
 | A5 | `/home/jre/notebook-tests/a5/<commit>` | `notebook-test-a5` | keiner für DB/Runner; weitere Ports erst abstimmen |
 
 Je Bereich nur einen Stack gleichzeitig betreiben. Compose-Netze und Volumes mit eigenem Projektpräfix erzeugen; keine externen Netze/Volumes, Host-Netzwerke, Docker-Socket-Mounts oder Produktionsmounts. Worker-DBs und Runner bleiben im eigenen Testnetz. Synthetische Daten und eigene kurzlebige Test-Credentials verwenden, niemals Secrets anderer Anwendungen kopieren. Bei fehlendem Zugang/Kapazität Tests blockiert melden, kein Laptop-Fallback.
