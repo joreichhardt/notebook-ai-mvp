@@ -9,11 +9,14 @@ from pathlib import Path
 import psycopg
 from alembic import command
 from alembic.config import Config
-from alembic.util.exc import CommandError
 from psycopg import ClientCursor, sql
 from sqlalchemy import create_engine
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import QueuePool
+
+if __package__:
+    from .runner_diagnostics import RunnerTrace, run_reported
+else:
+    from runner_diagnostics import RunnerTrace, run_reported
 
 SECRET_DIR = Path("/phase-a-secrets")
 ACTORS = ("anon", "authenticated", "service_role")
@@ -162,13 +165,17 @@ def check_runtime(role, path, assumed=None):
         engine.dispose()
 
 
-def verify_phase_a():
+def verify_phase_a(trace: RunnerTrace | None = None):
+    trace = trace if trace is not None else RunnerTrace()
+    trace.enter("preflight")
     assert os.environ.get("A5_STORAGE_PHASE_A") == "1"
     assert os.environ.get("A5_STORAGE_PHASE_A_URL") == "postgresql://db:5432/postgres"
+    trace.enter("bootstrap_credentials")
     paths = []
     admin_path = passfile("supabase_admin", (SECRET_DIR / "bootstrap").read_text().strip())
     paths.append(admin_path)
     try:
+        trace.enter("native_catalog")
         with connect("supabase_admin", admin_path) as db:
             assert db.execute("SHOW server_version_num").fetchone()[0].startswith("17")
             assert db.execute(
@@ -184,6 +191,7 @@ def verify_phase_a():
                 "AND to_regprocedure('supabase_functions.http_request()') IS NOT NULL"
             ).fetchone()[0], "native_webhook_dependency_missing"
             print("NATIVE_WEBHOOK_DEPENDENCY_PRESENT=1", flush=True)
+            trace.enter("upstream_probe")
             # Genuine upstream-default exposure, only on disposable synthetic probe.
             role_scope(db, "postgres")
             db.execute("CREATE TABLE public.a5_upstream_acl_probe (value integer)")
@@ -197,6 +205,7 @@ def verify_phase_a():
                 db.execute("RESET ROLE")
             print("RED_UPSTREAM_DEFAULTS_EXPOSE_SYNTHETIC_PROBE=3", flush=True)
             db.execute("DROP TABLE public.a5_upstream_acl_probe")
+            trace.enter("migration_owner")
             before_tables, before_funcs = catalog(db)
             db.execute("CREATE ROLE a5_phase_a_migrator LOGIN SUPERUSER")
             # Defaults belong solely to this fresh role; no upstream defaults changed.
@@ -213,6 +222,7 @@ def verify_phase_a():
                 f"postgresql+psycopg://{MIGRATOR}@db:5432/postgres"
                 f"?passfile={migration_path}&connect_timeout=3"
             )
+            trace.enter("alembic_upgrade")
             try:
                 with (
                     open(os.devnull, "w") as sink,
@@ -221,12 +231,14 @@ def verify_phase_a():
                 ):
                     command.upgrade(Config("backend/migrations/alembic.ini"), "0006")
             finally:
-                os.environ.pop("NOTEBOOK_MIGRATION_DATABASE_URL", None)
-                migration_path.unlink(missing_ok=True)
-                db.execute(
-                    "ALTER ROLE a5_phase_a_migrator NOLOGIN NOSUPERUSER NOCREATEROLE "
-                    "NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD NULL"
-                )
+                with trace.cleanup("migrator_disable"):
+                    os.environ.pop("NOTEBOOK_MIGRATION_DATABASE_URL", None)
+                    migration_path.unlink(missing_ok=True)
+                    db.execute(
+                        "ALTER ROLE a5_phase_a_migrator NOLOGIN NOSUPERUSER NOCREATEROLE "
+                        "NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD NULL"
+                    )
+            trace.enter("migration_verify")
             assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0006",)
             flags = db.execute(
                 "SELECT rolcanlogin,rolsuper,rolcreaterole,rolcreatedb,rolreplication,rolbypassrls "
@@ -245,6 +257,7 @@ def verify_phase_a():
                 ).fetchone()[0]
                 == 0
             )
+            trace.enter("runtime_logins")
             db.execute(
                 sql.SQL("CREATE ROLE {} LOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT").format(
                     sql.Identifier(IO_LOGIN)
@@ -258,6 +271,7 @@ def verify_phase_a():
                 paths.append(path)
                 del password
                 check_runtime(role, path, "notebook_storage_io" if role == IO_LOGIN else None)
+            trace.enter("app_catalog")
             tables, functions = catalog(db)
             old_tables = {r[0] for r in before_tables}
             old_funcs = {r[0] for r in before_funcs}
@@ -271,6 +285,7 @@ def verify_phase_a():
                     (MIGRATOR,),
                 )
             ]
+            trace.enter("actor_denials")
             for role in ACTORS:
                 deny_helper(db, role)
                 for target in protected:
@@ -296,6 +311,7 @@ def verify_phase_a():
                     assert not db.execute(
                         "SELECT has_function_privilege(%s,%s,'EXECUTE')", (role, oid)
                     ).fetchone()[0]
+            trace.enter("helper_acl")
             for oid, name in functions:
                 # Explicit non-owner execution ACLs must exactly match contract.
                 grants = db.execute(
@@ -306,6 +322,7 @@ def verify_phase_a():
                     (oid,),
                 ).fetchall()
                 assert {r[0] for r in grants} == EXPECTED_EXEC.get(name, set())
+            trace.enter("runtime_memberships")
             for role in (IO_LOGIN, "notebook_app"):
                 for target in protected + [
                     "supabase_storage_admin",
@@ -319,6 +336,7 @@ def verify_phase_a():
                         db.execute("SELECT pg_has_role(%s,%s,'SET')", (role, target)).fetchone()[0]
                         == allowed
                     )
+            trace.enter("storage_graph")
             graph = db.execute(
                 "SELECT r.rolname FROM pg_roles r WHERE "
                 "pg_has_role('supabase_storage_admin',r.oid,'MEMBER') ORDER BY r.rolname"
@@ -340,22 +358,11 @@ def verify_phase_a():
             )
             print("MIGRATOR_DISABLED_AND_CREDENTIAL_REMOVED=1", flush=True)
     finally:
-        for path in paths:
-            path.unlink(missing_ok=True)
+        with trace.cleanup("credential_cleanup"):
+            for path in paths:
+                path.unlink(missing_ok=True)
+    trace.enter("complete")
 
 
 if __name__ == "__main__":
-    try:
-        verify_phase_a()
-    except (
-        AssertionError,
-        psycopg.Error,
-        SQLAlchemyError,
-        CommandError,
-        OSError,
-        ValueError,
-    ) as exc:
-        # Do not serialize exceptions: SQL, connection URLs or server details can contain secrets.
-        print(f"PHASE_A_FAILED_TYPE={type(exc).__name__}", flush=True)
-        raise SystemExit(1) from None
-    print("PHASE_A_EXIT=0", flush=True)
+    raise SystemExit(run_reported(verify_phase_a))

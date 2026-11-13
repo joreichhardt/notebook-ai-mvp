@@ -8,6 +8,77 @@ import pytest
 CANARY = "SYNTHETIC_STREAM_CANARY_74a"
 
 
+@pytest.mark.parametrize("failure", ["constructor", "register"])
+def test_selector_setup_failure_is_sanitized_and_reaps_child(
+    failure, monkeypatch, capsys, tmp_path
+):
+    import os
+    import signal
+
+    from backend.tests.storage_real import diagnostics
+
+    original = diagnostics.subprocess.Popen
+    children = []
+    closed = []
+
+    def track(*args, **kwargs):
+        child = original(*args, **kwargs)
+        children.append(child)
+        return child
+
+    class BrokenSelector:
+        def __init__(self):
+            if failure == "constructor":
+                raise OSError(CANARY)
+
+        def register(self, *args):
+            raise OSError(CANARY)
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(diagnostics.subprocess, "Popen", track)
+    monkeypatch.setattr(diagnostics.selectors, "DefaultSelector", BrokenSelector)
+    escaped = False
+    outcome = None
+    try:
+        try:
+            outcome = diagnostics.supervise(
+                [sys.executable, "-c", "import time; time.sleep(10)"],
+                seconds=1,
+            )
+        except OSError:
+            escaped = True
+        leaked = any(child.poll() is None for child in children)
+    finally:
+        # RED tests must never leave the known-broken implementation's children alive.
+        for child in children:
+            if child.poll() is None:
+                os.killpg(child.pid, signal.SIGKILL)
+            child.wait(timeout=1)
+            if child.stdout is not None:
+                child.stdout.close()
+    assert not escaped, "selector exception escaped fail-closed boundary"
+    assert not leaked, "supervisor did not reap its own child"
+    assert outcome is not None and outcome.events == ("classifier_failure",)
+    assert outcome.exit_code is not None and outcome.exit_code < 0
+    assert failure == "constructor" or closed == [True]
+    assert list(tmp_path.iterdir()) == []
+    assert CANARY not in repr(outcome)
+    assert capsys.readouterr() == ("", "")
+
+
+def test_eof_child_can_exit_normally_inside_total_deadline():
+    from backend.tests.storage_real.diagnostics import supervise
+
+    result = supervise(
+        [sys.executable, "-c", "import os,time; os.close(1); os.close(2); time.sleep(.15)"],
+        seconds=1,
+    )
+    assert result.exit_code == 0
+    assert result.events == ()
+
+
 def test_native_start_detach_seam_preserves_container_client_boundary():
     import signal
 
@@ -26,6 +97,45 @@ def test_native_start_detach_seam_preserves_container_client_boundary():
     )
     assert result.exit_code == -signal.SIGKILL
     assert "health_ready" in result.events
+
+
+@pytest.mark.parametrize("detach", [False, True])
+def test_ready_callback_failure_is_sanitized_and_child_reaped(detach, monkeypatch, capsys):
+    from backend.tests.storage_real import diagnostics
+
+    original = diagnostics.subprocess.Popen
+    children = []
+    signals = []
+    killpg = diagnostics.os.killpg
+
+    def track(*args, **kwargs):
+        child = original(*args, **kwargs)
+        children.append(child)
+        return child
+
+    def signal_owned(pid, sig):
+        signals.append(sig)
+        killpg(pid, sig)
+
+    def broken_ready():
+        raise RuntimeError(CANARY)
+
+    monkeypatch.setattr(diagnostics.subprocess, "Popen", track)
+    monkeypatch.setattr(diagnostics.os, "killpg", signal_owned)
+    result = diagnostics.supervise(
+        [sys.executable, "-c", "import time; time.sleep(10)"],
+        ready=broken_ready,
+        detach=detach,
+        seconds=1,
+    )
+    assert result.events == ("classifier_failure",)
+    assert all(child.poll() is not None for child in children)
+    assert CANARY not in repr(result)
+    if detach:
+        import signal
+
+        assert all(sig == signal.SIGKILL for sig in signals)
+    assert capsys.readouterr() == ("", "")
 
 
 def test_known_missing_native_role_has_fixed_nonsecret_category():
@@ -222,6 +332,7 @@ def test_synthetic_flood_and_closed_pipe_have_finite_limits():
         seconds=0.1,
     )
     assert closed.exit_code is not None and closed.exit_code < 0
+    assert "limit_time" in closed.events
     assert time.monotonic() - start < 3
 
 

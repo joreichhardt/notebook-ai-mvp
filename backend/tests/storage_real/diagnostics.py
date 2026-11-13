@@ -1,7 +1,7 @@
-"""Bounded, lossy diagnostic seam. No runtime wiring; input is never executable.
+"""Bounded, lossy host diagnostic seam; input is never executable.
 
 Only fixed tokens escape. Recognized text is a hint, never trusted root-cause evidence.
-The PG image has no verified Python runtime: do not mount/execute this there implicitly.
+The PG image has no verified Python runtime: this helper runs only on the host.
 """
 
 import json
@@ -210,8 +210,8 @@ def supervise(
 ) -> Outcome:
     """Trusted-caller child stream seam; NO CLI and no command parsed from input.
 
-    Not wired to the DB: requires separately reviewed image dependency/mount
-    design. Unit tests use only synthetic local Python children.
+    Existing host attach wiring remains separately runtime-gated. Unit tests use
+    only synthetic local Python children; this function never owns container cleanup.
     """
     if not 0 < seconds <= 120:
         return Outcome(None, ("classifier_failure",))
@@ -228,13 +228,13 @@ def supervise(
         return Outcome(None, ("spawn_failure",))
     deadline = time.monotonic() + seconds
     terminal_events = []
-    poller = selectors.DefaultSelector()
+    poller = None
     stream = child.stdout
-    assert stream is not None
-    descriptor = stream.fileno()
-    poller.register(stream, selectors.EVENT_READ)
+    eof = False
+    safe = ("classifier_failure",)
 
     def chunks():
+        nonlocal eof
         total = 0
         while True:
             remaining = deadline - time.monotonic()
@@ -244,11 +244,13 @@ def supervise(
             if ready is not None and ready():
                 terminal_events.append("health_ready")
                 return
+            assert poller is not None
             readable = poller.select(min(remaining, 0.1))
             if not readable:
                 continue
             chunk = os.read(descriptor, MAX_CHUNK)
             if not chunk:
+                eof = True
                 return
             total += len(chunk)
             if total > MAX_BYTES:
@@ -258,6 +260,11 @@ def supervise(
 
     try:
         try:
+            # Every post-spawn setup operation belongs inside the cleanup boundary.
+            assert stream is not None
+            descriptor = stream.fileno()
+            poller = selectors.DefaultSelector()
+            poller.register(stream, selectors.EVENT_READ)
             events = classify(chunks())
             # Revalidate output even if classifier implementation fails or is replaced.
             safe = tuple(json.loads(render(events)))
@@ -265,32 +272,39 @@ def supervise(
             # This security boundary must not format arbitrary exception/stream values.
             safe = ("classifier_failure",)
     finally:
-        poller.close()
-        stream.close()
-        try:
-            child.wait(timeout=min(0.05, max(0.001, deadline - time.monotonic())))
-        except subprocess.TimeoutExpired:
-            pass
-        # Also terminate descendants retaining the pipe after their parent exited.
-        try:
-            os.killpg(child.pid, signal.SIGKILL if detach else signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        except OSError:
-            terminal_events.append("classifier_failure")
+        for resource in (poller, stream):
+            if resource is not None:
+                try:
+                    resource.close()
+                except Exception:  # noqa: BLE001 -- cleanup errors must not expose raw text
+                    terminal_events.append("classifier_failure")
+
+        def kill_owned_group(sig):
+            try:
+                os.killpg(child.pid, sig)
+            except ProcessLookupError:
+                pass
+            except OSError:
+                terminal_events.append("classifier_failure")
+
+        # EOF is not process exit. A quiet process retains its remaining total budget.
+        # Readiness detachment, setup/classifier errors and limits never wait that budget.
+        if eof and not terminal_events and "classifier_failure" not in safe:
+            remaining = deadline - time.monotonic()
+            try:
+                child.wait(timeout=max(0, remaining))
+            except subprocess.TimeoutExpired:
+                terminal_events.append("limit_time")
+        if child.poll() is None:
+            kill_owned_group(signal.SIGKILL if detach else signal.SIGTERM)
         try:
             child.wait(timeout=0.2)
         except subprocess.TimeoutExpired:
+            kill_owned_group(signal.SIGKILL)
             try:
-                os.killpg(child.pid, signal.SIGKILL)
                 child.wait(timeout=0.2)
-            except (OSError, subprocess.TimeoutExpired):
+            except subprocess.TimeoutExpired:
                 terminal_events.append("classifier_failure")
-        # Parent exit does not establish descendant quiescence; kill its own group.
-        try:
-            os.killpg(child.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        except OSError:
-            terminal_events.append("classifier_failure")
+        # A reaped parent does not prove descendants exited; signal only its own group.
+        kill_owned_group(signal.SIGKILL)
     return Outcome(child.returncode, tuple(dict.fromkeys((*safe, *terminal_events))))
