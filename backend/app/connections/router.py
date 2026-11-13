@@ -1,5 +1,4 @@
-from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -15,7 +14,6 @@ from app.auth.supabase import Identity
 from app.connections.vault import BitwardenStore
 from app.db.models import ProviderConnection
 from app.db.session import identity, user_session
-from app.providers.adapter import Adapter
 from app.providers.config import settings
 
 router = APIRouter(prefix="/api", tags=["connections"])
@@ -105,18 +103,40 @@ async def connect(body: Connect, request: Request, user: User, db: DB):
     return metadata(row)
 
 
+def discovery_repository(user: User):
+    # Local import breaks execution's existing provider_config dependency cycle.
+    from app.connections.execution import DiscoveryRepository
+
+    return DiscoveryRepository(user)
+
+
+DiscoveryRepo = Annotated[Any, Depends(discovery_repository)]
+
+
+def discovery_service(repository: DiscoveryRepo):
+    from app.connections.execution import ExecutionService
+
+    async def lookup(actor_id, connection_id):
+        return await run_in_threadpool(repository.lookup, actor_id, connection_id)
+
+    return ExecutionService(lookup=lookup)
+
+
+Discovery = Annotated[Any, Depends(discovery_service)]
+
+
 @router.post("/connections/{connection_id}/test")
-async def test(connection_id: UUID, request: Request, user: User, db: DB):
+async def test(
+    connection_id: UUID,
+    request: Request,
+    user: User,
+    service: Discovery,
+    repository: DiscoveryRepo,
+):
     check_csrf(request, get_settings().public_origin)
-    row = owned(db, user, connection_id)
-    provider = provider_config(row.provider_id)
-    if row.status != "active":
-        fail(409, "connection_inactive", "Verbindung ist getrennt.")
-    key = await run_in_threadpool(BitwardenStore(settings()).read, row.secret_id, user.id, row.id)
-    models = await Adapter(provider, key).models()
-    row.last_tested_at = datetime.now(UTC)
-    db.flush()
-    return {"models": models, "status": "ok"}
+    return await service.discover(
+        actor_id=user.id, connection_id=connection_id, publish=repository.publish
+    )
 
 
 class SelectModel(BaseModel):
@@ -125,19 +145,20 @@ class SelectModel(BaseModel):
 
 @router.patch("/connections/{connection_id}")
 async def select_model(
-    connection_id: UUID, body: SelectModel, request: Request, user: User, db: DB
+    connection_id: UUID,
+    body: SelectModel,
+    request: Request,
+    user: User,
+    service: Discovery,
+    repository: DiscoveryRepo,
 ):
     check_csrf(request, get_settings().public_origin)
-    row = owned(db, user, connection_id)
-    if row.status != "active":
-        fail(409, "connection_inactive", "Verbindung ist getrennt.")
-    key = await run_in_threadpool(BitwardenStore(settings()).read, row.secret_id, user.id, row.id)
-    models = await Adapter(provider_config(row.provider_id), key).models()
-    if body.model not in {m["id"] for m in models}:
-        fail(400, "model_unavailable", "Bitte ein verfügbares Modell auswählen.")
-    row.model = body.model
-    db.flush()
-    return metadata(row)
+    return await service.discover(
+        actor_id=user.id,
+        connection_id=connection_id,
+        selected_model=body.model,
+        publish=repository.publish,
+    )
 
 
 @router.delete("/connections/{connection_id}", status_code=204)

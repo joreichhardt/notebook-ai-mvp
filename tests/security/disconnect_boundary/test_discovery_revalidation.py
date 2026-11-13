@@ -1,6 +1,6 @@
-"""F4 RED regressions: real route bodies, synthetic state/store/adapter, no DB/I/O.
+"""Originally RED F4 regressions: real routes with injected external seams, no DB/I/O.
 
-The second snapshot represents a committed concurrent disconnect while a secret
+Fresh lookup state represents a committed concurrent disconnect while a secret
 read is returning an already obtained value. This does not simulate PostgreSQL
 locking/RLS/commit behavior; that separate acceptance test still requires kube1.
 """
@@ -22,25 +22,7 @@ from fastapi import HTTPException
 def test_discovery_must_not_begin_after_disconnect(monkeypatch, operation, revoke_during_read):
     actor, connection, secret = uuid4(), uuid4(), uuid4()
     current = SimpleNamespace(status="active" if revoke_during_read else "disconnected")
-    # A materialized row is not live state: a different transaction can change it.
-    snapshot = SimpleNamespace(
-        id=connection,
-        user_id=actor,
-        provider_id="fixture",
-        secret_id=secret,
-        status=current.status,
-        label="Synthetic",
-        model=None,
-        last_tested_at=None,
-    )
     reads, provider_calls = [], []
-
-    class Session:
-        def scalar(self, statement):
-            return snapshot
-
-        def flush(self):
-            pass
 
     class Store:
         def read(self, secret_id, owner_id, connection_id):
@@ -61,10 +43,19 @@ def test_discovery_must_not_begin_after_disconnect(monkeypatch, operation, revok
     monkeypatch.setattr(
         router, "get_settings", lambda: SimpleNamespace(public_origin="https://example.test")
     )
-    monkeypatch.setattr(router, "settings", lambda: None)
-    monkeypatch.setattr(router, "provider_config", lambda provider: provider)
-    monkeypatch.setattr(router, "BitwardenStore", lambda config: Store())
-    monkeypatch.setattr(router, "Adapter", Adapter)
+
+    async def lookup(actor_id, connection_id):
+        return ConnectionState(connection, actor, "fixture", secret, current.status)
+
+    async def read(state):
+        return Store().read(state.secret_id, state.user_id, state.id)
+
+    service = ExecutionService(
+        lookup=lookup,
+        read_secret=read,
+        adapter_factory=Adapter,
+        resolve_provider=lambda provider: provider,
+    )
 
     async def exercise():
         # Dependency injection deliberately supplies minimal test doubles.
@@ -72,7 +63,8 @@ def test_discovery_must_not_begin_after_disconnect(monkeypatch, operation, revok
             "connection_id": connection,
             "request": None,
             "user": SimpleNamespace(id=actor),
-            "db": Session(),
+            "service": service,
+            "repository": SimpleNamespace(publish=lambda *args: None),
         }
         try:
             if operation == "test":
