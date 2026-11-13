@@ -1,0 +1,75 @@
+{
+  "services": {
+    "db": {
+      "image": "postgres:16-alpine@sha256:\
+        aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139",
+      "user": "70:70",
+      "environment": {
+        "POSTGRES_DB": "${B4_DATABASE:?assigned database}",
+        "POSTGRES_PASSWORD_FILE": "/run/secrets/bootstrap",
+        "POSTGRES_INITDB_ARGS": "--auth-host=scram-sha-256",
+        "PGDATA": "/var/lib/postgresql/data"
+      },
+      "command": [
+        "postgres", "-c", "password_encryption=scram-sha-256",
+        "-c", "log_statement=none", "-c", "log_min_error_statement=panic",
+        "-c", "log_min_messages=panic"
+      ],
+      "secrets": ["bootstrap"],
+      "read_only": true,
+      "cap_drop": ["ALL"],
+      "security_opt": ["no-new-privileges:true"],
+      "cpus": 1,
+      "mem_limit": "512m",
+      "pids_limit": 128,
+      "logging": {"driver": "none"},
+      "tmpfs": [
+        "/var/lib/postgresql/data:uid=70,gid=70,mode=0700,size=268435456",
+        "/var/run/postgresql:uid=70,gid=70,mode=0700,size=16777216",
+        "/tmp:mode=1777,size=16777216"
+      ],
+      "networks": ["database"],
+      "healthcheck": {
+        "test": ["CMD-SHELL", "pg_isready -U postgres -d \"$${POSTGRES_DB}\""],
+        "interval": "2s", "timeout": "2s", "retries": 30
+      }
+    },
+    "runner": {
+      "image": "python:3.12-slim-bookworm@sha256:\
+        935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df",
+      "user": "${B4_UID:?runner uid}:${B4_GID:?runner gid}",
+      "entrypoint": [
+        "python", "/snapshot/tests/security/document_list/run_b4.py"
+      ],
+      "environment": {
+        "B4_SNAPSHOT_SHA": "${B4_SHA:?immutable full sha}",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "volumes": ["${B4_SNAPSHOT:?immutable archive}:/snapshot:ro"],
+      "secrets": ["bootstrap"],
+      "read_only": true,
+      "cap_drop": ["ALL"],
+      "security_opt": ["no-new-privileges:true"],
+      "cpus": 1,
+      "mem_limit": "1g",
+      "pids_limit": 128,
+      "logging": {"driver": "none"},
+      "tmpfs": [
+        "/work:exec,mode=1777,size=536870912",
+        "/tmp:mode=1777,size=67108864"
+      ],
+      "networks": ["database", "dependencies"],
+      "depends_on": {"db": {"condition": "service_healthy"}}
+    }
+  },
+  "networks": {
+    "database": {"internal": true},
+    "dependencies": {}
+  },
+  "secrets": {
+    "bootstrap": {
+      "file": "${B4_BOOTSTRAP_FILE:?private runtime credential path}"
+    }
+  }
+}
