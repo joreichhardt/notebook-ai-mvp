@@ -2,7 +2,35 @@
 
 ## Current remediation result — source-ready, DB acceptance OPEN
 
-### Executable opt-in PostgreSQL packet (current, DATABASE UNRUN)
+### Authorized kube1 operator preparation (current; awaiting Main packet review)
+
+Task `task_c45af3359327`, dispatch `ctx_c20fa84064ae`, received in existing F4 Pi worker at **a8049fc3b1f2c2fe3e313340fd8a1c773d4936c3**; start receipt `msg_733699d0c490` (CLI uses native `status`, not unsupported `update`). Main explicitly reviewed the complete source packet and authorized the exclusive kube1 slot for isolated F4 PostgreSQL/HTTP acceptance and existing connection-management tests, **not production/release**. Main requires a separate review of the exact operator code before SSH/pull/DB. That review boundary is the current HOLD; no remote action has occurred in this preparation phase.
+
+Read homeserver README/secret boundary and [kube1 runbook](../operations/testing-kube1.md), plus existing B3 frozen runner/SCRAM and A5 manifests. Added only owned files:
+
+- [compose.f4.yaml](../../tests/security/disconnect_boundary/compose.f4.yaml): reviewed pinned PG16/Python3.12 images, DB1CPU/512MiB/128PIDs and runner1CPU/1GiB/128PIDs, read-only filesystems/source, private tmpfs, no capabilities/hostports/foreign mounts, internal DB network plus dependency-download network. SCRAM host authentication; secret bootstrap file shared across container UIDs but protected by host parent0700; no secret value in URLs/env/CLI. Docker log drivers disabled and PostgreSQL statement/error-statement logging suppressed to prevent raw diagnostics persistence.
+- [run_f4.py](../../tests/security/disconnect_boundary/run_f4.py): nonroot runner, writable private scratch copy only; pinned uv0.9.9 installation remotely then frozen `uv.lock` sync, no Python download. Separate subprocess phases: fresh migration head as fixture admin; `psycopg.ClientCursor` + `sql.Literal` configures synthetic notebook_app password;30PGcases, then135focused cases (including all five unchanged connection-management SQLite tests, allowed **only in remote runner**). Per-role passfiles0600, only references in environment. Pytest autoload disabled (selected tests are synchronous wrappers); custom plugin records fixed outcomes/test IDs and allowlisted F4 assertion labels, never tracebacks/DSNs/SQL/raw exception messages. Expected counts and zero skips required. Raw child stdout/stderr discarded rather than logged/redacted later. A failed phase stops immediately, no rerun.
+- [operator_f4.py](../../tests/security/disconnect_boundary/operator_f4.py): hostname/user/owner0700path checks; fresh counts0/0/0 for exact `notebook-test-main` containers/networks/volumes; load1<=6, >=3GiB available RAM/disk required before mutation. Exclusive `.runtime-f4-<fullsha>`0700 with evidence.jsonl0600; pinned pull/config/up/run, no build. Preflight is repeated just before run. Per-command deadlines, max runner1800seconds; exact-project down/volume removal even after failure, bootstrap unlink and final0/0/0 check; no global prune. A cleanup problem is a failure needing Main intervention, not permission to touch foreign resources.
+- [test_operator_packet.py](../../tests/security/disconnect_boundary/test_operator_packet.py):9 local no-DB checks for safe report fields, fixed failure type, exclusive0600file and inability of an empty pytest run to count as acceptance. Local guarded suite **129 passed / 30 skipped in 2.20s** (no test_connections/SQLite run locally), same fail-fast psycopg/SQLite/network sentinels as prior phase. Ruff/check-format, AST/compile and static YAML/image/no-port/internal-network checks passed at that eight-case preparation stage; active LSP3clean/0inconclusive. A ninth reporter integration probe then genuinely failed (**1 failed / 8 passed in0.23s**, no DB/network), exposing that `-p no:terminal` removes pytest's `--tb`/`--show-capture` options (confirmed in installed `_pytest/terminal.py:133,214,230`). Those incompatible options are removed in the proposed fix; terminal output remains disabled and redirected to null. **No repeat test run after that failure:** requesting Main ruling to run local verification of the repair as well as operator review, per no-unruled-repeat requirement.135 is the future remote expected focused count, not an observed result; no DB result is claimed.
+
+#### Exact proposed execution sequence after Main approves the new immutable commit
+
+`REV` below must be the **full operator-packet commit SHA returned in the review request**, never mutable HEAD; archive includes unchanged a8049fc acceptance cases and the new owned operator code. Database suffix follows that actual tested SHA, not the earlier source-only SHA. No SSH command below has yet been executed. Preconditions: Main's exclusive slot remains assigned and `/home/jre/notebook-tests/main` already exists, owned by the operator with0700; no reused snapshot/runtime paths.
+
+```sh
+REV=<full-reviewed-operator-packet-sha>
+git show "$REV":tests/security/disconnect_boundary/operator_f4.py | \
+  ssh -o BatchMode=yes kube1 python3 - preflight "$REV"
+# Proceed only after the fresh safe capacity/namespace report succeeds.
+git archive "$REV" | ssh -o BatchMode=yes kube1 \
+  "set -eu; umask 077; mkdir /home/jre/notebook-tests/main/$REV; umask 022; tar -xf - -C /home/jre/notebook-tests/main/$REV"
+ssh -o BatchMode=yes kube1 \
+  "python3 /home/jre/notebook-tests/main/$REV/tests/security/disconnect_boundary/operator_f4.py run $REV"
+```
+
+This is one run, not a retry loop. Every failure (including preflight/provisioning/installation/assertion/cleanup) requires diagnosis and an explicit Main ruling before another attempt. Preserve only structured safe evidence at `.runtime-f4-<sha>/evidence.jsonl`; no raw Docker/provider/driver logs. If interrupted, first inspect that exact project and perform only its necessary cleanup under Main direction. Future unknown-wire-commit/real-provider/transport/model-purpose gates remain outside this acceptance. Final real evidence and cleanup are still **pending**, not covered by local green/skips.
+
+### Executable opt-in PostgreSQL packet (a8049fc baseline, DATABASE UNRUN)
 
 Task `task_f21160172c01`, dispatch `ctx_f27d05784664`, starts from **c5d954dfb6b9a1f1a3b06896fbb60d895a29b6d8** in the same worker/worktree. Main reports independent 113-pass verification and integration into `2f1ac0e`, with A5 separately integrated as `bad95e5`; these are coordinator reports, not rerun or modified here. This delivery changes only the two new F4 test modules and F4 report/handoff; no production/schema/shared fixture/config change.
 
