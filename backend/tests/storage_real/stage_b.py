@@ -155,6 +155,61 @@ def acl_checkpoint(name):
     print("STAGE_B_ACL_CHECKPOINT=" + name, flush=True)
 
 
+def migration_inventory(rows, source):
+    def fail(status):
+        print(
+            "STAGE_B_MIGRATION_INVENTORY=" + json.dumps({"status": status}, separators=(",", ":")),
+            flush=True,
+        )
+        raise AssertionError
+
+    if type(rows) is list and not rows:
+        fail("empty")
+    expected_count = source.get("migration_count") if type(source) is dict else None
+    expected_fingerprint = (
+        source.get("migration_ids_names_sha256") if type(source) is dict else None
+    )
+    if not (
+        type(rows) is list
+        and 1 <= len(rows) <= 1000
+        and type(expected_count) is int
+        and 0 <= expected_count <= 1000
+        and type(expected_fingerprint) is str
+        and len(expected_fingerprint) == 64
+        and all(char in "0123456789abcdef" for char in expected_fingerprint)
+        and all(
+            type(row) in (tuple, list)
+            and len(row) == 2
+            and type(row[0]) is int
+            and 0 <= row[0] <= 10000
+            and type(row[1]) is str
+            and len(row[1]) <= 512
+            for row in rows
+        )
+    ):
+        fail("malformed")
+    pairs = sorted([[row[0], row[1]] for row in rows])
+    ids = [pair[0] for pair in pairs]
+    print(
+        "STAGE_B_MIGRATION_INVENTORY="
+        + json.dumps(
+            {
+                "status": "observed",
+                "actual_count": len(rows),
+                "expected_count": expected_count,
+                "min_id": min(ids),
+                "max_id": max(ids),
+                "actual_fingerprint": sha256(
+                    json.dumps(pairs, separators=(",", ":")).encode()
+                ).hexdigest(),
+                "expected_fingerprint": expected_fingerprint,
+            },
+            separators=(",", ":"),
+        ),
+        flush=True,
+    )
+
+
 def post_storage_acl():
     catalog = json.loads((ROOT / "catalog.json").read_text())
     source = json.loads(Path(__file__).with_name("stage_b_source.json").read_text())
@@ -251,9 +306,10 @@ def post_storage_acl():
                 "SELECT pg_get_userbyid(relowner),relrowsecurity FROM pg_class WHERE oid=to_regclass(%s)",
                 ("storage." + name,),
             ).fetchone() == ("supabase_storage_admin", True)
-        acl_checkpoint("storage_migration_count")
         migrations = db.execute("SELECT id,name FROM storage.migrations ORDER BY id").fetchall()
         fingerprint = sha256(json.dumps(migrations, separators=(",", ":")).encode()).hexdigest()
+        migration_inventory(migrations, source)
+        acl_checkpoint("storage_migration_count")
         assert len(migrations) == source["migration_count"]
         acl_checkpoint("storage_migration_fingerprint")
         assert fingerprint == source["migration_ids_names_sha256"]

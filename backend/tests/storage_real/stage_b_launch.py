@@ -96,6 +96,46 @@ TYPES = (
 def safe_line(line):
     if type(line) is not str or len(line) > 1024:
         return None
+    if line.startswith("STAGE_B_MIGRATION_INVENTORY="):
+        try:
+            data = json.loads(line.split("=", 1)[1])
+            source = json.loads(Path(__file__).with_name("stage_b_source.json").read_text())
+        except (ValueError, TypeError, OSError):
+            return None
+        if type(data) is not dict or type(source) is not dict:
+            return None
+        if data == {"status": "empty"} or data == {"status": "malformed"}:
+            return {"migration_inventory": data}
+        keys = {
+            "status",
+            "actual_count",
+            "expected_count",
+            "min_id",
+            "max_id",
+            "actual_fingerprint",
+            "expected_fingerprint",
+        }
+        if set(data) != keys or data["status"] != "observed":
+            return None
+        if not all(
+            type(data[k]) is int for k in ("actual_count", "expected_count", "min_id", "max_id")
+        ):
+            return None
+        if not (
+            1 <= data["actual_count"] <= 1000
+            and 0 <= data["expected_count"] <= 1000
+            and data["expected_count"] == source.get("migration_count")
+            and 0 <= data["min_id"] <= data["max_id"] <= 10000
+        ):
+            return None
+        if not all(
+            type(data[k]) is str and re.fullmatch("[0-9a-f]{64}", data[k])
+            for k in ("actual_fingerprint", "expected_fingerprint")
+        ):
+            return None
+        if data["expected_fingerprint"] != source.get("migration_ids_names_sha256"):
+            return None
+        return {"migration_inventory": data}
     if line.startswith("STAGE_B_ACL_CHECKPOINT="):
         value = line.split("=", 1)[1]
         return {"acl_checkpoint": value} if value in ACL_CHECKPOINTS else None

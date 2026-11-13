@@ -67,10 +67,23 @@ def test_actual_assertion_function_is_identical_after_stripping_only_literal_che
         if isinstance(node, ast.FunctionDef) and node.name == "post_storage_acl"
     )
     checkpoints = []
+    inventories = []
 
     class Strip(ast.NodeTransformer):
         def visit_Expr(self, node):
             call = node.value
+            if (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Name)
+                and call.func.id == "migration_inventory"
+            ):
+                assert not call.keywords and len(call.args) == 2
+                assert [arg.id if isinstance(arg, ast.Name) else None for arg in call.args] == [
+                    "migrations",
+                    "source",
+                ]
+                inventories.append(call)
+                return None
             if (
                 isinstance(call, ast.Call)
                 and isinstance(call.func, ast.Name)
@@ -86,5 +99,6 @@ def test_actual_assertion_function_is_identical_after_stripping_only_literal_che
             return self.generic_visit(node)
 
     stripped = Strip().visit(function)
+    assert len(inventories) == 1
     assert len(checkpoints) == 21 and set(checkpoints) == set(domain("stage_b.py"))
     assert sha256(ast.dump(stripped, include_attributes=False).encode()).hexdigest() == ORIGINAL_AST
