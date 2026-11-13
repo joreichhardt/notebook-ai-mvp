@@ -1,0 +1,66 @@
+# Phase A only. No Storage/REST/imgproxy/Envoy services may start here.
+name: notebook-test-a5-storage
+services:
+  db:
+    image: "supabase/postgres:17.6.1.136@sha256:\
+      5a4314708484bec672de2c09653a5c01fb1c84a998564ac231b0325e2238ed5b"
+    platform: linux/amd64
+    restart: "no"
+    mem_limit: 1g
+    cpus: 1
+    pids_limit: 256
+    logging:
+      driver: none
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        export POSTGRES_PASSWORD="$$(< /phase-a-secrets/bootstrap)"
+        exec docker-entrypoint.sh postgres \
+          -c config_file=/etc/postgresql/postgresql.conf \
+          -c logging_collector=off -c log_statement=none \
+          -c log_min_messages=panic -c log_min_error_statement=panic
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      POSTGRES_PORT: "5432"
+      PGPORT: "5432"
+      POSTGRES_DB: postgres
+      JWT_EXP: "3600"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - pgconfig:/etc/postgresql-custom
+      - ./webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:ro
+      - ./roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+      - ./jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
+      - ${A5_PHASE_A_SECRETS:?}:/phase-a-secrets:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 2s
+      timeout: 3s
+      retries: 45
+    networks: [isolated]
+  runner:
+    build:
+      context: ../../..
+      dockerfile: backend/tests/storage_real/Dockerfile
+    platform: linux/amd64
+    user: "${A5_PHASE_A_UID:?}:${A5_PHASE_A_GID:?}"
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    cpus: 1
+    pids_limit: 128
+    tmpfs: ["/tmp:rw,nosuid,noexec,size=32m,mode=1777"]
+    environment:
+      A5_STORAGE_PHASE_A: "1"
+      A5_STORAGE_PHASE_A_URL: postgresql://db:5432/postgres
+    volumes:
+      - ${A5_PHASE_A_SECRETS:?}:/phase-a-secrets:rw
+    networks: [isolated]
+networks:
+  isolated:
+    internal: true
+volumes:
+  pgdata: {}
+  pgconfig: {}
