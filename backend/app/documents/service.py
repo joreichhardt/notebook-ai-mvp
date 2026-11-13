@@ -209,6 +209,12 @@ class UploadService:
 
         return self._db(actor_id, listing)
 
+    def authorize_upload(self, *, actor_id: UUID, notebook_id: UUID) -> None:
+        """Short committing write/admission preflight; never spans payload or storage awaits."""
+        self._db(actor_id, lambda db: self._notebook(db, actor_id, notebook_id, write=True))
+        if not self.configured:
+            raise DocumentError("storage_unconfigured")
+
     async def upload(
         self,
         *,
@@ -222,9 +228,7 @@ class UploadService:
         expected_version_id: UUID | None = None,
     ) -> UploadReceipt:
         try:
-            self._db(actor_id, lambda db: self._notebook(db, actor_id, notebook_id, write=True))
-            if not self.configured:
-                raise DocumentError("storage_unconfigured")
+            self.authorize_upload(actor_id=actor_id, notebook_id=notebook_id)
             if connection_id is not None or index_profile_id is not None:
                 raise DocumentError("unsupported_embedding", 415)
             if document_id is not None or expected_version_id is not None:
