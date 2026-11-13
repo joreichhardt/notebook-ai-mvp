@@ -241,9 +241,11 @@ def run(sha):
         try:
             # Host parent0700; mount readable to postgres70 and host-UID runner.
             with os.fdopen(
-                os.open(bootstrap, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444), "w"
+                os.open(bootstrap, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
             ) as stream:
                 stream.write(secrets.token_hex(24))
+                stream.flush()
+                os.fchmod(stream.fileno(), 0o444)
             for stage, args, timeout in (
                 ("compose-config", [*compose, "config", "--quiet"], 30),
                 ("pull", [*compose, "pull"], 600),

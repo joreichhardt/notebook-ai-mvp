@@ -236,6 +236,25 @@ def test_one_shot_run_cleanup_and_no_raw_evidence(operator_scene, capsys, fault)
         scene.operator.run(SHA)
 
 
+def test_restrictive_umask_bootstrap_and_cleanup(operator_scene):
+    scene = operator_scene
+    previous = os.umask(0o077)
+    try:
+        # The command double checks actual bootstrap0444 before every Compose call.
+        assert scene.operator.run(SHA) == 0
+    finally:
+        os.umask(previous)
+    runtime = scene.base / (".runtime-b4-" + SHA)
+    evidence = runtime / "evidence.jsonl"
+    assert stat.S_IMODE(runtime.stat().st_mode) == 0o700
+    assert stat.S_IMODE(evidence.stat().st_mode) == 0o600
+    assert not (runtime / "bootstrap").exists()
+    rows = [json.loads(line) for line in evidence.read_text().splitlines()]
+    assert rows[-2] == {**rows[-2], "stage": "cleanup", "ok": True, "namespace": [0, 0, 0]}
+    assert rows[-1]["stage"] == "credential-removal" and rows[-1]["ok"] is True
+    assert sum("down" in call for call in scene.calls) == 1
+
+
 def test_namespace_cleanup_failure_cannot_pass(operator_scene):
     operator_scene.operator.namespace = lambda: [1, 0, 0]
     assert operator_scene.operator.run(SHA) == 1
