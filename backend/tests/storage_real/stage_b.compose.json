@@ -1,0 +1,45 @@
+{
+  "name": "notebook-test-a5-storage",
+  "services": {
+    "db": {
+      "image": "supabase/postgres:17.6.1.136@sha256:5a4314708484bec672de2c09653a5c01fb1c84a998564ac231b0325e2238ed5b",
+      "platform": "linux/amd64", "restart": "no", "mem_limit": "1g", "cpus": 1, "pids_limit": 256,
+      "logging": {"driver": "none"}, "networks": ["isolated"],
+      "entrypoint": ["/bin/bash", "-ec"],
+      "command": ["export POSTGRES_PASSWORD=\"$$(< /phase-a-secrets/bootstrap)\"; exec docker-entrypoint.sh postgres -c config_file=/etc/postgresql/postgresql.conf -c logging_collector=off -c log_statement=none -c log_min_messages=panic -c log_min_error_statement=panic"],
+      "environment": {"POSTGRES_HOST": "/var/run/postgresql", "POSTGRES_PORT": "5432", "PGPORT": "5432", "POSTGRES_DB": "postgres", "JWT_EXP": "3600"},
+      "volumes": ["pgdata:/var/lib/postgresql/data", "pgconfig:/etc/postgresql-custom", "./webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:ro", "./roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro", "./jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro", "${A5_STAGE_B_ROOT:?}/db:/phase-a-secrets:ro"],
+      "healthcheck": {"test": ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"], "interval": "2s", "timeout": "3s", "retries": 45}
+    },
+    "runner": {
+      "build": {"context": "../../..", "dockerfile": "backend/tests/storage_real/Dockerfile"},
+      "platform": "linux/amd64", "restart": "no", "user": "${A5_PHASE_A_UID:?}:${A5_PHASE_A_GID:?}",
+      "read_only": true, "cap_drop": ["ALL"], "security_opt": ["no-new-privileges:true"],
+      "mem_limit": "768m", "cpus": 1, "pids_limit": 128, "logging": {"driver": "none"}, "networks": ["isolated"],
+      "environment": {"A5_STORAGE_PHASE_A": "1", "A5_STORAGE_PHASE_A_URL": "postgresql://db:5432/postgres"},
+      "tmpfs": ["/tmp:rw,nosuid,noexec,size=32m,mode=1777"],
+      "volumes": ["${A5_STAGE_B_ROOT:?}/runner:/stage-b-secrets:rw"],
+      "command": ["python", "backend/tests/storage_real/stage_b.py", "verify"]
+    },
+    "storage": {
+      "image": "supabase/storage-api:v1.89.12@sha256:4a71028f91060c8d2e86d7426faa6841947d63f4ee97f9683d058d3ec367fb6c",
+      "platform": "linux/amd64", "restart": "no", "user": "${A5_PHASE_A_UID:?}:${A5_PHASE_A_GID:?}",
+      "read_only": true, "cap_drop": ["ALL"], "security_opt": ["no-new-privileges:true"],
+      "mem_limit": "768m", "cpus": 1, "pids_limit": 128, "logging": {"driver": "none"}, "networks": ["isolated"],
+      "entrypoint": ["node", "/stage-b-wrapper.cjs"],
+      "environment": {"DB_INSTALL_ROLES": "false", "DATABASE_MAX_CONNECTIONS": "4", "DATABASE_CONNECTION_TIMEOUT": "3000", "DATABASE_STATEMENT_TIMEOUT": "3000", "STORAGE_BACKEND": "file", "FILE_STORAGE_BACKEND_PATH": "/var/lib/storage", "GLOBAL_S3_BUCKET": "a5-synthetic", "REGION": "a5", "TENANT_ID": "a5", "FILE_SIZE_LIMIT": "26214400", "IMAGE_TRANSFORMATION_ENABLED": "false", "PG_QUEUE_ENABLE": "false", "PG_QUEUE_WORKERS_ENABLE": "false", "S3_PROTOCOL_ENABLED": "false", "LOG_LEVEL": "silent", "SERVER_PORT": "5000", "MULTI_TENANT": "false", "EXPOSE_DOCS": "false"},
+      "tmpfs": ["/tmp:rw,nosuid,noexec,size=32m,mode=1777", "/var/lib/storage:rw,nosuid,noexec,size=256m,mode=0700,uid=${A5_PHASE_A_UID:?},gid=${A5_PHASE_A_GID:?}"],
+      "volumes": ["${A5_STAGE_B_ROOT:?}/storage:/storage-secrets:ro", "./stage_b_wrapper.cjs:/stage-b-wrapper.cjs:ro"],
+      "healthcheck": {"test": ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"], "interval": "2s", "timeout": "3s", "retries": 45}
+    },
+    "gateway": {
+      "image": "envoyproxy/envoy:v1.39.6@sha256:9d117c1fbb4432621ed14603bc6e8da4fdf4602e702cc4ef8f40d59b7766489e",
+      "platform": "linux/amd64", "restart": "no", "user": "${A5_PHASE_A_UID:?}:${A5_PHASE_A_GID:?}",
+      "read_only": true, "cap_drop": ["ALL"], "security_opt": ["no-new-privileges:true"],
+      "mem_limit": "128m", "cpus": 0.25, "pids_limit": 64, "logging": {"driver": "none"}, "networks": ["isolated"],
+      "entrypoint": ["/usr/local/bin/envoy"], "command": ["-c", "/etc/envoy/stage-b.json", "--disable-hot-restart", "--log-level", "critical", "--concurrency", "1"],
+      "volumes": ["./stage_b.envoy.json:/etc/envoy/stage-b.json:ro"]
+    }
+  },
+  "networks": {"isolated": {"internal": true}}, "volumes": {"pgdata": {}, "pgconfig": {}}
+}
