@@ -23,11 +23,11 @@ from sqlalchemy.orm import Session
 if __package__:
     from . import phase_a
     from .runner_diagnostics import RunnerTrace
-    from .stage_b_contract import delete_claimed, request
+    from .stage_b_contract import canonical_absence, delete_claimed, request
 else:
     import phase_a
     from runner_diagnostics import RunnerTrace
-    from stage_b_contract import delete_claimed, request
+    from stage_b_contract import canonical_absence, delete_claimed, request
 
 ROOT = Path("/stage-b-secrets")
 CASES = (
@@ -623,14 +623,14 @@ async def verify():
                         content=b"forbidden",
                     )
                 ).status in (400, 401, 403, 404)
-                assert (
+                assert canonical_absence(
                     await request(
                         client,
                         "GET",
                         ENDPOINT + "/object/authenticated/" + BUCKET + "/" + other.key,
                         headers=headers,
                     )
-                ).status == 404
+                )
                 control = await request(
                     client,
                     "GET",

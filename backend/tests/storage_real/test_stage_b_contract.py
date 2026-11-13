@@ -41,7 +41,7 @@ def test_cleanup_key_mismatch_stops_before_http(bad):
 
 @pytest.mark.parametrize(
     "delete_status,get_status,success",
-    [(200, 404, True), (404, 404, True), (200, 200, False), (500, 404, False), (200, 403, False)],
+    [(200, 404, False), (404, 404, False), (200, 200, False), (500, 404, False), (200, 403, False)],
 )
 def test_cleanup_requires_successful_delete_and_privileged_exact_absence(
     delete_status, get_status, success
