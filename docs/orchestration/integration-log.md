@@ -1,5 +1,9 @@
 # Integration log
 
+## Combinedzustellung wiederhergestellt · ctx_7262988676f2 ready
+
+Nach eindeutiger Zuordnung der ursprünglichen laufenden A5-Pi-Sitzung genau ein unterstützter Retry der **bestehenden task_72982f26fa53**, `--retry-of ctx_41bdc41b6907`, expliziter bestehender Workspaceselector und neuer Runtimehandle **term_8a2f4268-b34f-4064-9005-e7361a485991**, ohne --agent/--spec. Autoritativer Receipt **ctx_7262988676f2/state=ready/keptOpen=true**, gleicherRun, keine neue Sitzung/Task oder doppelte Zustellung. Echter Worker-ACK/Design/Code noch offen; nativem Wakeup folgen. Nur lokale Combinedpacket-Vorbereitung erlaubt, kein Remote-/Container-/DB-/Installationsslot. D4 integriert2c90ce1/Docs1291964, tatsächliche Ausführungsabnahmen unverändert offen.
+
 ## 2c90ce1 · D4 source-reviewt integriert; kontrollierte Worker-Recovery vorbereitet
 
 Nutzer bestätigte Orca-Fortsetzung unter unveränderten Grenzen, zuerst fehlgeschlagene Zustellung klären. Worker-show failedctx_41bdc41b6907/Tasktask_72982f26fa53 bestätigt terminal_create/nothing sent, worker-read ausdrücklich keinAgentterminal. Exakte A5-Workspaceliste komplett2Terminals; alter term_da5a85ef explizit terminal_handle_stale. Eintragterm_8a2f4268-b34f-4064-9005-e7361a485991 zeigt tatsächliche ursprüngliche Pi-Sitzung01a1cf36-3c85-7235-af64-c202fed1bbe3; Screen bestätigt historische abschließende A5-msg_784348d7ea00 und wartende Eingabe, keine aktuelle Combinedarbeit. Anderes Terminal ist eine Shell mit anderer Sessionhistorie und wird nicht benutzt. Gezielter autorisierter Retry derselben failedTask über unterstützte --retry-of/--terminal vorbereitet; noch kein neuer Receipt behauptet, keine doppelte Terminalzustellung/neuerRun/Reset/Ersatzagent. Originale erfolgreiche A5-Aufgabe bleibt succeeded.
