@@ -1,6 +1,14 @@
 # Implementation plan
 
-## Aktueller Koordinationsstand · B4 nativ gemeldet, unabhängige Nachprüfung folgt
+## Aktueller Koordinationsstand · A5 Direct-Storage abgeschlossen, B5/D4 weiterführen
+
+**8ba4f1a** integriert A5-Lieferungbaf80e1; nativer Zielstand **818deb32d6324faefa6614899959eb5ab08c2854** mit allen Direct-Storage-/Owner-/Editor-/Idempotenz-/JWT5-/realen Cleanupfällen grün,435s/Operator0/Verify0/Cleanup0. Main unabhängig184Quelldateien+Modi/Evidencehash/geordneteCases/Migrationsinventar80+Fingerprint/aktuell0/0/0/Credentialsweg verifiziert, ohne Testwiederholung. Integrierte lokale267passed/1DBskip/7.00s/Ruff/Format18/Nodesyntax3; aktiveLSP13 mit12clean und1Unused-Hinweis/0inconclusive. Frühere Guard-/DB-/StageB-Blocker unten sind historisch; kein Produktionsleastprivilege-/Cleanupworker-/physischeQuieszenz-/B5-HTTP-Nachweis. [Belege und Grenzen](../handoffs/A5.md).
+
+Jetzt: (1) vorhandene B4-Evidence329b720 unabhängig nachprüfen/integrieren, ohne Rerun; (2) B5-Livefixture0c95477 und D4-Frontend659648f nach abgeschlossenem unabhängigen Source-only-Review integrieren, getrennte Node22-/Vitest-/tsc- und RootPOST→Storage→TextWorker→safeGET-Prüfpakete seriell auf kube1; diese Ausführungen bleiben UNRUN; (3) E01e5a56/geschützte BWS-Vorbereitung unabhängig weiterführen. Cloudflare-Review33synthetischeTests/0externeI/O grün, tatsächliche InlinePolicy-/Readiness-/OwnerAccess-/Connector-/Credentials-/Releasegates unverändert offen. Kein aktiver schwerer Slot nach A5-Abschluss, keine erneute Nutzerfreigabe für den schon autorisierten isolierten Testumfang.
+
+kube1-Zugang aktuell über dokumentierten bestehenden Cloudflare-SSH-Tunnel home.yokoma.de mit strengem HostKeyAlias=kube1, nicht über den unaufgelösten LAN-Kurznamen. Projektlokale Main-Modellretry-Policy10/2000/30000/provider0 in derselben laufenden Session tatsächlich aktiviert; keine automatische Remote-Mutationswiederholung. Produktion/öffentliche Capabilities bleiben aus, allgemeine DB-Diagnose nicht erneut starten; automatische Kompaktierungsabnahme separat offen.
+
+## Voriger Koordinationsstand · B4 nativ gemeldet, unabhängige Nachprüfung folgt
 
 B4-Paket5eef385 plus Main-reproduzierter umask077-Fehler/enger FD-Modusfix e6c721 integriert in **054f6fd4c110e068c52a48ca5cd355cd48aa2213**. Main unabhängig244passed/37explizitePGskips/1Warnung8.41s, Ruff/Format3/diff und aktiveLSP3clean. Exklusiv freigegebener einmaliger kube1-Schnitt **task_d93defbf8574/ctx_93be6f775e81** meldet auf exakt054f migrate0006/role0, **7PG+50focused bestanden ohneFehler/Skips**,20.391398s, Operator0/eigenesCleanup0/0/0/Credentialsweg; docs329b720 geliefert. Main muss sichere Evidence/Quellhashes/Modi/aktuellesCleanup unabhängig prüfen, kein zweiter Testlauf. PG7 Router-ASGI versus Root50synthetisch, keine Storage-/RootPG-/Vollbackendbehauptung. [Aktuelle Fortsetzung/Hash/Pfade](../handoffs/CONTINUE.md).
 

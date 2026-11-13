@@ -1,6 +1,14 @@
 # Docker-Tests auf kube1
 
-## Aktueller Prüfgate · DB gelöst, Storage/HTTP separat
+## Aktueller Prüfgate · direkte Storage-Fixture abgenommen, RootHTTP/UI folgen
+
+Mainmerge **8ba4f1a** enthält die vollständig geprüfte A5-Lieferungbaf80e1. Tatsächlich nativ geprüft: **818deb32d6324faefa6614899959eb5ab08c2854**,435s/alle11geordnetenCases einschließlich echter Owner-/Editor-Uploads, Idempotenz,5JWT-Kontrollen und realem DELETE→kanonischerAbwesenheit→finish; Operator/Verify/Cleanup0. Main bestätigte unabhängig184Sourcebytes+Modi/Evidencehash/Inventar80+Fingerprint/Abschlussmarker/aktuell0/0/0 und Credentialsabsent, ohne Rerun. Snapshot `/home/jre/notebook-tests/a5/storage-stage-b-818deb32d6324faefa6614899959eb5ab08c2854`, Evidence `.stage-b-runtime/evidence.jsonl`, SHA256 **dacd8c35539bbb81e3770d8064c328dcb257b58f3568a68cbaf52b4b69d3b875**. Integrierte lokale267passed/1DBskip/7.00s, kein Fullbackendnachweis. [Abnahme/Scope](../handoffs/A5.md), [Main-Nachprüfung](../orchestration/integration-log.md).
+
+**Bestehender externer Administrationszugang:** Homeserver `docs/architecture.md` dokumentiert `home.yokoma.de`→kube1-ssh→Host-SSH. Nach Nutzer-Cloudflarelogin erfolgreich; LAN-Kurzname kube1 war nicht auflösbar. Für bestehende autorisierte Verbindungen pro Aufruf `-o 'ProxyCommand=/usr/local/bin/cloudflared access ssh --hostname %h' -o HostKeyAlias=kube1 -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectionAttempts=1 -o ConnectTimeout=10 jre@home.yokoma.de` verwenden, keine globale DNS-/SSH-Konfiguration und keine Hostkey-Truständerung. Cloudflareauth durch normalen eigenen Cache/Ownerlogin, niemals Excalidraw-Service-Tokens oder fremde Credentials übernehmen. Alte `ssh kube1`-Beispiele unten gelten nur bei tatsächlich funktionierendem LAN/VPN-Kurznamen. Nach Remote-Verbindungsabbruch zuerst bestehenden eigenen Prozess/Evidence/Ergebnis prüfen, keine Migration/Tests/Mutation blind doppeln; reine Konnektivitätschecks dürfen begrenzt wiederholt werden.
+
+Nächste isolierte Prüfungen: vorhandene B4-Evidence unabhängig abnehmen, B5 RootPOST→Storage→TextWorker→safeGET und D4 Node22/Vitest/tsc nach Integration seriell ausführen; nochUNRUN. E-BWS-Vorbereitung unabhängig, echte Readiness-/Release-/OwnerAccess-/Connector-/Credentialsprüfung vor Liveaktivierung. Kein aktiver schwerer A5-Slot, keine pauschale neue Nutzerfreigabe für schon autorisierten Testumfang. Native PhaseA-/DB-Probleme und frühere A5-Guard-Holds sind gelöst; keine allgemeine Diagnosewiederholung. Produktionscleanupworker/physischeQuieszenz/OCI-Binaryattestation/BWS/öffentliche Capabilities/Produktion bleiben getrennt.
+
+## Historischer Prüfgate · DB gelöst, Storage/HTTP separat
 
 kube1 ist für die fortgesetzten isolierten Upload-/Quellenstatus-Prüfungen ausdrücklich freigegeben; dieselbe Freigabe nicht erneut verlangen. A5 PhaseA auf `88ad94d52ac3c2e3800d3ecb19eb48a0f8308979` bestanden, von Main anhand 69 tatsächlicher Quelldateien, Safe-Evidencehashes/Erfolgsmarkern und aktuellem Cleanup0/0/0 unabhängig geprüft. Native ACL-Matrix: 14 Relationen/26 Funktionen/3 Actors; keine allgemeine DB-Diagnose ohne neuen Fehler. [Belege](../handoffs/A5.md).
 
