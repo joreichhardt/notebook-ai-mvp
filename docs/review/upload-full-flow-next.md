@@ -87,3 +87,30 @@ Nur den **default-closed TXT/MD POST** und seine Komposition ergänzen, neben de
 ## Prüfnachweis und Übergabe
 
 Gelesen/geprüft wurden die relevanten Funktionskörper von Multipart/Body-/Textvalidierung, UploadService/Storage, Actor-/I/O-Transaktionen, Reservation/Finalisierung, Lease-/Quota-Helpers, TextWorker/Dispatcher und Quellen-Frontend sowie relevante Lifecycle-/Quota-DDL, Verträge und Handoff-Abschnitte. Historische Prüfergebnisse sind Kontext, keine hier erneut erbrachten Nachweise; es wird keine lückenlose DDL-/Abhängigkeitsprüfung behauptet. Keine Tests, Netzwerkzugriffe oder DB-Befehle ausgeführt. Abschlussprüfungen beschränken sich auf Dokumentpfade, Diff-Whitespace, ausschließlich erlaubten Git-Delta und normalen SecretGuard-Commit; Main verantwortet Integration und weitere Laufzeitprüfungen.
+
+## Follow-up: Low-level-Multipart-Hypothese widerlegt
+
+Separater Folgeauftrag `task_4bd9bcfbbe30` / `ctx_38afbaf5181d`, auf unverändertem Produktionscode des Review-Branches nach `5f60bab`. Dieser Abschnitt ersetzt **nur** den offenen Hypothesenstatus oben: Die tatsächlich installierte, gepinnte Kombination **python-multipart 0.0.33 / Starlette 1.10.0 normalisiert die untersuchten Low-level-Syntaxfehler bereits korrekt**. Kein echter RED, keine Produktionskorrektur, kein zusätzlicher Catch erforderlich; insbesondere kein breit gefangenes `Exception` oder `BaseException` im Anwendungscode.
+
+Geprüft wurde lokal mit der bestehenden Main-Umgebung `/home/jre/orca/workspaces/gemini-nb-clone/notebook-integration/.venv/bin/python`, `PYTHONPATH=backend` auf **diesem** Workspace und ohne Installation, Netzwerk, DB oder Container. Die andere vorhandene Root-Workspace-venv enthielt python-multipart nicht; sie wurde nicht verändert. Tatsächliche Paketversionen wurden über `importlib.metadata` aus der verwendeten Umgebung festgestellt. Source in deren `lib/python3.12/site-packages/` erklärt das Verhalten:
+
+- `python_multipart/exceptions.py:1–19`: `MultipartParseError` ist über `ParseError` eine Unterklasse von `FormParserError`, nicht von Starlettes `MultiPartException`.
+- `starlette/formparsers.py:281–287`: `MultiPartParser.parse()` schließt bei Fehlern seine Spools und übersetzt **FormParserError** in `MultiPartException`; andere Exceptions werden erneut ausgelöst. Diese bereits vorhandene Übersetzungsstufe fehlte in der ursprünglichen Hypothesenprüfung.
+- `backend/app/documents/multipart.py:113–114,126–127`: Die Anwendung übersetzt anschließend `MultiPartException` in `UploadBodyError("invalid_upload", 400)` und schließt ihre Parser-Spools im `finally`. Cancellation wird nicht übersetzt.
+
+Neue ausschließlich synthetische Regressionen: `tests/security/multipart_boundary/test_low_level.py` (kein Init nötig). Verwendet wird das echte `parse_text_form(Request)` mit dem echten Parser, ohne erfundene Parserexception oder Parser-Mock:
+
+1. Ungültiger Startdelimiter → opaque400/invalid_upload, keine Spool geöffnet.
+2. Ungültiges Headerfeld vor Dateianlage → opaque400/invalid_upload, keine Spool geöffnet.
+3. Zuerst vollständiger Dateiheader mit kleinem Inhalt, danach ungültiger Header im nächsten Streamstück → opaque400/invalid_upload, genau eine bereits angelegte Spool geschlossen.
+4. Task-Cancellation beim Warten auf den nächsten Streamteil → unveränderte `asyncio.CancelledError`, vorher nachweislich offene Spool geschlossen.
+
+Die drei Fehlerfälle prüfen zusätzlich ausschließlich **Klassenidentität** der internen Kette `UploadBodyError ← MultiPartException ← MultipartParseError`; weder Rohfehlermeldung noch Body-/Logdaten werden ausgegeben. Fail-closed Tripwires an Storage-Adapter, HTTP-Clients und DB-Verbindungsöffnern erlauben keinen externen Aufruf; alle Fälle bleiben bei null Aufrufen. Eine `ExitStack`-Fallbackbereinigung schützt den Testprozess bei Assertion-Fehlern; die Geschlossenheitsprüfung erfolgt ausdrücklich **vor** dieser Fallbackbereinigung, sodass sie kein Parserleck verdecken kann.
+
+Tatsächlich ausgeführte lokale Checks:
+
+- Erste unveränderte Produktionscode-Ausführung des neuen Files: **4 passed / 1.05s**, kein RED.
+- Neue Tests plus bestehende kleine Success-/Malformed-/fragmentierte UTF-8-Tests: **12 passed, 6 deselected / 1.54s**; explizit keine vollständige Multipart-/Backend-Abnahme. Auswahl: `pytest -q -p no:cacheprovider --tb=no --show-capture=no -o log_level=CRITICAL tests/security/multipart_boundary/test_low_level.py backend/tests/documents/test_multipart.py -k 'low_level or single_utf8 or malformed or chunked'`, mit `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=backend` und obiger venv.
+- Ruff-Check bestanden; initialer Format-Check verlangte eine Leerzeile, anschließend gezielt berichtigt. Abschließend Ruff-Check, Format-Check und `git diff --check` bestanden, dieselbe gezielte Suite erneut **12 passed, 6 deselected / 1.64s**; aktive LSP-Prüfung des neuen Python-Files: **1 clean, 0 diagnostics, 0 inconclusive**.
+
+B5-POST/Service und B4-GET wurden nicht verändert. Der 101-Quellen-Folgeschritt bleibt wegen B5s Service-Zuständigkeit separat geplant; Main integriert diesen Test-/Dokumentationscheckpoint und verantwortet die kombinierte HTTP-Abnahme. Die akzeptierte Phase A und die getrennten Stage-B-/Issuer-/Quieszenz-Gates bleiben unverändert.
