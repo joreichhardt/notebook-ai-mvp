@@ -2,6 +2,19 @@
 
 ## Current remediation result — source-ready, DB acceptance OPEN
 
+### Fixed-error hardening follow-up (current)
+
+Task `task_7afa18cc6aef`, dispatch `ctx_8276ac27c4d2`, started from **ed62d5c70a9244f64bd94abe2e7e809f00958e13**, clean except preserved `.pi/`. Main's independent synthetic reproduction identified a string subclass whose hash/equality impersonated a trusted code while the original foreign object escaped into the error DTO. This is a **synthetic fixed-error-boundary hardening gap**, not demonstrated browser-exploitable cross-user exfiltration.
+
+Only the existing HTTPException sanitizer in `ExecutionService.discover` changed: accept exact builtin `dict`/`str` types only, protect detail access from ordinary getter exceptions, and emit the trusted mapping key/message/status rather than the foreign value. Subclass hash/equality/string/get hooks are not used for classification. Unknown/malformed/getter-failing errors receive fixed 503; `CancelledError` still propagates, including from detail access. No route/auth/transaction/cancellation guard semantics changed.
+
+- New `test_fixed_discovery_errors.py`: **21** synthetic cases, exercising code hash/equality impersonation and exceptions, string/dictionary subclasses, failing dictionary/detail getters, nonhashable/unknown/missing/malformed details, four ordinary safe application statuses, and two cancellation paths. Tests report only fixed sentinel/boolean outcomes, never raw exception text or traceback.
+- Genuine pre-fix run against ed62 source: **7 failed / 14 passed in 1.31s**. Post-fix full lightweight run: **113 passed in 2.62s** = all previous **92** plus new **21**. Command: `PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider tests/security/disconnect_boundary backend/tests/providers/test_owned_execution.py backend/tests/providers/test_review_edges.py --tb=no`; RED used only the new file with the same flags. No existing assertions/test fixtures changed in this follow-up.
+- Ruff check/format checks and diff/local Markdown file-link checks passed; active LSP on the two changed Python files **2 confirmed clean / 0 inconclusive**, no diagnostics. Existing pytest-asyncio configuration warning remains. No DB/network/install/heavy/remote/provider action or agent launch.
+- Main must review this follow-up commit before integration or remote testing. DB/RLS/two-session acceptance stays **OPEN**; immutable acceptance packet below remains proposed, not executed. Earlier 92-test evidence below describes ed62, not the current expanded suite.
+
+### Guarded discovery implementation (ed62 baseline)
+
 Main approved the corrected boundary in `msg_881a61d4c421`; actual code-start ACK `msg_52f725741f37`. Implemented only discovery service/repository/session factory and the two route dependencies, plus owned tests/docs. Disconnect, schema/grants, shared auth/session and worker/job wiring are unchanged. Earlier review sections below are **historical baseline evidence**, not a description of the fixed source.
 
 - `ExecutionService.discover` uses existing post-secret snapshot validation and polling/cancellation guard; model validation precedes publication. Fixed application error DTOs sanitize arbitrary provider/driver failures, including malformed HTTP error codes; no retry or replay.

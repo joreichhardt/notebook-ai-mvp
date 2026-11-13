@@ -254,10 +254,20 @@ class ExecutionService:
                 "unsafe_database_role": (503, "Datenbankrolle nicht freigegeben."),
                 "model_unavailable": (400, "Bitte ein verfügbares Modell auswählen."),
             }
-            code = error.detail.get("code") if isinstance(error.detail, dict) else None
-            if isinstance(code, str) and code in codes:
-                status, message = codes[code]
-                fail(status, code, message)
+            code = None
+            try:
+                detail = error.detail
+                # Reject subclasses: their getters/hash/equality may run foreign
+                # code or make an untrusted value compare equal to a safe key.
+                if type(detail) is dict:
+                    candidate = dict.get(detail, "code")
+                    if type(candidate) is str:
+                        code = candidate
+            except Exception:  # noqa: BLE001 — hostile detail getter; cancellation still propagates
+                code = None
+            for trusted_code, (status, message) in codes.items():
+                if code == trusted_code:
+                    fail(status, trusted_code, message)
             fail(503, "discovery_unavailable", "Modellabfrage derzeit nicht verfügbar.")
         except Exception:  # noqa: BLE001 — sanitize arbitrary external/driver errors at API boundary
             fail(503, "discovery_unavailable", "Modellabfrage derzeit nicht verfügbar.")
