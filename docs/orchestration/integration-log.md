@@ -1,5 +1,11 @@
 # Integration log
 
+## 0560487: F4 opt-in PostgreSQL-Paket reviewed, echter Lauf ausdrücklich freigegeben
+
+Main las a8049fc3b1f2c2fe3e313340fd8a1c773d4936c3 vollständig (beide neue Testmodule, Reports, Produktionsfactory/Repository/Routen, bestehende Connectiontests und Runbooks) und integrierte konfliktfrei mit normalem Secret-Guard in **0560487**. Staged Diffcheck0; F4-Testquellen nach Merge bytegleich zur Reviewquelle. Aktive Main-LSP-Probe der zwei neuen Dateien **2clean/0inconclusive**; zwei Cache-SQLheuristiken wegen fester interner SQL-Literale/gebundener UUIDs als false-positive markiert. Kein eigener 121er-Rerun behauptet: Worker lokal121passed/30skipped bleibt genau dieser synthetische Nachweis, 30 echte PG-Fälle noch UNRUN.
+
+Neuer Nutzerauftrag erteilt bereits ausdrücklich den isolierten kube1-PG-/HTTP-Lauf nach Mainreview, inklusive Ergebnis/Cleanup und scopegerechter Fortsetzung bis belastbarem Ergebnis; kein erneutes Erfragen derselben Freigabe. Bestehender F4-Worker task_c45af3359327/ctx_c20fa84064ae, tatsächliches Receipt/Arbeitsbeginn **msg_733699d0c490**: HEADa8049fc, nur.pi untracked, lokale Operatorpaketvorbereitung. Main prüft dessen exakte Provisionierungs-/Runner-/Cleanup-Quellen vor Remoteaktion. F4 exklusiv seriell im eigenen Main-Namensraum, keine A5-/Produktions-/Releasefreigabe; neue Fehler benötigen Diagnose und Mainruling vor Wiederholung. Aktueller Stand/Dispatch im [Handoff](../handoffs/CONTINUE.md).
+
 ## 2f1ac0e / bad95e5: F4 und A5 lokal reviewed, integriert; DB-Gates offen
 
 Main übernahm F4 **c5d954dfb6b9a1f1a3b06896fbb60d895a29b6d8** in **2f1ac0e** und A5 **d47c245412ee42b022ebcde3d611eff05fb9be5e** in **bad95e5**, jeweils konfliktfreier normaler Merge nach staged Diff-/Secretreview. Bestehendes unstaged CONTINUE und untracked.pi erhalten; keine Worker-Implementierung dupliziert. F4-Produktiv-/Provider-/Securitypfade und A5-storage_real nach Merge gegen die jeweilige geprüfte Quelle bytegleich (`git diff --exit-code`); keine Tests für einen anderen Code als integriert behauptet.
