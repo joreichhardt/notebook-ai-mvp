@@ -35,6 +35,12 @@ Document/job/chunk persistence, provider execution and A5's upload-ledger/status
 
 Main dc34927 independently passes490default tests/Ruff on kube1/SCRAM. This proves the helper/test scope, not production actor issuance, registry, restart scheduling or real Storage. A sticky-cancelled queued tombstone may still be selected and atomically rejected without I/O, so fairness remains unresolved. No daemon/HTTP/cleanup consumer/capability enablement is included.
 
+### Integrated connection discovery boundary (F4)
+
+`POST /api/connections/{id}/test` and `PATCH /api/connections/{id}` now use the verified Identity and explicit injected discovery repository/service, not a request-lifetime DB Session. Each lookup/publication opens a fresh READ COMMITTED transaction, enforces direct `notebook_app` for both session/current principals, subject/email claims and admission; all transactions close before secret/model I/O. Existing execution guard revalidates after secret resolution, during cooperative discovery and after its result. Publication locks only the owned connection, checks the original snapshot/current admission, requires a conditional UPDATE returning a row, and returns success only after commit. No retries after external I/O or uncertain commit.
+
+Disconnect remains effective at **committed** inactive/delete; its existing cleanup can delay commit. Publication winning the connection lock can precede disconnect. Admission deletion after the final UPDATE statement snapshot can race commit; no admission lock or atomic admission-at-commit guarantee. Cancellation is cooperative/best effort, not recall of sent bytes or proof that remote billing stopped. Unknown provider/driver errors produce fixed `discovery_unavailable` 503; trusted application statuses use only fixed literal codes/messages. SQL/secret references/errors are not returned. See [F4 review](../review/disconnect-boundary.md) for synthetic evidence and the still-required restricted PostgreSQL/concurrent HTTP acceptance; no model-job execution is enabled by this integration.
+
 ### Provider execution seam
 
 - Preserve model discovery and connection management. Add typed messages and stream events in `app/providers`: `Adapter.stream(*,model,messages,max_output_tokens)` yields normalized text deltas and a terminal usage/finish event; `Adapter.embed(*,model,texts)` returns validated vectors with the actual model identity. Existing constructor remains compatible. Bound input/output, framing buffers, request deadline and batch size; no implicit retries after visible output.

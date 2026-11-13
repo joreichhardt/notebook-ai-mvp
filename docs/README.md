@@ -16,6 +16,7 @@
 - [Architekturentscheidungen](architecture/decisions.md): Gründe und verbindliche Präzisierungen.
 - [Bestandsaufnahme](architecture/inventory.md): ermittelter Infrastrukturstand; kein Ersatz für aktuelle Live-Prüfungen.
 - [Sicherheitsregeln und Betriebsgrenzen](../SECURITY.md).
+- [F4 Disconnect-/Discovery-Grenze](review/disconnect-boundary.md): integrierte Revalidierung und feste Fehlercodes, synthetische Nachweise, offene PostgreSQL-/Parallelitätsabnahme.
 - [Mainreview Quoten0006/B3](review/quota-v6.md): Rollen-/RLS-/Gateprüfung, Altlease-Preflightkorrektur, getrennte Quieszenzgrenze und noch offene kombinierte Callertests.
 - [Review des Daten-/Provider-Durchstichs](review/seam-v3.md): Befund, Reproduktion und unabhängige Nachprüfung. Weitere Reviews unter `review/` beziehen sich auf ihre jeweiligen Kandidaten.
 
@@ -27,6 +28,7 @@
 - [Lokale Konfigurationsvorlage](../.env.example): ausschließlich Platzhalter; keine echten Werte in Dokumente, Chat oder Git übernehmen.
 - [Betriebsgrundlage](operations/foundation.md): vorhandenes Setup und Prüfkommandos. Fehlende Live-, Restore-, Rootless- und Release-Nachweise bleiben im Plan und Integrationslog sichtbar.
 - [D3a Quellenstatus-Oberfläche](handoffs/D3a.md): capability-gesperrte lesende UI, sichere Fehler-/Wechselzustände, exakter kube1-Nachweis von 33 Tests und TypeScript; kein Full-Flow-/Freischaltungsnachweis.
+- [A5 isolierte Phase-A-Diagnose](handoffs/A5.md): integrierte feste Diagnoseausgabe und lokale Supervisorregressionen; echter Runnerfehler/ACL-Abnahme weiter offen, kein Remote-Startauftrag.
 - [Bereichsübergaben](handoffs/CONTINUE.md): Einstieg zu den relevanten Worker-Berichten; diese sind technische Detailnachweise, keine zusätzliche Bedienungsanleitung.
 
 ## Dokumentationsprinzip

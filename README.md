@@ -10,6 +10,8 @@ Implementiert sind Authentifizierung, Workspace-/Notebook-Verwaltung, Einladungs
 
 Die lesende Quellenstatus-Oberfläche ist integriert und anhand synthetischer Komponenten-/Transporttests geprüft (33 Tests und TypeScript auf kube1). Sie bleibt hinter der unveränderten Dokument-Capability; echte API-/Storage-/Upload-/Chat-Flows sind damit nicht freigeschaltet. Details: [D3a-Handoff](docs/handoffs/D3a.md).
 
+Die Modellprüfung revalidiert persönliche Verbindungen jetzt nach dem Secret-Abruf und während der Discovery; Metadaten werden in einer frischen Kurztransaktion publiziert. Lokal sind 113 synthetische F4-Tests bestätigt, die echte PostgreSQL-/Parallelitätsabnahme bleibt offen. Das isolierte A5-Diagnosepaket ist ebenfalls integriert (63 lokale Tests, 1 DB-Skip), ohne Phase-A-/Storagefreigabe. [Prüfstand und nächste Gates](docs/orchestration/plan.md).
+
 Verbindliche Anforderungen: [agent.md](agent.md), [AGENTS.md](AGENTS.md), [Multi-Agent-Arbeit](multi-agent.md), [Produktspezifikation](docs/product-spec.md). Aktueller Stand: [Plan](docs/orchestration/plan.md) und [Integrationslog](docs/orchestration/integration-log.md).
 
 ## Backend lokal starten

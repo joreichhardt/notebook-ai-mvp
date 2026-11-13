@@ -1,6 +1,20 @@
 # Implementation plan
 
-## Aktueller Arbeitsstand
+## Aktueller Arbeitsstand · F4/A5 lokal geprüft und integriert
+
+- **F4 integriert in 2f1ac0e**, Quelle c5d954dfb6b9a1f1a3b06896fbb60d895a29b6d8: guarded discovery, frische READ-COMMITTED-Actortransaktionen, Connection-only-Lock/bedingte Publikation, feste Fehlercodes. Main unabhängig **113 synthetische Tests/2.55s**, Ruff/Format sauber. Reale PG-RLS-/Grant-/Zweisession-/HTTP-Widerrufsabnahme bleibt offen; keine atomare Admission-at-Commit- oder externe Abbruchgarantie. [Review und vorbereitete Abnahmematrix](../review/disconnect-boundary.md).
+- **A5 integriert in bad95e5**, Quelle d47c245412ee42b022ebcde3d611eff05fb9be5e: isolierter nativer Phase-A-Kandidat, korrigiertes Selector-Cleanup/EOF-Deadline und feste Runnerdiagnose. Main unabhängig **63 synthetische Tests/2.35s, 1 expliziter DB-Skip**, Ruff/Format sauber. Das behebt nicht den ungeklärten realen Runner-ProgrammingError und ist keine PhaseA-/ACL-/Storageabnahme. [A5-Nachweise](../handoffs/A5.md).
+- Beide gelieferten Workeraufträge abgeschlossen; A5 bleibt HOLD. F4 erhält als nativen Folgeauftrag task_f21160172c01/ctx_f27d05784664 ausschließlich lokale Vorbereitung der unten genannten ausführbaren opt-in DB-Fixture (kein DB-Lauf, keine Produktionsänderung; ready ist noch kein Arbeitsbeginn). Keine Wiederstarts oder Remoteaktionen. Main erhielt CONTINUE/.pi und integrierte mit normalem Secret-Guard. [Prüfdetails](integration-log.md).
+- D3a bleibt integriert (exakte Frontendquelle76f4887: Worker33Tests+tsc auf kube1); Dokument-/Chat-Capabilities bleiben aus. Historischer vollständiger Backendnachweis490 gilt weiterhin nur für dc34927, nicht automatisch für den neuen Gesamtstand.
+
+### Nächste Schritte und ausdrückliche Gates
+
+1. **F4:** vor einem echten Lauf ausführbare, immutable Prüf-Fixture für zwei direkte eingeschränkte PostgreSQL-Sessions mit Ereignisbarrieren fertigstellen/reviewen. Beide HTTP-Routen, committed202/204-Disconnect, Admission/Snapshotwechsel, Lockgewinner, kein offener Tx bei I/O und kein Replay prüfen; bestehende Connectiontests einbeziehen. Erst danach separat genehmigter serieller kube1-Slot, keine lokale DB-Ausweichlösung.
+2. **A5:** separat genehmigter einmaliger immutable kube1-Diagnoselauf; vor Start aktuelle CLI-/Host-/Ownership-/Kapazitätsprüfung. Nur feste stage/type/SQLSTATE-Ausgabe und ausgewählter nativer State, kein Rawlog/SQL/DSN. Bei erstem neuen Fehler stoppen, Cleanup nachweisen, keine Grants auf Verdacht. `docker start --attach` und SIGKILL nur am eigenen CLI sind der tatsächliche Quellweg; kein erfundenes start-Flag `--sig-proxy=false`.
+3. Keine Freigabe dieser Remote-/DB-Schritte durch Integration oder diesen Plan. StageB Storage/REST/imgproxy/Envoy, reale Provider/Bitwarden, Produktion/Release, Upload-/Chatfreischaltung bleiben gesperrt. Actorissuance/Registry/Fairness/physische Quieszenz und Full-Flow bleiben eigene Gates.
+4. Reale automatische Kompaktierungszyklen bleiben unbewiesen: CLI+SDK45%-Patch/52Regressionstests sind kein Livebeleg. Kein neuer Observer, künstlicher Workload oder Runtimepatch ohne gesonderte Freigabe.
+
+## Historischer Arbeitsstand vor F4/A5-Integration
 
 **D3a integriert, D3 weiterhin unvollständig:** Main prüfte Sources/API/App-Gate, Fehlertexte, Scope-Key/Abort und neue Negativtests und übernahm `49e19baa0e12532824c462794614618bfd24c73d` per Fast-forward bei Erhalt von CONTINUE/.pi. Frontendquellen identisch mit exakt auf kube1 geprüftem `76f488756e57a9d211e8dfb851c0be62ff5efd56`: 33 Tests/2 Dateien/5.39s, tsc0, Cleanup0/0Restressourcen (Workerlauf, kein zusätzlicher Mainlauf). Read-only Quellenstatus nur bei literal-true documents-Capability; Backend/Flags/Upload/Chat unverändert. [D3a-Nachweis](../handoffs/D3a.md). F4 lieferte unabhängig `a03b24b8feb2f30e887353020141536926205df1`: Discovery nach Disconnect kann mit altem Key beginnen, zwei echte synthetische REDs; Bericht noch nicht integriert, Fix offen. A5 native Startupreparatur ist noch keine PhaseA-/ACL-Abnahme; separater Runner-ProgrammingError wird nur lokal mit festen Diagnoseenums vorbereitet. Kein weiterer A5-Remoteversuch genehmigt, kein Storage-/Release-/Produktionszugang. Neueste Recovery-/Runtime-/45%-Schwellenpräzisierung im [Handoff](../handoffs/CONTINUE.md); ältere Angaben unten sind historisch.
 
