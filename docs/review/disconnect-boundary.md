@@ -2,7 +2,44 @@
 
 ## Current remediation result — source-ready, DB acceptance OPEN
 
-### Fixed-error hardening follow-up (current)
+### Executable opt-in PostgreSQL packet (current, DATABASE UNRUN)
+
+Task `task_f21160172c01`, dispatch `ctx_f27d05784664`, starts from **c5d954dfb6b9a1f1a3b06896fbb60d895a29b6d8** in the same worker/worktree. Main reports independent 113-pass verification and integration into `2f1ac0e`, with A5 separately integrated as `bad95e5`; these are coordinator reports, not rerun or modified here. This delivery changes only the two new F4 test modules and F4 report/handoff; no production/schema/shared fixture/config change.
+
+- [test_postgres_acceptance.py](../../tests/security/disconnect_boundary/test_postgres_acceptance.py): **30 opt-in cases, ALL UNRUN**. Both production HTTP routes use the real `DiscoveryRepository` and default `discovery_session`; production `SupabaseAuth.identity` verifies a synthetic `/user` response and returns `Identity`. CSRF stays real. Only external auth response, secret read, model adapter and disconnect secret cleanup are synthetic; no application operation uses admin credentials. Independent direct app connections check current/session `notebook_app`, NOSUPERUSER/NOBYPASSRLS. Separate setup/revocation/inspection admin; bound UUID cleanup only, no migration or grant mutation.
+- Cases: secret-return after actual committed HTTP202/204 disconnect or admission/reference/provider mutation (10); stalled cooperative provider cancellation after inactive/admission/reference/provider mutation (8); post-guard connection-lock winner in both orders (4); real conditional no-row, injected **pre-physical-commit** failure/no replay, and admission deletion after UPDATE snapshot explicitly permitting commit (6); two simultaneous distinct-actor physical sessions with RLS/grant checks and foreign HTTP denial (2).
+- Deterministic event barriers surround real SQL execution; opposite-order disconnect has its own ASGI loop/thread because its legacy synchronous flush blocks on the publisher lock. Bounded `pg_blocking_pids` observation proves contention before release, without sleep-based correctness. `pg_stat_activity` checks no application transaction at synthetic I/O entry and while secret return is held; the provider watch may legitimately open fresh short transactions while provider I/O is stalled. This is not live external HTTP transport cancellation or unknown-wire-commit proof. Admin deletion after UPDATE demonstrates the documented admission-at-commit race, not stronger atomicity.
+- Safety: explicit `F4_RUN_POSTGRES=isolated-kube1-approved`; otherwise default skip, regardless of legacy test URL. Dedicated passwordless APP/ADMIN URLs must both name assigned `db:5432/notebook_f4_<12 hex>` and exact roles; query overrides/passwords rejected. Separate absolute non-symlink regular passfiles0600 required. PostgreSQL16 plus initially empty admission/connection tables required **before fixture writes**. No backend auth fixtures/plugins imported, no collection/import DB/provider I/O. Connect/pool/statement/lock/barrier/scenario deadlines, final task drain/release and per-ID cleanup; failures are fixed diagnostics without driver/DSN/SQL/response dumps, driver logging suppressed for the fixture lifetime. Cleanup failure fails the test; operator must retain isolated namespace for inspection, never broadly prune.
+- [test_postgres_packet_guards.py](../../tests/security/disconnect_boundary/test_postgres_packet_guards.py): **8 local no-DB checks** cover accepted assignment without engine creation and rejected assignment/host/password/role/query/passfile-mode/symlink cases. Local AST/compile, Ruff/check-format passed. Active LSP **2 clean / 0 inconclusive**. SQL sink heuristics are fixed literals/bound values, not interpolation.
+- Actual final local run: **121 passed / 30 skipped in 3.41s** (prior113 + new8); no database RED/GREEN is claimed. Collection-only found30 cases with exit0. Both collection and suite ran with opt-in removed and fail-fast replacements for `psycopg.connect`, `psycopg.Connection.connect`, `sqlite3.connect`, `socket.socket.connect/connect_ex` and `socket.create_connection`; none were invoked. Suite paths/flags: `python3 -m pytest -q -p no:cacheprovider tests/security/disconnect_boundary backend/tests/providers/test_owned_execution.py backend/tests/providers/test_review_edges.py --tb=no` with `PYTHONDONTWRITEBYTECODE=1` (executed via same-process Python safety wrapper). Existing pytest-asyncio warning remains. No DB (including SQLite), network, SSH, containers, builds, installs, provider/Bitwarden or extra agents used.
+
+#### Proposed runner command/resources — NOT authorization or an executed run
+
+Main must review/pin the full commit returned in this delivery's completion (or an explicitly reviewed integration SHA including it), archive **that immutable SHA**, and separately assign a serialized kube1 slot. Proposed path `/home/jre/notebook-tests/main/<full-sha>`, project `notebook-test-main` only when Main's slot is free; synthetic database name `notebook_f4_<first12-of-pinned-sha>`. No slot is reserved by this document. Follow [kube1 runbook](../operations/testing-kube1.md): private runtime/log directories, internal-only network, no published ports, no production mounts/secrets, app/runner non-root, read-only snapshot, DB1CPU/512MiB/128PIDs and runner1CPU/1GiB/128PIDs. PostgreSQL16 image already pinned in existing test manifests: `postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139`; dependency runner must also be Main-reviewed/pinned, not opportunistically installed here.
+
+Before the command, the approved operator provisions an **empty, migrated** dedicated DB using existing migrations and synthetic SCRAM role credentials; prepares per-role passfiles0600 at the shown private runtime paths; keeps the admin separate from app execution. Existing A5 Compose uses trust and a different DB name, so **do not run that manifest unchanged or weaken guards to fit it**; reuse its resource/digest conventions and B3 SCRAM conventions in a separately approved Main runtime configuration. No shared/root fixture, grant or config edit is necessary for these tests. Migrations/provisioning/runner configuration remain operator work in the future authorized slot, not performed by this test module.
+
+Inside that isolated, preprovisioned runner (full SHA supplied by Main; URLs below contain no passwords):
+
+```sh
+set -eu
+: "${F4_SNAPSHOT_SHA:?full reviewed immutable snapshot SHA required}"
+test "${#F4_SNAPSHOT_SHA}" -eq 40
+case "$F4_SNAPSHOT_SHA" in *[!0-9a-f]*) exit 1;; esac
+short=$(printf '%.12s' "$F4_SNAPSHOT_SHA")
+export F4_ASSIGNED_DATABASE="notebook_f4_$short" F4_ASSIGNED_HOST=db
+export F4_APP_URL="postgresql://notebook_app@db:5432/$F4_ASSIGNED_DATABASE"
+export F4_ADMIN_URL="postgresql://postgres@db:5432/$F4_ASSIGNED_DATABASE"
+export F4_APP_PASSFILE=/run/f4/app.pgpass F4_ADMIN_PASSFILE=/run/f4/admin.pgpass
+export F4_RUN_POSTGRES=isolated-kube1-approved PYTHONDONTWRITEBYTECODE=1
+unset NOTEBOOK_TEST_POSTGRES_URL
+python3 -m pytest -q -p no:cacheprovider --tb=no --show-capture=no \
+  tests/security/disconnect_boundary/test_postgres_acceptance.py
+```
+
+Run only this module for the DB packet (not broad auth discovery/autouse fixtures); expected count30, no skips permitted after opt-in. Capture only fixed failure labels/counts and exact SHA/runner/image/exit/cleanup evidence. Keep ordinary connection-management tests unchanged for Main's separate authorized validation. Unknown-outcome commit/real transport behavior and future model-worker purpose wiring remain additional gates beyond this packet. **All DB/RLS/two-session acceptance remains OPEN.**
+
+### Fixed-error hardening follow-up (c5d954d baseline)
 
 Task `task_7afa18cc6aef`, dispatch `ctx_8276ac27c4d2`, started from **ed62d5c70a9244f64bd94abe2e7e809f00958e13**, clean except preserved `.pi/`. Main's independent synthetic reproduction identified a string subclass whose hash/equality impersonated a trusted code while the original foreign object escaped into the error DTO. This is a **synthetic fixed-error-boundary hardening gap**, not demonstrated browser-exploitable cross-user exfiltration.
 
