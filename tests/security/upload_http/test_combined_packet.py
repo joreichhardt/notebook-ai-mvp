@@ -227,6 +227,123 @@ def test_stream_hard_timeout_and_raw_canary_have_no_output(capsys):
     assert records == [] and capsys.readouterr().out == ""
 
 
+@pytest.mark.parametrize(
+    "change,accepted",
+    [
+        ({}, True),
+        ({"ExitCode": 1}, False),
+        ({"OOMKilled": True}, False),
+        ({"Running": True}, False),
+        ({"Error": "BODY_CANARY"}, False),
+        ({"ExitCode": False}, False),
+        ({"Unexpected": "BODY_CANARY"}, False),
+    ],
+)
+def test_runner_uses_actual_selected_state_and_closed_checkpoints(monkeypatch, change, accepted):
+    from backend.tests.storage_real import stage_b_launch as original
+
+    packet = load("operator_b5")
+    container = "a" * 64
+    metadata = {
+        "ExitCode": 0,
+        "OOMKilled": False,
+        "Running": False,
+        "Health": "absent",
+        "Error": "",
+    } | change
+    records, removed = [], []
+    monkeypatch.setattr(packet, "own_id", lambda *args: container)
+    monkeypatch.setattr(packet, "remove_runner", lambda cid, *args: removed.append(cid))
+
+    def inspect(args, **kwargs):
+        assert args == [
+            "docker",
+            "inspect",
+            "--type",
+            "container",
+            "--format",
+            original.STATE_FORMAT,
+            container,
+        ]
+        return SimpleNamespace(stdout=json.dumps(metadata).encode())
+
+    monkeypatch.setattr(packet.subprocess, "run", inspect)
+    adapter = SimpleNamespace(
+        quiet=lambda *args: 0,
+        fixed_run=lambda *args: 0,
+        STATE_FORMAT=original.STATE_FORMAT,
+        selected_state=original.selected_state,
+    )
+    if accepted:
+        packet.runner_phase(["docker", "compose"], {}, "prepare", 120, adapter, records.append)
+    else:
+        with pytest.raises(packet.Refused):
+            packet.runner_phase(["docker", "compose"], {}, "prepare", 120, adapter, records.append)
+    assert removed == [container]
+    assert [r["runner_checkpoint"] for r in records if "runner_checkpoint" in r] == [
+        "create",
+        "identify",
+        "attach",
+        "inspect",
+        "validate",
+        "remove",
+    ]
+    assert {"runner_phase": "prepare", "runner_cli_zero": True} in records
+    assert any("runner_state_ok" in r and r["runner_state_ok"] is accepted for r in records)
+    assert "BODY_CANARY" not in json.dumps(records)
+    assert ({"operation": "prepare", "exit": 0} in records) is accepted
+
+
+@pytest.mark.parametrize("failure", ["create", "identify", "attach", "inspect", "remove"])
+def test_closed_checkpoint_locates_failure_without_exception_text(monkeypatch, failure):
+    packet = load("operator_b5")
+    records, removals = [], []
+
+    class HiddenError(Exception):
+        def __str__(self):
+            raise AssertionError("exception text must never be inspected")
+
+    def step(name, value):
+        if name == failure:
+            raise HiddenError()
+        return value
+
+    monkeypatch.setattr(packet, "own_id", lambda *args: step("identify", "a" * 64))
+    monkeypatch.setattr(
+        packet,
+        "container_state",
+        lambda *args: step(
+            "inspect", ["exit_0", "oom_false", "running_false", "engine_error_absent"]
+        ),
+    )
+
+    def remove(*args):
+        removals.append(1)
+        step("remove", None)
+
+    monkeypatch.setattr(packet, "remove_runner", remove)
+    adapter = SimpleNamespace(
+        quiet=lambda *args: step("create", 0), fixed_run=lambda *args: step("attach", 0)
+    )
+    with pytest.raises(HiddenError):
+        packet.runner_phase(["docker", "compose"], {}, "prepare", 120, adapter, records.append)
+    checkpoints = [r["runner_checkpoint"] for r in records if "runner_checkpoint" in r]
+    if failure in ("create", "identify"):
+        assert checkpoints[-1] == failure and not removals
+    elif failure != "remove":
+        assert checkpoints[-2:] == [failure, "remove"] and removals == [1]
+    else:
+        assert checkpoints[-1] == "remove" and removals == [1]
+    assert set().union(*(set(r) for r in records)) <= {
+        "runner_phase",
+        "runner_checkpoint",
+        "runner_cli_zero",
+        "runner_state_ok",
+        "operation",
+        "exit",
+    }
+
+
 def test_actual_container_exit_is_required_even_when_attach_cli_succeeds(monkeypatch):
     packet = load("operator_b5")
     monkeypatch.setattr(packet, "own_id", lambda *args: "a" * 64)
@@ -235,7 +352,7 @@ def test_actual_container_exit_is_required_even_when_attach_cli_succeeds(monkeyp
     monkeypatch.setattr(
         packet,
         "container_state",
-        lambda *args: ["exit_other", "oom_false", "running_false", "engine_error_absent"],
+        lambda *args: ["exit_1", "oom_false", "running_false", "engine_error_absent"],
         raising=False,
     )
     adapter = SimpleNamespace(quiet=lambda *args: 0, fixed_run=lambda *args: 0)

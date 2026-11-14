@@ -237,26 +237,35 @@ def runner_phase(compose, env, phase, seconds, a5, emit):
     environment = {**env, "B5_RUN_PHASE": phase}
     container = None
     try:
+        emit({"runner_phase": phase, "runner_checkpoint": "create"})
         need(
             a5.quiet(
                 compose + ["create", "--no-deps", "runner"], environment, min(30, seconds - 20)
             )
             == 0
         )
+        emit({"runner_phase": phase, "runner_checkpoint": "identify"})
         container = own_id(compose, environment, "runner")
         budget = deadline - time.monotonic() - 21  # reserve exact-ID check+rm and reap
         need(budget > 0)
         execute = stream if phase == "b5" else a5.fixed_run
+        emit({"runner_phase": phase, "runner_checkpoint": "attach"})
         code = execute(["docker", "start", "--attach", container], environment, budget, emit)
+        emit({"runner_phase": phase, "runner_cli_zero": code == 0})
         need(code == 0)
-        need(
-            {"exit_0", "oom_false", "running_false", "engine_error_absent"}
-            <= set(container_state(container, environment, a5))
-        )
+        emit({"runner_phase": phase, "runner_checkpoint": "inspect"})
+        state = set(container_state(container, environment, a5))
+        emit({"runner_phase": phase, "runner_checkpoint": "validate"})
+        state_ok = {"exit_0", "oom_false", "running_false", "engine_error_absent"} <= state
+        emit({"runner_phase": phase, "runner_state_ok": state_ok})
+        need(state_ok)
         emit({"operation": phase, "exit": 0})
     finally:
         if container is not None:
-            remove_runner(container, environment, a5.quiet)
+            try:
+                emit({"runner_phase": phase, "runner_checkpoint": "remove"})
+            finally:
+                remove_runner(container, environment, a5.quiet)
         # If creation/ID acquisition failed, final project down handles the owned orphan.
 
 
