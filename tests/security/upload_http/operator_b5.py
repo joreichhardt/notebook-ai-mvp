@@ -238,12 +238,7 @@ def runner_phase(compose, env, phase, seconds, a5, emit):
     container = None
     try:
         emit({"runner_phase": phase, "runner_checkpoint": "create"})
-        need(
-            a5.quiet(
-                compose + ["create", "--no-deps", "runner"], environment, min(30, seconds - 20)
-            )
-            == 0
-        )
+        need(a5.quiet(compose + ["create", "runner"], environment, min(30, seconds - 20)) == 0)
         emit({"runner_phase": phase, "runner_checkpoint": "identify"})
         container = own_id(compose, environment, "runner")
         budget = deadline - time.monotonic() - 21  # reserve exact-ID check+rm and reap

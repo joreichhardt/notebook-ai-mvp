@@ -227,6 +227,46 @@ def test_stream_hard_timeout_and_raw_canary_have_no_output(capsys):
     assert records == [] and capsys.readouterr().out == ""
 
 
+def test_runner_create_matches_supported_explicit_service_contract(monkeypatch):
+    """Compose 2.40.3 create has no --no-deps; explicit runner has no edges."""
+    packet = load("operator_b5")
+    compose = json.loads((BASE / "compose.b5.json").read_text())
+    assert set(compose["services"]) == {"db", "runner", "storage", "gateway"}
+    runner = compose["services"]["runner"]
+    # Compose selection includes dependencies: guard explicit AND implicit edges.
+    for key in ("depends_on", "links", "volumes_from", "extends", "external_links"):
+        assert not runner.get(key)
+    for key in ("network_mode", "ipc", "pid"):
+        assert not runner.get(key, "").startswith("service:")
+    assert not runner.get("provider")
+    assert runner["networks"] == ["isolated"]
+    assert not runner.get("ports")
+    assert compose["networks"] == {"isolated": {"internal": True}}
+    assert all(not mount.startswith(("db:", "storage:", "gateway:")) for mount in runner["volumes"])
+    prefix = ["docker", "compose", "--project-name", packet.PROJECT]
+    calls, removed = [], []
+
+    def supported_create(argv, env, seconds):
+        calls.append(argv)
+        # Exact production argv, not a stub accepting arbitrary flags or services.
+        assert argv[: len(prefix)] == prefix
+        assert argv[len(prefix) :] == ["create", "runner"]
+        assert env == {"B5_RUN_PHASE": "prepare"}
+        assert 0 < seconds <= 30
+        return 0
+
+    monkeypatch.setattr(packet, "own_id", lambda *args: "a" * 64)
+    monkeypatch.setattr(packet, "remove_runner", lambda cid, *args: removed.append(cid))
+    monkeypatch.setattr(
+        packet,
+        "container_state",
+        lambda *args: ["exit_0", "oom_false", "running_false", "engine_error_absent"],
+    )
+    adapter = SimpleNamespace(quiet=supported_create, fixed_run=lambda *args: 0)
+    packet.runner_phase(prefix, {}, "prepare", 120, adapter, lambda row: None)
+    assert len(calls) == 1 and removed == ["a" * 64]
+
+
 @pytest.mark.parametrize(
     "change,accepted",
     [
