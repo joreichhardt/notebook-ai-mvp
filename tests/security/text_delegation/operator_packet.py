@@ -494,8 +494,9 @@ def execute(sha, digest, mode):
                     env,
                     840,
                 )
-                need(json.loads(raw) == {"stage": "dependencies", "ok": True})
-                emit(safe_report(json.loads(raw)))
+                report = json.loads(raw, object_pairs_hook=unique)
+                need(report == {"stage": "dependencies", "ok": True})
+                emit(safe_report(report))
                 # External network exists only for bounded frozen install. Database never joins it.
                 nets = inventory(env)["network"]
                 names = {}
@@ -557,7 +558,10 @@ def execute(sha, digest, mode):
                     )
                 except ProcessFailed as failure:
                     test_exit, raw = failure.code, failure.output
-                reports = [safe_report(json.loads(line)) for line in raw.splitlines()]
+                reports = [
+                    safe_report(json.loads(line, object_pairs_hook=unique))
+                    for line in raw.splitlines()
+                ]
                 stages = tuple(r["stage"] for r in reports)
                 need(
                     stages == EXPECTED_STAGES[: len(stages)]

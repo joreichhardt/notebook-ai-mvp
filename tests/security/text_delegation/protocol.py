@@ -43,6 +43,130 @@ def case_key(item):
     return key
 
 
+def safe_concurrency(value: Any):
+    """Versioned closed evidence: no SQL, driver text, capability or backend ID fields."""
+    need(type(value) is dict)
+    d: dict[str, Any] = value
+    need(
+        set(d)
+        == {
+            "version",
+            "failure",
+            "pid_count",
+            "distinct_pid_count",
+            "grant_count",
+            "fence_matches",
+            "final_executable",
+            "contenders",
+        }
+    )
+    need(type(d["version"]) is int and d["version"] == 1)
+    need(
+        type(d["failure"]) is str
+        and d["failure"]
+        in (
+            "none",
+            "fixture",
+            "contender",
+            "collection",
+            "runner_close",
+            "pid",
+            "grants",
+            "job",
+            "fence",
+            "validate",
+        )
+    )
+    for key in ("pid_count", "distinct_pid_count", "grant_count"):
+        need(type(d[key]) is int and 0 <= d[key] <= 2)
+    for key in ("fence_matches", "final_executable"):
+        need(type(d[key]) is bool)
+    raw: Any = d["contenders"]
+    need(type(raw) is list and len(raw) == 2)
+    rows: list[dict[str, Any]] = raw
+    flags = {
+        "connection_opened",
+        "connection_closed",
+        "engine_disposed",
+        "runner_closed",
+        "principal_verified",
+        "read_committed",
+        "pid_observed",
+        "barrier_released",
+        "claim_called",
+    }
+    for i, row in enumerate(rows):
+        need(
+            type(row) is dict
+            and set(row)
+            == flags
+            | {
+                "index",
+                "outcome",
+                "failure_stage",
+                "transaction",
+            }
+        )
+        need(type(row["index"]) is int and row["index"] == i)
+        need(all(type(row[key]) is bool for key in flags))
+        need(type(row["outcome"]) is str and row["outcome"] in ("failed", "grant", "idle", "busy"))
+        need(
+            type(row["failure_stage"]) is str
+            and row["failure_stage"]
+            in (
+                "none",
+                "not_started",
+                "engine",
+                "connect",
+                "begin",
+                "principal",
+                "bounds",
+                "isolation",
+                "pid",
+                "barrier",
+                "claim",
+                "commit",
+                "rollback",
+                "close",
+                "dispose",
+            )
+        )
+        need(
+            type(row["transaction"]) is str
+            and row["transaction"]
+            in (
+                "not_started",
+                "unknown",
+                "committed",
+                "rolled_back",
+            )
+        )
+        need(not row["connection_closed"] or row["connection_opened"])
+        need(not row["principal_verified"] or row["connection_opened"])
+        need(not row["read_committed"] or row["principal_verified"])
+        need(not row["pid_observed"] or row["read_committed"])
+        need(not row["barrier_released"] or row["pid_observed"])
+        need(not row["claim_called"] or row["barrier_released"])
+        need(row["transaction"] == "not_started" or row["connection_opened"])
+        need((row["outcome"] == "failed") == (row["failure_stage"] != "none"))
+        if row["outcome"] != "failed":
+            need(all(row[key] for key in flags - {"runner_closed"}))
+            need(row["transaction"] == ("rolled_back" if row["outcome"] == "busy" else "committed"))
+    need(d["pid_count"] == sum(r["pid_observed"] for r in rows))
+    need(d["grant_count"] == sum(r["outcome"] == "grant" for r in rows))
+    need(0 <= d["distinct_pid_count"] <= d["pid_count"])
+    need((d["distinct_pid_count"] == 0) == (d["pid_count"] == 0))
+    ready = (
+        sorted(r["outcome"] for r in rows) in (["grant", "idle"], ["busy", "grant"])
+        and all(r["runner_closed"] for r in rows)
+        and d["pid_count"] == d["distinct_pid_count"] == 2
+    )
+    need(not d["fence_matches"] or ready)
+    need(not d["final_executable"] or d["fence_matches"])
+    need((d["failure"] == "none") == (ready and d["fence_matches"] and d["final_executable"]))
+    return d
+
+
 def safe_report(report: Any):
     need(type(report) is dict and type(report.get("ok")) is bool)
     stage = report.get("stage")
@@ -52,7 +176,12 @@ def safe_report(report: Any):
     if stage not in PHASES:
         need(set(report) == {"stage", "ok"})
         return report
-    need(set(report) == {"stage", "ok", "collection", "exit", "cases"})
+    keys = {"stage", "ok", "collection", "exit", "cases"}
+    need(set(report) == (keys | {"diagnostic"} if stage == "concurrency" else keys))
+    diagnostic_ok = True
+    if stage == "concurrency":
+        diagnostic = report["diagnostic"]
+        diagnostic_ok = diagnostic is not None and safe_concurrency(diagnostic)["failure"] == "none"
     expected = len(contract()[stage])
     need(type(report["collection"]) is bool)
     exit_code: Any = report["exit"]
@@ -73,7 +202,8 @@ def safe_report(report: Any):
         need(key not in seen)
         seen.add(key)
     complete = (
-        report["collection"]
+        diagnostic_ok
+        and report["collection"]
         and report["exit"] == 0
         and seen == {(i, when) for i in range(expected) for when in ("setup", "call", "teardown")}
         and all(r["outcome"] == "passed" and not r["xfail"] for r in rows)

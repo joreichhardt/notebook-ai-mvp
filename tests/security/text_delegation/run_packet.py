@@ -9,7 +9,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-from protocol import PHASES, RELATIVE, case_key, contract, need, safe_report
+from protocol import (
+    PHASES,
+    RELATIVE,
+    case_key,
+    contract,
+    need,
+    safe_concurrency,
+    safe_report,
+    unique,
+)
 
 SOURCE = Path("/work/source")
 PRIVATE = Path("/work/private")
@@ -147,6 +156,12 @@ def principals():
         )
 
 
+def concurrency_report(report, diagnostic):
+    """Missing/failed diagnostics can only remove success, never override pytest."""
+    diagnostic_ok = diagnostic is not None and safe_concurrency(diagnostic)["failure"] == "none"
+    return safe_report(report | {"diagnostic": diagnostic, "ok": report["ok"] and diagnostic_ok})
+
+
 def pytest_report(stage):
     import pytest
 
@@ -154,6 +169,7 @@ def pytest_report(stage):
     expected = reviewed.get(stage)
     collected, rows, excluded = [], [], []
     exact = False
+    diagnostic = None
     node_exclusions = json.loads((Path(__file__).parent / "node_exclusions.json").read_text())
     files = json.loads((Path(__file__).parent / "regression_files.json").read_text())
     paths = (
@@ -182,8 +198,13 @@ def pytest_report(stage):
 
         @pytest.hookimpl(hookwrapper=True)
         def pytest_runtest_makereport(self, item, call):
+            nonlocal diagnostic
             outcome = yield
             report = outcome.get_result()
+            if stage == "concurrency" and report.when == "call":
+                diagnostic = getattr(item, "concurrency_diagnostic", None)
+                if diagnostic is not None:
+                    safe_concurrency(diagnostic)
             rows.append(
                 {
                     "case": collected.index(case_key(item)),
@@ -233,9 +254,10 @@ def pytest_report(stage):
         and len(rows) == 3 * len(expected)
         and all(r["outcome"] == "passed" and not r["xfail"] for r in rows)
     )
-    return safe_report(
-        {"stage": stage, "ok": success, "collection": exact, "exit": code, "cases": rows}
-    )
+    report = {"stage": stage, "ok": success, "collection": exact, "exit": code, "cases": rows}
+    if stage == "concurrency":
+        return concurrency_report(report, diagnostic)
+    return safe_report(report)
 
 
 def phase(stage):
@@ -284,7 +306,7 @@ def main():
             )
             path = PRIVATE / (stage + ".json")
             need(path.is_file() and path.stat().st_size < 4 * 1024**2)
-            report = safe_report(json.loads(path.read_text()))
+            report = safe_report(json.loads(path.read_text(), object_pairs_hook=unique))
             print(json.dumps(report), flush=True)
             need(result.returncode == 0 and report["ok"])
         return 0

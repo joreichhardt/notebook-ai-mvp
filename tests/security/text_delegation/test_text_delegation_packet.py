@@ -37,7 +37,7 @@ def no_external_commands(monkeypatch):
 
 
 def successful(stage="delegation"):
-    return {
+    report = {
         "stage": stage,
         "ok": True,
         "collection": True,
@@ -48,6 +48,27 @@ def successful(stage="delegation"):
             for when in ("setup", "call", "teardown")
         ],
     }
+    if stage == "concurrency":
+        from concurrency import empty_diagnostic
+
+        diagnostic = empty_diagnostic()
+        diagnostic.update(
+            failure="none",
+            pid_count=2,
+            distinct_pid_count=2,
+            grant_count=1,
+            fence_matches=True,
+            final_executable=True,
+        )
+        for i, row in enumerate(diagnostic["contenders"]):
+            for key, value in row.items():
+                if type(value) is bool:
+                    row[key] = True
+            row.update(
+                outcome="grant" if i == 0 else "idle", failure_stage="none", transaction="committed"
+            )
+        report["diagnostic"] = diagnostic
+    return report
 
 
 @pytest.mark.parametrize("stage", protocol.PHASES)
@@ -712,7 +733,7 @@ def test_cleanup_runtime_independently_attempts_host_credential_and_config_delet
     "failure_stage", ["none", "open", "source", "cleanup", "host-credentials", "complete"]
 )
 def test_operator_evidence_failure_cannot_accept_or_leak_host_material(
-    monkeypatch, tmp_path, failure_stage
+    monkeypatch, tmp_path, failure_stage, report_fault=None
 ):
     root = tmp_path / SHA
     (root / protocol.RELATIVE).mkdir(parents=True)
@@ -782,20 +803,33 @@ def test_operator_evidence_failure_cannot_accept_or_leak_host_material(
         if "{{.State.Running}}|{{.State.OOMKilled}}|{{.State.Error}}" in args:
             return b"true|false|"
         if args[-1] == "dependencies":
+            if report_fault == "dependencies":
+                return b'{"stage":"dependencies","ok":false,"ok":true}'
             return b'{"stage":"dependencies","ok":true}'
         if args[-1] == "run":
             return b"\n".join(
-                original_dumps({"stage": stage, "ok": True}).encode()
+                (
+                    b'{"stage":"concurrency","ok":true,"diagnostic":{"version":2,"version":1}}'
+                    if report_fault == "diagnostic" and stage == "concurrency"
+                    else original_dumps({"stage": stage, "ok": True}).encode()
+                )
                 for stage in operator.EXPECTED_STAGES
             )
         return b""
 
     monkeypatch.setattr(operator, "command", command)
     code = operator.execute(SHA, "e" * 64, "run")
-    assert code == (0 if failure_stage == "none" else 1)
+    assert code == (0 if failure_stage == "none" and report_fault is None else 1)
     assert bool(failures) == (failure_stage != "none")
     assert all(not ids for ids in state.values())
     runtime = tmp_path / (".runtime-" + SHA)
     assert not (runtime / "synthetic.json").exists() and not (runtime / "docker").exists()
     assert root.exists() and not lock_held
     assert (runtime / "evidence.jsonl").exists() == (failure_stage != "open")
+
+
+@pytest.mark.parametrize("report_fault", ["dependencies", "diagnostic"])
+def test_operator_report_ingress_rejects_duplicate_json_keys(monkeypatch, tmp_path, report_fault):
+    test_operator_evidence_failure_cannot_accept_or_leak_host_material(
+        monkeypatch, tmp_path, "none", report_fault=report_fault
+    )
