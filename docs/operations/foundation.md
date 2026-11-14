@@ -21,6 +21,20 @@ Mount only each service's needed files. API names agreed with A: `NOTEBOOK_DATAB
 
 Personal provider secrets need a separate, narrowly authorized write lifecycle. This provisioner is only for infrastructure configuration, not the application's user-facing connection API.
 
+## Readiness preparation, not activation
+
+The API now has a fail-closed `/api/health/ready` contract distinct from liveness.
+A trusted image build may set the non-secret build argument `NOTEBOOK_RELEASE_SHA`
+to its exact40-character lowercase Git commit; omission intentionally leaves the
+image unready. No runtime environment variable can override that fixed file.
+**No production dependency probes are installed yet, so default startup returns503
+regardless of the stamp.** Do not add fake healthy probes, proxy-generated ready
+JSON or a liveness alias to activate the Cloudflare route. See the complete
+[readiness contract](../architecture/contracts.md#readinessrelease-contract-fail-closed-foundation).
+Real adapters, outage/restart acceptance and final image/commit provenance remain
+open; local positive tests use only synthetic probes. This does not change any
+App/Cloudflare/Bitwarden configuration or grant a release.
+
 ## Required next release gates
 
 - Dedicated rootless daemon, user-service restart/linger, volume permissions and effective cgroup limits. Do not stop or migrate the existing rootful daemon. [Docker rootless docs](https://docs.docker.com/engine/security/rootless/).

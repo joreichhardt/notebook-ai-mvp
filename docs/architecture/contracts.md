@@ -1,5 +1,15 @@
 # Contracts v1
 
+## Readiness/release contract (fail-closed foundation)
+
+`GET /api/health/live` remains process liveness only:200 `{"status":"ok"}`. New `GET /api/health/ready` returns503 `{"status":"not_ready"}` unless **both** the fixed image metadata file contains exactly40 lowercase hexadecimal commit characters and trusted startup has installed a complete `app.health.Readiness` instance. Runtime environment variables, request query/header values and a dict claiming ready cannot supply the release identity. Every response is `Cache-Control:no-store`.
+
+The immutable probe-map snapshot must contain exactly `database`, `auth`, `secrets`, `storage`, `worker`; all must return literal `True` on this request. No cached success or liveness/config-presence fallback. Cooperative async checks run concurrently with a two-second per-check budget. An expected `ProbeUnavailable`, timeout, cancelled child or unexpected task exception means503; unexpected task errors cancel/join siblings without exposing/logging raw diagnostics. Caller cancellation propagates. These deadlines are **not** preemption of blocking code or cancellation-swallowing adapters: each real adapter must use bounded read-only transport/DB operations itself and sanitize external errors.
+
+Success is exactly200 `{"status":"ready","release":"<image commit>"}`, matching the Cloudflare consumer's expected approved commit. **No real probes are installed by current startup; even a stamped image remains503.** Fake positive probes exist only in tests. Required next slice: actual restricted DB/schema availability, configured Auth availability, protected secret-consumer state, private Storage and supervised worker/heartbeat adapters, then native outage/restart tests. No test-only probe registry or ready switch may enter production configuration. Closed upload/chat capabilities do not waive required probes.
+
+The API Dockerfile's optional, non-secret `NOTEBOOK_RELEASE_SHA` build argument writes `/app/app/_release_sha` and the OCI revision label. Empty metadata is allowed only for foundation builds and cannot pass readiness; malformed nonempty metadata fails the build. This is build metadata, **not cryptographic source attestation**: trusted build→commit→final image digests→frontend artefact binding and scan/release approval remain separate mandatory gates. Do not mount over image metadata. The endpoint does not authorize tunnel activation, security acceptance or deployment.
+
 ## Wave 3 interfaces and implementation boundaries
 
 Document/job/chunk persistence, provider execution and A5's upload-ledger/status database boundary are integrated. Upload/worker/chat/UI remain incomplete; capability flags stay off until the corresponding complete route and runtime gates are verified. Target HTTP contracts below include unsupported future operations, not an enablement claim or reduction of the PDF, vector and graph requirements.

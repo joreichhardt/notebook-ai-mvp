@@ -8,6 +8,7 @@ from app.capabilities import router as capabilities_router
 from app.connections.router import router as connections_router
 from app.documents.router import router as documents_router
 from app.documents.upload_router import router as document_upload_router
+from app.health import router as health_router
 from app.notebooks.router import router as notebooks_router
 from app.workspaces.router import router as workspaces_router
 
@@ -37,6 +38,8 @@ def live() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# Readiness stays unavailable until trusted startup installs every real runtime probe.
+app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(workspaces_router)
 app.include_router(notebooks_router)

@@ -9,6 +9,11 @@ WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY backend/app /app/app
 COPY backend/migrations /app/backend/migrations
+# Non-secret trusted build metadata, not a runtime environment override.
+# An unstamped foundation image builds but can never pass release readiness.
+ARG NOTEBOOK_RELEASE_SHA=""
+RUN python -c 'import re,sys; from pathlib import Path; value=sys.argv[1]; assert not value or re.fullmatch(r"[0-9a-f]{40}", value), "invalid release SHA"; Path("/app/app/_release_sha").write_text(value, encoding="ascii")' "$NOTEBOOK_RELEASE_SHA"
+LABEL org.opencontainers.image.revision=$NOTEBOOK_RELEASE_SHA
 ENV PATH="/app/.venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 USER 10001:10001
 EXPOSE 8000
