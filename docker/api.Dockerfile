@@ -2,8 +2,13 @@ FROM ghcr.io/astral-sh/uv:0.9.9@sha256:f6e3549ed287fee0ddde2460a2a74a2d74366f84b
 FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS build
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project --no-cache
+RUN ["chown", "10001:10001", "/app"]
+COPY --chown=10001:10001 pyproject.toml uv.lock ./
+COPY tests/security/readiness_image/check_build_limits.py /tmp/notebook-check-build-limits.py
+ARG NOTEBOOK_TEST_LIMITS="0"
+USER 10001:10001
+RUN if [ "$NOTEBOOK_TEST_LIMITS" = "1" ]; then python -I /tmp/notebook-check-build-limits.py; else test "$NOTEBOOK_TEST_LIMITS" = "0"; fi \
+    && uv sync --frozen --no-dev --no-install-project --no-cache
 FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv

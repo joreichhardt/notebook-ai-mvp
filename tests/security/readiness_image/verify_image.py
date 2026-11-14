@@ -12,12 +12,18 @@ import re
 import socket
 import stat
 import subprocess
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
 PROJECT = "notebook-test-readiness"
 DOCKER = ("docker", "--host", "unix:///var/run/docker.sock")
 ROOT = Path("/home/jre/notebook-tests/readiness")
+DOCKER_ENV = {
+    "PATH": "/usr/bin:/bin",
+    "HOME": "/nonexistent",
+    "DOCKER_CONFIG": "/nonexistent/notebook-readiness",
+}
 
 SMOKE = r"""
 import json, os, time, urllib.request, urllib.error
@@ -80,7 +86,12 @@ def require(condition, code):
 
 def docker(*args, timeout=30):
     result = subprocess.run(
-        [*DOCKER, *args], capture_output=True, text=True, timeout=timeout, check=False
+        [*DOCKER, *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+        env=DOCKER_ENV,
     )
     require(result.returncode == 0, "docker_operation_failed")
     return result.stdout.strip()
@@ -161,10 +172,20 @@ def runtime_constraints(state):
     require(set(config.get("Tmpfs", {})) == {"/tmp"}, "runtime_tmpfs")
 
 
+def require_operator():
+    require(socket.gethostname() == "kube1" and os.getuid() == os.geteuid() == 1001, "kube1_only")
+
+
 def verify(image, release):
-    require(socket.gethostname() == "kube1" and os.getuid() == 1001, "kube1_only")
+    require_operator()
     require(re.fullmatch(r"sha256:[0-9a-f]{64}", image), "immutable_image_required")
     require(re.fullmatch(r"[0-9a-f]{40}", release), "full_release_required")
+    with namespace_lock():
+        return verify_locked(image, release)
+
+
+@contextmanager
+def namespace_lock():
     ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
     require(
         not ROOT.is_symlink()
@@ -181,7 +202,7 @@ def verify(image, release):
             "private_lock_required",
         )
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return verify_locked(image, release)
+        yield
     finally:
         os.close(fd)
 

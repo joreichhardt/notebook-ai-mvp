@@ -2,8 +2,10 @@
 
 ## Umfang und aktueller Stand
 
-`tests/security/readiness_image/verify_image.py` prüft **ein bereits gebautes,
-explizit eigenes API-Image**, nicht das Produkt oder eine Veröffentlichung.
+`tests/security/readiness_image/build_image.py` bereitet einen begrenzten Legacy-
+Build samt anschließender Imageprüfung vor. `verify_image.py` prüft alternativ
+**ein bereits gebautes, explizit eigenes API-Image**, nicht das Produkt oder eine
+Veröffentlichung.
 Lokale Tests verwenden einen falschen Docker-Adapter; sie bauen/starten keine
 Container. Ein echter gestempelter Imagebau, kube1-Lauf und vollständige
 Dependency-/Worker-Readiness sind weiterhin **UNRUN**.
@@ -24,10 +26,14 @@ Projektroot `/home/jre/orca/projects/gemini-nb-clone` ist **keine Quelle**.
 1. Source-/Dockerfile-/Wrapperreview auf einem vollständigen committeten
    Integrations-SHA. Nur dessen `git archive`, keine Arbeitskopie oder `.pi/`,
    übertragen. Archivhash/Dateimanifest getrennt erhalten.
-2. Zuerst einen reproduzierbaren, ressourcenbegrenzten API-Imagebau auf kube1
-   vorbereiten/prüfen. **Dieser Operator baut oder pullt selbst nichts**;
-   unkontrollierte Builderlast oder ein privilegierter Hilfsbuilder sind kein
-   Ersatz. Ein solches Buildpaket ist noch nicht geliefert.
+2. `build_image.py` muss aus dem exakten Snapshot unter der privaten Wurzel
+   `/home/jre/notebook-tests/readiness/<fullSHA>` stammen. Main prüft zuvor dessen
+   vollständiges Archiv/Dateimanifest unabhängig. Der Buildoperator hält denselben
+   retained-inode Lock bis nach der Runtimeprüfung, verlangt einen freien schweren
+   Slot und freie Kapazität und nutzt ausschließlich eine eigene leere private
+   Dockerclient-Konfiguration; keine fremden Registry-Credentials oder Bootstrap-
+   Umgebung. Die drei Dockerfile-Basisreferenzen bleiben digest-gepinnt.
+   Kein privilegierter Hilfsbuilder und keine globale Daemon-/Cgroupänderung.
 3. Der vertrauenswürdige Build setzt den nicht geheimen Buildarg
    `NOTEBOOK_RELEASE_SHA=<vollständiger Source-SHA>` und die zusätzlichen
    Image-Labels `com.docker.compose.project=notebook-test-readiness` und
@@ -48,9 +54,41 @@ python3 -I tests/security/readiness_image/verify_image.py \
   --release '<vollständiger-geprüfter-source-sha>'
 ```
 
-Platzhalter sind absichtlich nicht ausführbar. Keine Secrets als Argumente.
+Für den kombinierten begrenzten Build-/Prüflauf statt des vorgebauten Images:
 
-## Isolation und tatsächliche Prüfungen des Operators
+```sh
+python3 -I -B tests/security/readiness_image/build_image.py \
+  --release '<vollständiger-geprüfter-source-sha>'
+```
+
+Platzhalter sind absichtlich nicht ausführbar. Keine Secrets als Argumente.
+Der Buildoperator setzt selbst die Source-/Projektlabels, erzeugt keinen Tag,
+keinen Push und nimmt nur die finale `--iidfile`-Image-ID für die Prüfung.
+
+## Begrenzter Build, kein privilegierter Ersatzbuilder
+
+Nur `DOCKER_BUILDKIT=0` mit tatsächlich geprüften Legacy-Limits:1CPU/1GiB/
+kein zusätzlicher Swap. `--no-cache` erzwingt den realen effektiven Limitcheck
+vor dem Dependencyinstall. Dependencies laufen nun als UID/GID10001, CapEff0,
+Seccomp2, mit hard/soft RLIMIT_NPROC128 und NOFILE1024; der Checker muss das
+native cgroupv2-CPU-/RAM-/Swap-Profil und die rlimits bestätigen. **NPROC ist ein
+Real-UID-weites Limit, keine containerbezogene cgroup-PID-Garantie**. Fremde
+UID10001-Prozesse werden nicht verändert und können höchstens den Build früher
+scheitern lassen. Root läuft nur für festes `chown` und stdlib-Metadatenstempeln,
+nicht für heruntergeladenen Dependencycode. Standardbuilds bleiben ohne den
+zusätzlichen test-only Abortcheck möglich; kein Test-Ready-Schalter entsteht.
+
+Eigene temporäre Bridge nur für öffentliche Dependencydownloads, keine Ports,
+Mounts oder Produktionszugänge. `--force-rm` und unabhängige Abwesenheitschecks
+aller aus dem Buildlog erfassten Zwischencontainer vor der Imageprüfung.
+Bridge nur nach exaktem ID-/Label-/SHA-/Leerheitscheck löschen. Buildtimeout,
+uneindeutiges Cleanup oder fehlender effektiver Limitmarker bedeutet Fehler,
+nie einen zweiten blinden Lauf. `.build-<SHA>` samt0600-Log/JSON bleibt erhalten;
+Zwischenlayer/finales Image nicht durch globales Prune entfernen. Runtime folgt
+erst nach erfolgreichen Buildschritten, nachgewiesener Zwischencontainerabwesenheit
+und wieder leerem eigenen Namensraum, unter demselben Lock.
+
+## Isolation und tatsächliche Prüfungen des Verifiers
 
 - Expliziter Docker-Socket `/var/run/docker.sock`; kein globaler Kontextwechsel.
   Das ist vorhandener Testbetrieb, **kein Rootless-Nachweis**.

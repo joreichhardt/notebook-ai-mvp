@@ -131,6 +131,15 @@ def test_laptop_refusal_precedes_all_docker_io(packet, monkeypatch):
         packet.verify("sha256:" + "a" * 64, "a" * 40)
 
 
+@pytest.mark.parametrize("uid,euid", [(0, 0), (1001, 0), (1000, 1001), (1001, 1000)])
+def test_real_and_effective_operator_uid_must_match(packet, monkeypatch, uid, euid):
+    monkeypatch.setattr(packet.socket, "gethostname", lambda: "kube1")
+    monkeypatch.setattr(packet.os, "getuid", lambda: uid)
+    monkeypatch.setattr(packet.os, "geteuid", lambda: euid)
+    with pytest.raises(packet.PacketError, match="kube1_only"):
+        packet.require_operator()
+
+
 @pytest.fixture
 def fake_run(packet, state, tmp_path, monkeypatch):
     calls = []
@@ -155,8 +164,7 @@ def fake_run(packet, state, tmp_path, monkeypatch):
         return ""
 
     monkeypatch.setattr(packet, "ROOT", tmp_path / "native")
-    monkeypatch.setattr(packet.socket, "gethostname", lambda: "kube1")
-    monkeypatch.setattr(packet.os, "getuid", lambda: 1001)
+    monkeypatch.setattr(packet, "require_operator", lambda: None)  # explicitly synthetic host
     monkeypatch.setattr(packet, "docker", docker)
     return image, release, calls, image_info
 

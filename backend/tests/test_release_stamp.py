@@ -35,5 +35,5 @@ def test_image_stamp_recipe_validates_before_writing(tmp_path, value):
     else:
         assert not stamp.exists()
         assert b"invalid release SHA" in result.stderr
-    assert text.index("RUN python -c ") < text.index("USER 10001:10001")
+    assert text.index("RUN python -c ") < text.rindex("USER 10001:10001")
     assert "LABEL org.opencontainers.image.revision=$NOTEBOOK_RELEASE_SHA" in text
