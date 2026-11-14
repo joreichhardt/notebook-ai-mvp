@@ -1,6 +1,14 @@
 # Fortsetzung · Notebook
 
-## AKTUELL · Erstversuch prepare-FAILED unabhängig bestätigt; neuer Diagnoseversuch freigegeben
+## AKTUELL · Ungültiges Compose-create-Flag korrigiert; neuer isolierter Versuch
+
+Main bestätigte auch den fehlgeschlagenen da609f8-Snapshot unabhängig ausschließlich read-only: alle222Gitquelldateien samt Modi, Manifestc7d31a3/Evidence218898f/Operatorlog7ed077d, tatsächliche8Rows mit einzigem Runnercheckpoint **prepare/create**, B5nicht erreicht, privateUID1001-Modi und aktuell eigene0/0/0/Credentialsabsent. Worker-Evidence303f34e bleibt unverändert erhalten; keine Wiederholung zur Nachprüfung.
+
+**Konkreter Defekt:** Compose-create unterstützt kein **--no-deps**. Worker prüfte tatsächliches kube1-Plugin2.40.3 durch begrenzte reine version/help-Abfragen und offizielle versionsgenaue Quellen; Main bestätigte unabhängig offiziellen create.go-Vertrag. Unveränderte vierdiensteCompose hat keine expliziten/impliziten Runner-Serviceabhängigkeiten; explizites create runner wahrt Serviceauswahl, startet keine Container und ersetzt weder up noch run. Minimaler Kandidat **0b8e18bf4434e01e9975c7063c5064d20dad5849** entfernt ausschließlich das ungültige Flag und ergänzt echten argv-/Dependencyvertragstest. Main normalguarded in **5be06c8** integriert,3Lieferdateien bytegleich; lokal **81passed/1LiveSkip/5.32s**, Ruff/Format5/diff sauber, aktiveLSP2error-clean/0inconclusive. Keine Behauptung über bisher unerreichte spätere Phasen.
+
+Main gibt genau EINEN neuen unveränderten0b8e18b-Versuch im frischen fullSHA-Root nach vollständigem neuem Preflight frei. Unabhängig verankert: **222Dateien/35unverändertePins**, Gitarchivhash **282747c84172fdb6e09c18506f7763352331b0d230c242be12d9b74208fe2d6d**, externes kanonisches Manifest23137Bytes/**3853039187c6c34df5bbef68af137dc3eabda4ced796a6da8291c13590ef80be**. Beide früheren Snapshots unverändert; gleiche ursprünglichePi-/Runcustody, externerWrapper2395+5s, A5600/B5240/exaktes ownedCleanup/keine Rawlogs/kein Replay oder weiterer automatischer Versuch. D4keine parallele schwere Ausführung; reale Combined-/Produktions-/Capability-/Releaseabnahme weiter offen. Unterstützter tatsächlicher Sendreceipt **task_51557d385e5b/ctx_3b0a1f2b834c/state=ready/delivery=follow_up**, gleicher ursprünglicherTerminalterm_8a2f4268-b34f-4064-9005-e7361a485991/followUpOfctx_43cbf4e20abf; tatsächliches ACK **msg_c1acca50ecbb** eingegangen, Laufergebnis offen, native Wakeups statt Polling.
+
+## Voriger Stand · Erstversuch prepare-FAILED unabhängig bestätigt; neuer Diagnoseversuch freigegeben
 
 Nutzer verlangt erneuten Versuch. Main bestätigte den fehlgeschlagenen a169098-Lauf ausschließlich read-only über strikten bestehenden kube1-SSH-Zugang: **222Git-Quelldateien samt exakten Modi**, externen Manifesthashabe2259, Evidencehash5258941 und festen Operatorloghash7ed077d; tatsächliche7Rows build0/pull0/create_db0/nativehealthy/preparefailure/cleanup0, B5nicht erreicht, aktuell eigene **0/0/0** und Credentialsabsent, private0700/0600UID1001. Kein Rerun bei dieser Nachprüfung. Evidencelieferung0e52c9b bleibt erhalten.
 
