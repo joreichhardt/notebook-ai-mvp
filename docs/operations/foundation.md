@@ -31,9 +31,14 @@ image unready. No runtime environment variable can override that fixed file.
 regardless of the stamp.** Do not add fake healthy probes, proxy-generated ready
 JSON or a liveness alias to activate the Cloudflare route. See the complete
 [readiness contract](../architecture/contracts.md#readinessrelease-contract-fail-closed-foundation).
-Real adapters, outage/restart acceptance and final image/commit provenance remain
-open; local positive tests use only synthetic probes. This does not change any
-App/Cloudflare/Bitwarden configuration or grant a release.
+Four read-only adapters (DB, Auth, Storage metadata, assigned consumer files) now
+exist in `app.readiness`, but no production startup assembly installs them. A real
+supervised worker/heartbeat, outage/restart acceptance and final image/commit
+provenance remain open. The [native image verification packet](readiness-image.md)
+is prepared and locally fake-tested, **not run on kube1**; an actual bounded image
+build remains a prerequisite. Positive dependency tests use synthetic transports/DB
+and owned temporary files. None of this changes App/Cloudflare/Bitwarden
+configuration or grants a release.
 
 ## Required next release gates
 

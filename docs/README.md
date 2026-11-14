@@ -31,6 +31,7 @@
 - [B5 geschlossener Upload-HTTP-Adapter](handoffs/B5.md): mit Quellen-GET in ASGI montiert, echte Identity/CSRF/kurze Preauthorization vor Body; Capability bleibtfalse, aktuelle HTTP-Key-Grammatik in den [Verträgen](architecture/contracts.md). [Unabhängiger Review](review/b5-upload-adapter.md): P2-Registrierungstestfehler durch echte Root-Kontrollen ersetzt; keine Storage-Freischaltung.
 - [A5 native DB-/Storage-Abnahme](handoffs/A5.md): Direct-Storage-Fixture818deb3 bestanden und unabhängig geprüft, integriert8ba4f1a; kein Combined-/Produktionsnachweis und keine neue allgemeine DB-Diagnose.
 - [D4 TXT-/Markdown-Uploadoberfläche](handoffs/D4.md): auf0dfe9eb 79Vitesttests/tsc/Vitebuild auf kube1 und synthetischer Orca-Browser-Smoke bestanden; keine echte Browser→Backend/Storage-Gesamtabnahme.
+- [Readiness-Adapter und natives Imageprüfpaket](operations/readiness-image.md): vier Read-only-Adapter und isolierter Imageverifier vorbereitet; lokale synthetische Tests sind kein nativer Build-/Laufnachweis. Worker-/Startupverdrahtung bleibt offen, Default503.
 - [Cloudflare-Vorbereitung](operations/cloudflare-automation.md): lokal integriert, fail-closed Readiness-/Release-/Accessgates; keine Liveaktivierung. [Unabhängiger Review](review/e-cloudflare-delivery.md), [E-Handoff](handoffs/E-cloudflare-automation.md).
 - [Bereichsübergaben](handoffs/CONTINUE.md): Einstieg zu den relevanten Worker-Berichten; diese sind technische Detailnachweise, keine zusätzliche Bedienungsanleitung.
 
