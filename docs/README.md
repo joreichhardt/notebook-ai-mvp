@@ -32,6 +32,8 @@
 - [A5 native DB-/Storage-Abnahme](handoffs/A5.md): Direct-Storage-Fixture818deb3 bestanden und unabhängig geprüft, integriert8ba4f1a; kein Combined-/Produktionsnachweis und keine neue allgemeine DB-Diagnose.
 - [D4 TXT-/Markdown-Uploadoberfläche](handoffs/D4.md): auf0dfe9eb 79Vitesttests/tsc/Vitebuild auf kube1 und synthetischer Orca-Browser-Smoke bestanden; keine echte Browser→Backend/Storage-Gesamtabnahme.
 - [Readiness-Adapter und natives Imageprüfpaket](operations/readiness-image.md): vier Read-only-Adapter und150lokaleTests; begrenzter nativer Imagebau und live200/defaultready503 auf7a986f1 bestanden/0/0/0 unabhängig geprüft. Kein echter Dependency-/Releasepass; Worker-/Startupverdrahtung bleibt offen.
+- [Task6 dauerhafte Jobdelegation](handoffs/Task6-delegation.md): uninstallierter0007-/Consumer-Slice,37leichte Tests unabhängig bestätigt; neue kube1-DB-Prüfung offen. Kein Worker-/Startup-/Readinesspass.
+- [Task6 isoliertes Prüfpaket](handoffs/Task6-packet.md): unabhängiger Re-Review ohne offene Befunde,78Pakettests bestätigt; authentifizierter Empfang, exaktes Testkonto und evidenzunabhängiges Cleanup. Native Abnahme und separate Node-Wrapper-Prüfung stehen aus.
 - [Cloudflare-Vorbereitung](operations/cloudflare-automation.md): lokal integriert, fail-closed Readiness-/Release-/Accessgates; keine Liveaktivierung. [Unabhängiger Review](review/e-cloudflare-delivery.md), [E-Handoff](handoffs/E-cloudflare-automation.md).
 - [Bereichsübergaben](handoffs/CONTINUE.md): Einstieg zu den relevanten Worker-Berichten; diese sind technische Detailnachweise, keine zusätzliche Bedienungsanleitung.
 

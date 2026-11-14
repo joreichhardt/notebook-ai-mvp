@@ -1,0 +1,95 @@
+{
+  "services": {
+    "db": {
+      "image": "postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139",
+      "user": "70:70",
+      "entrypoint": [
+        "/bin/sh",
+        "-ec",
+        "i=0; while [ ! -f /tmp/bootstrap ]; do i=$$((i+1)); [ $$i -lt 90 ]; sleep 1; done; exec /usr/local/bin/docker-entrypoint.sh postgres -c password_encryption=scram-sha-256 -c log_statement=none -c log_min_error_statement=panic -c log_min_messages=panic"
+      ],
+      "environment": {
+        "POSTGRES_DB": "delegation",
+        "POSTGRES_PASSWORD_FILE": "/tmp/bootstrap",
+        "POSTGRES_INITDB_ARGS": "--auth-host=scram-sha-256 --auth-local=scram-sha-256",
+        "PGDATA": "/var/lib/postgresql/data"
+      },
+      "labels": {
+        "notebook.text-delegation.sha": "${TD_SHA:?full SHA}"
+      },
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cpus": 1,
+      "mem_limit": "512m",
+      "pids_limit": 128,
+      "logging": {
+        "driver": "none"
+      },
+      "tmpfs": [
+        "/var/lib/postgresql/data:uid=70,gid=70,mode=0700,size=536870912,nosuid,nodev,noexec",
+        "/var/run/postgresql:uid=70,gid=70,mode=0700,size=16777216,nosuid,nodev,noexec",
+        "/tmp:uid=70,gid=70,mode=0700,size=16777216,nosuid,nodev,noexec"
+      ],
+      "networks": [
+        "database"
+      ],
+      "memswap_limit": "512m"
+    },
+    "runner": {
+      "image": "python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df",
+      "user": "1001:1001",
+      "entrypoint": [
+        "sleep",
+        "3600"
+      ],
+      "labels": {
+        "notebook.text-delegation.sha": "${TD_SHA:?full SHA}"
+      },
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "volumes": [
+        "${TD_SNAPSHOT:?committed snapshot}:/snapshot:ro"
+      ],
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cpus": 1,
+      "mem_limit": "1536m",
+      "pids_limit": 128,
+      "logging": {
+        "driver": "none"
+      },
+      "tmpfs": [
+        "/work:uid=1001,gid=1001,exec,mode=0700,size=1073741824,nosuid,nodev",
+        "/tmp:uid=1001,gid=1001,mode=0700,size=67108864,nosuid,nodev,noexec"
+      ],
+      "networks": [
+        "dependencies"
+      ],
+      "memswap_limit": "1536m"
+    }
+  },
+  "networks": {
+    "database": {
+      "internal": true,
+      "labels": {
+        "notebook.text-delegation.sha": "${TD_SHA:?full SHA}"
+      }
+    },
+    "dependencies": {
+      "labels": {
+        "notebook.text-delegation.sha": "${TD_SHA:?full SHA}"
+      }
+    }
+  }
+}

@@ -9,7 +9,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 from uuid import UUID, uuid5
 
 from sqlalchemy import Engine, select, text
@@ -45,6 +45,10 @@ class Source:
     embedding: bool
 
 
+class OperationRunner(Protocol):
+    async def __call__(self, operation: Callable, *args) -> Any: ...
+
+
 class TextWorker:
     def __init__(
         self,
@@ -54,10 +58,14 @@ class TextWorker:
         store_factory: Callable[[Authorize], OriginalStore] | None = None,
         lease_seconds: int = 30,
         heartbeat_seconds: float = 5,
+        operation_runner: OperationRunner | None = None,
     ):
         if not 1 <= lease_seconds <= 300 or not 0 < heartbeat_seconds < lease_seconds / 2:
             raise ValueError("invalid bounded heartbeat/lease")
         self.engine = engine
+        # Optional delegation seam: serialize actual outstanding thread work even
+        # after waiter cancellation. Existing verified-Identity path is unchanged.
+        self.operation_runner = operation_runner
         self.lease_seconds = lease_seconds
         self.heartbeat_seconds = heartbeat_seconds
         # No synthetic store is constructed by default. Unconfigured means fail closed.
@@ -179,22 +187,29 @@ class TextWorker:
                 # Exception leaves context -> rollback ALL chunk writes.
                 raise LeaseLost()
 
+    async def _run_operation(self, operation: Callable, *args):
+        if self.operation_runner is not None:
+            return await self.operation_runner(operation, *args)
+        return await asyncio.to_thread(operation, *args)
+
     async def run_one(self, *, actor_id: UUID, job_id: UUID) -> str:
         """Trusted actor-bound seam; never registers a route or discovers other actors."""
         try:
-            claimed = await asyncio.to_thread(self._claim, actor_id, job_id)
+            claimed = await self._run_operation(self._claim, actor_id, job_id)
         except (LeaseLost, QuotaUnavailable):
             return "not_claimed"
         if claimed is None:
             return "not_claimed"
         token, source = claimed
+        publishing = False
 
         async def authorize(actor: UUID, scope: ObjectScope, action: Literal["read", "write"]):
             if actor != actor_id or scope != source.scope or action != "read":
                 raise StorageError("storage_forbidden")
-            await asyncio.to_thread(self._pulse, actor_id, job_id, token)
+            await self._run_operation(self._pulse, actor_id, job_id, token)
 
         async def execute():
+            nonlocal publishing
             if source.embedding:
                 raise TextRejected("unsupported_embedding")
             if source.media_type not in ("text/plain", "text/markdown"):
@@ -204,16 +219,22 @@ class TextWorker:
             await authorize(actor_id, source.scope, "read")
             if len(data) != source.byte_count or sha256(data).hexdigest() != source.sha256:
                 raise TextRejected("original_integrity_failed")
-            value = await asyncio.to_thread(decode_text, data)
-            parts = await asyncio.to_thread(chunks, value)
+            value = await self._run_operation(decode_text, data)
+            parts = await self._run_operation(chunks, value)
             await authorize(actor_id, source.scope, "read")
-            # Synchronous short transaction is the commit/cancellation linearization boundary.
-            self._publish(actor_id, job_id, token, source, parts)
+            publishing = True
+            if self.operation_runner is None:
+                # Preserve the original verified-Identity linearization boundary.
+                self._publish(actor_id, job_id, token, source, parts)
+            else:
+                # Cancellation leaves a possibly committed outcome for durable
+                # reconciliation; it must not launch a conflicting finish/ack.
+                await self._run_operation(self._publish, actor_id, job_id, token, source, parts)
 
         async def watch():
             while True:
                 await asyncio.sleep(self.heartbeat_seconds)
-                await asyncio.to_thread(self._pulse, actor_id, job_id, token)
+                await self._run_operation(self._pulse, actor_id, job_id, token)
 
         work, watcher = asyncio.create_task(execute()), asyncio.create_task(watch())
         try:
@@ -221,7 +242,7 @@ class TextWorker:
             # A heartbeat racing AFTER the successful terminal commit sees no
             # running lease. Completed work wins that reporting race; failures
             # still propagate from work, and a lost watcher cancels unfinished I/O.
-            if work in done:
+            if work in done or (self.operation_runner is not None and publishing):
                 await work
                 return "succeeded"
             watcher.result()
@@ -234,15 +255,23 @@ class TextWorker:
             return "lease_lost"
         except (TextRejected, StorageError) as exc:
             try:
-                self._finish(actor_id, job_id, token, "failed", exc.code)
+                if self.operation_runner is None:
+                    self._finish(actor_id, job_id, token, "failed", exc.code)
+                else:
+                    await self._run_operation(
+                        self._finish, actor_id, job_id, token, "failed", exc.code
+                    )
                 return "failed"
             except QuotaUnavailable:
                 return "yielded"
             except LeaseLost:
                 return "lease_lost"
         except asyncio.CancelledError:
-            with suppress(LeaseLost, QuotaUnavailable):
-                self._finish(actor_id, job_id, token, "cancelled", "execution_cancelled")
+            if self.operation_runner is None:
+                with suppress(LeaseLost, QuotaUnavailable):
+                    self._finish(actor_id, job_id, token, "cancelled", "execution_cancelled")
+            # Delegation cancellation is not rollback evidence. Leave the ingestion
+            # lease/terminal outcome intact; no competing cancellation transition.
             raise
         finally:
             for task in (work, watcher):
