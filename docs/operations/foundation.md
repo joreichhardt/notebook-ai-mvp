@@ -35,8 +35,9 @@ Four read-only adapters (DB, Auth, Storage metadata, assigned consumer files) no
 exist in `app.readiness`, but no production startup assembly installs them. A real
 supervised worker/heartbeat, outage/restart acceptance and final image/commit
 provenance remain open. The [native image verification packet](readiness-image.md)
-is prepared and locally fake-tested, **not run on kube1**; an actual bounded image
-build remains a prerequisite. Positive dependency tests use synthetic transports/DB
+passed a bounded stamped image build and native liveness200/defaultreadiness503
+check on exact7a986f1, independently verified with0/0/0 cleanup. This does not prove
+real dependency readiness. Positive dependency tests use synthetic transports/DB
 and owned temporary files. None of this changes App/Cloudflare/Bitwarden
 configuration or grants a release.
 
