@@ -8,7 +8,8 @@ Arbeitsweise, Homeserver-Kontext und verbindliche Secret-Regeln: siehe [AGENTS.m
 
 - Backend und Hintergrundverarbeitung: Python, FastAPI, Pydantic, SQLAlchemy und Alembic.
 - Frontend: React mit TypeScript; übersichtliche NotebookLM-ähnliche Bedienung, eigenes Erscheinungsbild ohne übernommene Google-Logos oder Assets.
-- Datenbank, Authentifizierung und private Dateispeicherung: lokale, selbst gehostete Supabase-Instanz mit Docker auf kube1. Keine Supabase-Cloud als Produktionsabhängigkeit.
+- Datenbank und Authentifizierung: lokale, selbst gehostete Supabase-Instanz mit Docker auf kube1. Keine Supabase-Cloud als Produktionsabhängigkeit.
+- Dateispeicherung für den ersten PoC: persistentes, privates lokales Dateiverzeichnis des Backends; bei Containerbetrieb ein persistentes Volume. Eine Cloud-Storage-Anbindung ist dafür keine Voraussetzung. Siehe die folgende PoC-Präzisierung.
 - PostgreSQL mit pgvector, Volltextsuche und zusätzlichem Wissensgraph in relationalen Tabellen.
 - Anwendung und Worker ebenfalls in Containern auf kube1.
 - Deployment über GitHub Actions auf kube1, reproduzierbar mit Docker Compose. Der Hostname kube1 bedeutet nicht automatisch Kubernetes; führe ohne ausdrücklichen Grund keine Kubernetes-Migration durch.
@@ -18,6 +19,14 @@ Arbeitsweise, Homeserver-Kontext und verbindliche Secret-Regeln: siehe [AGENTS.m
 - Keine automatische Veröffentlichung des Repositorys oder Übermittlung einer Bewerbungs-E-Mail. Bereite Repository, Demo-Anleitung und Video-Skript vor; veröffentliche ein Repository nur gemäß vorhandener Autorisierung.
 
 Arbeite mit klar getrennten Modulen und möglichst wenigen Diensten. Kein großes Agentenframework ohne konkreten Nutzen. Verwende aktuelle stabile, kompatible Versionen, prüfe die offiziellen Dokumentationen und pinne Abhängigkeiten und Container-Versionen nachvollziehbar. Erfinde keine vorhandene Konfiguration, Modell-ID oder Zugangsdaten.
+
+### Aktuelle PoC-Präzisierung: lokaler Speicher, später Cloud-Storage-Adapter
+
+Diese Nutzerentscheidung präzisiert frühere Festlegungen zur Dateispeicherung: Zunächst hat ein benutzbarer PoC mit lokalem Dateispeicher und dem Durchlauf Upload → Textverarbeitung → Anzeige Vorrang. Die bisherige Festlegung auf Supabase Storage ist für diesen PoC nicht verbindlich; Supabase bleibt für Datenbank und Auth zuständig.
+
+Als späteres Ziel ist ein austauschbarer **Cloud-/Object-Storage-Adapter** vorgesehen, beispielsweise für einen Dienst mit S3-kompatibler API. S3 ist ein mögliches Protokoll, keine Festlegung auf AWS oder einen bestimmten Anbieter. Gemeint ist das Speicherbackend der Anwendung, nicht ein Quellenimport aus Cloud-Laufwerken. Die Cloud-Anbindung wird hier nur als Ziel dokumentiert und ist kein PoC-Abnahmekriterium; weder sie noch der lokale Adapter gelten dadurch als implementiert oder freigeschaltet.
+
+Autorisierung und private Speicherung bleiben erforderlich: Das Backend prüft die aktuellen Nutzer-/Notebook-Rechte; Dateipfade und Objektschlüssel werden serverseitig bestimmt, nicht aus beliebigen Browserpfaden übernommen. Lokale Dateien werden nicht als öffentliches statisches Verzeichnis ausgeliefert. Secret-Regeln bleiben unverändert. Zusätzliche produktive Betriebsabnahmen sind vom benutzbaren PoC zu unterscheiden; vorhandene Nachweise und offene Punkte bleiben erhalten.
 
 ## 2. Bestand zuerst prüfen
 
