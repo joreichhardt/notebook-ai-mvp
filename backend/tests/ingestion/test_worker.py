@@ -31,7 +31,7 @@ def historical_pdf_database(request, monkeypatch):
     from backend.tests.auth import database_versions, leases_0005
 
     with database_versions.isolated_database(URL, "0005") as legacy_url:
-        monkeypatch.setattr(__import__(__name__), "URL", legacy_url)
+        monkeypatch.setitem(globals(), "URL", legacy_url)
         for name in ("claim_job", "heartbeat_job", "lock_job_for_publish", "finish_job"):
             monkeypatch.setattr(module, name, getattr(leases_0005, name))
         yield

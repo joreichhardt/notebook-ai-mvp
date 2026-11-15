@@ -67,6 +67,7 @@
   "tests/security/text_delegation/test_concurrency_correction.py",
   "tests/security/text_delegation/test_scheduler_concurrency.py",
   "tests/security/text_delegation/test_text_delegation_packet.py",
+  "tests/security/text_delegation/test_worker_fixture.py",
   "tests/security/upload_http/test_combined_packet.py",
   "tests/security/upload_http/test_live_flow.py",
   "tests/security/upload_http/test_packet_guards.py"
