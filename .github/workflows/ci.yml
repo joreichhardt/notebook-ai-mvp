@@ -1,5 +1,6 @@
-name: CI foundation
-on:
+---
+name: CI and immutable PoC images
+'on':
   pull_request:
   push:
     branches: [main, integration/notebooklm]
@@ -14,7 +15,8 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+        image: "postgres:16-alpine@sha256:\
+          aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139"
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: notebook_test
@@ -23,29 +25,40 @@ jobs:
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 3s --health-retries 10
     env:
-      NOTEBOOK_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/notebook_test
-      NOTEBOOK_MIGRATION_DATABASE_URL: postgresql+psycopg://postgres@127.0.0.1:5432/notebook_test
+      NOTEBOOK_TEST_POSTGRES_URL: >-
+        postgresql://postgres@127.0.0.1:5432/notebook_test
+      NOTEBOOK_MIGRATION_DATABASE_URL: >-
+        postgresql+psycopg://postgres@127.0.0.1:5432/notebook_test
       PYTHONPATH: backend
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+      # checkout v4.3.1; setup-uv v6; setup-node v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
         with:
           version: '0.9.9'
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22.22.2'
       - run: uv sync --frozen
       - run: uv run alembic -c backend/migrations/alembic.ini upgrade head
       - run: uv run pytest
-      - run: uv run ruff check backend
-      - run: python3 -m unittest discover -s deploy/tests -v
+      - run: uv run ruff check --no-cache backend deploy
+      - run: uv run pytest deploy/tests -q
       - run: npm ci --ignore-scripts && npm test && npm run build
         working-directory: frontend
       - run: docker compose config --quiet
-      - run: docker build -f docker/api.Dockerfile -t notebook-api:ci .
-      - run: docker build -f docker/frontend.Dockerfile -t notebook-frontend:ci .
+      - run: >-
+          docker build -f docker/api.Dockerfile
+          --build-arg NOTEBOOK_RELEASE_SHA=${{ github.sha }}
+          -t notebook-api:ci .
+      - run: >-
+          docker build -f docker/frontend.Dockerfile
+          -t notebook-frontend:ci .
       - name: Scan repository vulnerabilities and configuration
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        # trivy-action 0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           version: v0.69.3
           cache: 'false'
@@ -54,7 +67,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '1'
       - name: Block any detected secret
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           version: v0.69.3
           cache: 'false'
@@ -68,12 +81,119 @@ jobs:
           mkdir -p reports
           date -u +%FT%TZ > reports/scanned-at.txt
           for image in api frontend; do
-            docker inspect --format '{{.Id}}' "notebook-$image:ci" > "reports/$image-image-id.txt"
-            trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 "notebook-$image:ci"
-            trivy image --format cyclonedx --output "reports/$image.cdx.json" "notebook-$image:ci"
+            docker inspect --format '{{.Id}}' "notebook-$image:ci" \
+              > "reports/$image-image-id.txt"
+            trivy image --scanners vuln --severity HIGH,CRITICAL \
+              --exit-code 1 "notebook-$image:ci"
+            trivy image --format cyclonedx \
+              --output "reports/$image.cdx.json" "notebook-$image:ci"
           done
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      # upload-artifact v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: image-sbom-${{ github.sha }}
           path: reports/
           retention-days: 14
+  publish:
+    needs: checks
+    if: >-
+      github.repository == 'joreichhardt/notebook-ai-poc' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      REGISTRY_PREFIX: ghcr.io/joreichhardt/notebook-ai-poc
+      RELEASE_SHA: ${{ github.sha }}
+      AUTH_IMAGE: "supabase/gotrue@sha256:\
+        1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b"
+      DB_IMAGE: "supabase/postgres@sha256:\
+        f371b5f3f2ac0a05703f33d6e6134515fb2498cab708fb948a0aeb7481467c00"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - name: Build the exact reviewed commit, without runtime credentials
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test -z "$(git status --porcelain)"
+          docker build -f docker/api.Dockerfile \
+            --build-arg "NOTEBOOK_RELEASE_SHA=$RELEASE_SHA" \
+            --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+            -t "$REGISTRY_PREFIX-api:$RELEASE_SHA" .
+          docker build -f docker/frontend.Dockerfile \
+            --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+            -t "$REGISTRY_PREFIX-frontend:$RELEASE_SHA" .
+      - name: Install pinned scanner and rescan the source
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          version: v0.69.3
+          cache: 'false'
+          scan-type: fs
+          scanners: vuln,misconfig,secret
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          exit-code: '1'
+      - name: Scan all four final images before any publication
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          date -u +%FT%TZ > release/scanned-at.txt
+          for role in api frontend auth db; do
+            case "$role" in
+              api|frontend) image="$REGISTRY_PREFIX-$role:$RELEASE_SHA" ;;
+              auth) image="$AUTH_IMAGE" ;;
+              db) image="$DB_IMAGE" ;;
+            esac
+            trivy image --scanners vuln --severity HIGH,CRITICAL \
+              --exit-code 1 "$image"
+            trivy image --scanners secret \
+              --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+              --exit-code 1 "$image"
+            trivy image --format cyclonedx \
+              --output "release/$role.cdx.json" "$image"
+          done
+      # login-action v3; the only token is the job-scoped GitHub package token.
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push scanned images and record immutable registry digests
+        id: images
+        run: |
+          set -euo pipefail
+          for role in api frontend; do
+            image="$REGISTRY_PREFIX-$role:$RELEASE_SHA"
+            docker push "$image"
+            ref=$(docker inspect --format '{{index .RepoDigests 0}}' "$image")
+            digest=${ref##*@}
+            printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+            printf '%s=%s\n' "$role" "$digest" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "$ref" > "release/$role-image.txt"
+          done
+          printf '%s\n' "$RELEASE_SHA" > release/commit.txt
+          printf '%s\n' "$AUTH_IMAGE" > release/auth-image.txt
+          printf '%s\n' "$DB_IMAGE" > release/db-image.txt
+      # attest-build-provenance v3
+      - uses: >-
+          actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
+        with:
+          subject-name: ghcr.io/joreichhardt/notebook-ai-poc-api
+          subject-digest: ${{ steps.images.outputs.api }}
+          push-to-registry: true
+      - uses: >-
+          actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
+        with:
+          subject-name: ghcr.io/joreichhardt/notebook-ai-poc-frontend
+          subject-digest: ${{ steps.images.outputs.frontend }}
+          push-to-registry: true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: immutable-release-${{ github.sha }}
+          path: release/
+          retention-days: 30

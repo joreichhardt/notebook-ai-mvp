@@ -1,0 +1,146 @@
+# Reviewed-archive-only login profile. No build, worker, storage or public Auth.
+# Rootless Podman on kube1; this file alone is NOT deployment authorization.
+name: notebook-poc
+x-runtime: &runtime
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ["/tmp:rw,noexec,nosuid,size=32m,mode=1777"]
+  pids_limit: 128
+  mem_limit: 512m
+  cpus: 1.0
+  restart: unless-stopped
+  networks: [private]
+services:
+  db:
+    <<: *runtime
+    image: "supabase/postgres@sha256:\
+      f371b5f3f2ac0a05703f33d6e6134515fb2498cab708fb948a0aeb7481467c00"
+    user: postgres
+    mem_limit: 1g
+    shm_size: 128m
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/notebook_postgres_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=trust
+      PGDATA: /var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - config_file=/var/lib/postgresql/data/postgresql.conf
+      - -c
+      - listen_addresses=*
+      - -c
+      - unix_socket_directories=/tmp
+      - -c
+      - log_statement=none
+      - -c
+      - log_min_error_statement=panic
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./docker/poc-db-init:/docker-entrypoint-initdb.d:ro
+      - ${NOTEBOOK_POC_SECRETS:?private release required}/db:/run/secrets:ro
+    healthcheck:
+      test: [CMD, pg_isready, -U, postgres, -d, postgres, -h, /tmp]
+      interval: 5s
+      timeout: 2s
+      retries: 12
+  auth:
+    <<: *runtime
+    image: "supabase/gotrue@sha256:\
+      1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b"
+    user: "1000:1000"
+    entrypoint: [/bin/sh, /opt/poc-auth.sh]
+    networks: [private, mail]
+    environment:
+      API_EXTERNAL_URL: https://note.yokoma.de
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: "9999"
+      GOTRUE_SITE_URL: https://note.yokoma.de
+      GOTRUE_URI_ALLOW_LIST: https://note.yokoma.de
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_NAMESPACE: auth
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "false"
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
+      GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED: "true"
+      GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL: "10"
+      GOTRUE_MAILER_TEMPLATES_CONFIRMATION: >-
+        http://frontend:8081/confirmation.html
+      GOTRUE_MAILER_SUBJECTS_CONFIRMATION: Notebook — E-Mail bestätigen
+      GOTRUE_MAILER_OTP_LENGTH: "6"
+      GOTRUE_MAILER_OTP_EXP: "600"
+      GOTRUE_SMTP_HOST: ${NOTEBOOK_POC_SMTP_HOST:?dedicated SMTP host required}
+      GOTRUE_SMTP_PORT: "587"
+      GOTRUE_SMTP_USER: johannes@yokoma.de
+      GOTRUE_SMTP_ADMIN_EMAIL: johannes@yokoma.de
+      GOTRUE_SMTP_SENDER_NAME: Notebook PoC
+      GOTRUE_LOG_LEVEL: error
+      GOTRUE_TRACING_ENABLED: "false"
+    volumes:
+      - ./docker/poc-auth.sh:/opt/poc-auth.sh:ro
+      - ${NOTEBOOK_POC_SECRETS:?private release required}/auth:/run/secrets:ro
+    depends_on:
+      db:
+        condition: service_healthy
+  api:
+    <<: *runtime
+    image: ${NOTEBOOK_POC_API_IMAGE:?immutable GHCR digest required}
+    user: "10001:10001"
+    command:
+      - python
+      - -m
+      - uvicorn
+      - app.poc:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --no-access-log
+      - --no-proxy-headers
+    environment:
+      NOTEBOOK_PUBLIC_ORIGIN: https://note.yokoma.de
+      NOTEBOOK_SUPABASE_URL: http://frontend:8081
+      NOTEBOOK_DATABASE_URL_FILE: /run/secrets/notebook_database_url
+      NOTEBOOK_SUPABASE_ANON_KEY_FILE: /run/secrets/notebook_supabase_anon_key
+    volumes:
+      - ${NOTEBOOK_POC_SECRETS:?private release required}/api:/run/secrets:ro
+    depends_on:
+      db:
+        condition: service_healthy
+  frontend:
+    <<: *runtime
+    image: ${NOTEBOOK_POC_FRONTEND_IMAGE:?immutable GHCR digest required}
+    user: "101:101"
+    networks: [private, edge]
+    ports: ["127.0.0.1:18191:8080"]
+    volumes:
+      - ./docker/nginx.poc.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/poc-confirmation.html:/opt/poc-confirmation.html:ro
+    depends_on: [api, auth]
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - --header
+        - "Host: note.yokoma.de"
+        - -O
+        - /dev/null
+        - http://127.0.0.1:8080/
+      interval: 30s
+      timeout: 3s
+      retries: 3
+networks:
+  private:
+    internal: true
+  edge: {}
+  mail: {}
+volumes:
+  postgres: {}
