@@ -12,6 +12,8 @@ Die lesende Quellenstatus-Oberfläche ist integriert und anhand synthetischer Ko
 
 Die Modellprüfung revalidiert persönliche Verbindungen nach dem Secret-Abruf und während der Discovery; Metadaten werden in einer frischen Kurztransaktion publiziert. Die begrenzte F4-Abnahme auf kube1 ist bestätigt: 30 echte PostgreSQL-/ASGI-HTTP-Parallelitätsfälle und 135 fokussierte Regressionstests ohne Fehler oder Skips; externe Auth-/Secret-/Providerantworten bleiben synthetisch. Kein Produktions-/Liveprovider-Nachweis. A5s nativer DB-/Phase-A-/ACL-Nachweis ist auf `88ad94d` bestanden und unabhängig geprüft: 14 Relationen, 26 Funktionen, 3 Actor-Rollen; Cleanup 0/0/0. Main lokal 64 Tests und 1 expliziter DB-Skip. Das DB-Problem ist gelöst; echte Storage-HTTP-/Upload- und Quellenstatus-Prüfungen werden parallel weitergeführt, ohne Produktions-/Capabilityfreischaltung. [Prüfstand und nächste Gates](docs/orchestration/plan.md).
 
+Task6: Die dauerhafte TXT-/Markdown-Delegation (0007) ist auf dem unveränderlichen Snapshot `5f337cc` nativ geprüft. Die anschließende Consumer-eigene Renewal-/Lifecycle-Logik ist **nur lokal** unabhängig abgenommen: 190 Tests, keine externe I/O. Supervisor, frische Worker-Readiness, vertrauenswürdiger Startup und native Ausfall-/Neustart-/Storage-Nachweise bleiben offen; keine Capability- oder Deploymentfreigabe. [S2a-Vertrag und Evidenz](docs/handoffs/Task6-consumer-renewal.md).
+
 Verbindliche Anforderungen: [agent.md](agent.md), [AGENTS.md](AGENTS.md), [Multi-Agent-Arbeit](multi-agent.md), [Produktspezifikation](docs/product-spec.md). Aktueller Stand: [Plan](docs/orchestration/plan.md) und [Integrationslog](docs/orchestration/integration-log.md).
 
 ## Backend lokal starten
@@ -27,7 +29,7 @@ uv run uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
 
 ```sh
 uv run pytest
-uv run ruff check backend tests/security
+uv run ruff check --no-cache backend tests/security
 ```
 
 Konfiguration: [.env.example](.env.example). Umgebungsvariablen explizit an den Prozess übergeben; diese Vorlage enthält keine Zugangsdaten. Auth-Cookies sind Secure; integrierte Login-Tests und lokale Nutzung benötigen einen passenden HTTPS-Ursprung. Keine Cookie-Sicherheitsabsenkung als Produktions-Fallback.

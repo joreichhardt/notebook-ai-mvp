@@ -10,6 +10,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from hashlib import sha256
 from inspect import isasyncgenfunction, iscoroutine, iscoroutinefunction
+from math import isfinite
 from threading import Lock
 from time import monotonic
 from typing import Any, Literal, Protocol
@@ -93,6 +94,9 @@ class TextWorker:
         self._progress_lock = Lock()
         self._observation_failed = False
         self._last_progress: TextProgress | None = None
+        self._terminal_progress: TextProgress | None = None
+        self._terminal_committed = False
+        self._last_observed_at: float | None = None
         self.engine = engine
         # Optional delegation seam: serialize actual outstanding thread work even
         # after waiter cancellation. Existing verified-Identity path is unchanged.
@@ -114,10 +118,37 @@ class TextWorker:
         with self._progress_lock:
             return self._last_progress
 
-    def _observe(self, progress: TextProgress) -> None:
+    @property
+    def terminal_progress(self) -> TextProgress | None:
         with self._progress_lock:
-            if self._observation_failed:
-                raise ObservationUnavailable("observation_unavailable")
+            return self._terminal_progress
+
+    @property
+    def terminal_committed(self) -> bool:
+        """Actual terminal context exit, independent of the availability of its clock reading."""
+        with self._progress_lock:
+            return self._terminal_committed
+
+    def _observe(self, progress: TextProgress, *, committed: bool) -> None:
+        with self._progress_lock:
+            event_at = progress.committed_at if committed else progress.started_at
+            if (
+                self._observation_failed
+                or type(progress.started_at) not in (int, float)
+                or not isfinite(progress.started_at)
+                or event_at is None
+                or type(event_at) not in (int, float)
+                or not isfinite(event_at)
+                or event_at < progress.started_at
+                or (self._last_observed_at is not None and event_at < self._last_observed_at)
+            ):
+                self._observation_failed = True
+                # Invalid times never enter metadata/callbacks. A terminal exit
+                # already happened: its separate truth bit must survive this fault.
+                if committed and progress.phase in ("publish", "finish"):
+                    return
+                raise ObservationUnavailable("observation_unavailable") from None
+            self._last_observed_at = event_at
             # A late watchdog still executes its real authorization transaction,
             # but cannot erase terminal truth while publication returns/joins.
             if (
@@ -128,6 +159,23 @@ class TextWorker:
             ):
                 return
             self._last_progress = progress
+            if progress.phase == "ingestion_claim" and not committed:
+                self._terminal_progress = None
+                self._terminal_committed = False
+            elif progress.phase in ("publish", "finish"):
+                terminal = self._terminal_progress
+                if terminal is None:
+                    self._terminal_progress = progress
+                elif progress.committed_at is not None:
+                    # Retry entry cannot slide the cycle's original deadline or
+                    # erase a known commit. Caller/last_progress remain per-attempt.
+                    self._terminal_progress = (
+                        progress
+                        if progress.started_at == terminal.started_at
+                        else TextProgress(
+                            progress.phase, terminal.started_at, progress.committed_at
+                        )
+                    )
         observer = self._progress_observer
         if observer is None:
             return
@@ -142,19 +190,22 @@ class TextWorker:
             # Persist terminal truth before calling any external trusted observer.
             with self._progress_lock:
                 self._observation_failed = True
-            if progress.committed_at is None or progress.phase not in ("publish", "finish"):
+            if not committed or progress.phase not in ("publish", "finish"):
                 raise ObservationUnavailable("observation_unavailable") from None
 
     def _start_progress(self, phase: TextPhase) -> float | None:
-        if self._progress_observer is None:
+        if self.operation_runner is None:
             return None
         started_at = monotonic()
-        self._observe(TextProgress(phase, started_at, None))
+        self._observe(TextProgress(phase, started_at, None), committed=False)
         return started_at
 
     def _commit_progress(self, phase: TextPhase, started_at: float | None) -> None:
         if started_at is not None:
-            self._observe(TextProgress(phase, started_at, monotonic()))
+            if phase in ("publish", "finish"):
+                with self._progress_lock:
+                    self._terminal_committed = True
+            self._observe(TextProgress(phase, started_at, monotonic()), committed=True)
 
     @contextmanager
     def _session(self, actor: UUID) -> Iterator[Session]:
