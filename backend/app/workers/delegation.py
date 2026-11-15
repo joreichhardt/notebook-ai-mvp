@@ -11,8 +11,11 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import AbstractContextManager
 from dataclasses import asdict, dataclass, field
 from functools import partial
+from itertools import count
 from math import isfinite
-from typing import Any
+from threading import Lock
+from time import monotonic
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import text
@@ -25,6 +28,18 @@ class DelegationUnavailable(RuntimeError):
     """Fixed messages only; never propagate driver, Storage or credential details."""
 
 
+@dataclass(frozen=True)
+class RunnerSnapshot:
+    generation: int
+    sequence: int
+    closed: bool
+    pending: bool
+    phase: Literal["idle", "submitted", "running", "completed", "closed"]
+    submitted_at: float | None
+    started_at: float | None
+    completed_at: float | None
+
+
 class BoundedThreadRunner:
     """One actual outstanding operation, including after cancellation of its waiter.
 
@@ -32,11 +47,46 @@ class BoundedThreadRunner:
     neither cancellation nor timeout claims that the DB operation rolled back.
     """
 
+    _generations = count(1)
+
     def __init__(self):
+        self._state_lock = Lock()
+        self._generation = next(self._generations)
+        self._sequence = 0
+        self._phase: Literal["idle", "submitted", "running", "completed"] = "idle"
+        self._submitted_at: float | None = None
+        self._started_at: float | None = None
+        self._completed_at: float | None = None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="text-delegation")
         self._lock = asyncio.Lock()
         self._pending: Future | None = None
         self._closed = False
+
+    def snapshot(self) -> RunnerSnapshot:
+        with self._state_lock:
+            return RunnerSnapshot(
+                self._generation,
+                self._sequence,
+                self._closed,
+                self._pending is not None and not self._pending.done(),
+                "closed" if self._closed else self._phase,
+                self._submitted_at,
+                self._started_at,
+                self._completed_at,
+            )
+
+    def _invoke(self, operation: Callable, args: tuple):
+        with self._state_lock:
+            self._started_at = monotonic()
+            self._phase = "running"
+        try:
+            return operation(*args)
+        finally:
+            # Callback return/raise, not coroutine liveness or transaction success.
+            # A closed lifetime remains closed even when this finally runs late.
+            with self._state_lock:
+                self._completed_at = monotonic()
+                self._phase = "completed"
 
     async def _wait(self):
         if self._pending is not None:
@@ -55,20 +105,29 @@ class BoundedThreadRunner:
                     await self._wait()
                 except Exception:  # noqa: BLE001, S110 - previous caller owns the opaque result
                     pass
-                self._pending = None
+                with self._state_lock:
+                    self._pending = None
             if self._closed:
                 raise DelegationUnavailable("runner_closed")
-            self._pending = self._executor.submit(partial(operation, *args))
+            with self._state_lock:
+                submitted_at = monotonic()
+                self._pending = self._executor.submit(self._invoke, operation, args)
+                self._sequence += 1
+                self._submitted_at = submitted_at
+                self._started_at = self._completed_at = None
+                self._phase = "submitted"
             try:
                 return await self._wait()
             finally:
-                if self._pending.done():
-                    self._pending = None
+                with self._state_lock:
+                    if self._pending.done():
+                        self._pending = None
 
     async def close(self, *, timeout: float = 3) -> bool:
         if type(timeout) not in (int, float) or not isfinite(timeout) or not 0 < timeout <= 3:
             raise ValueError("bounded_shutdown_required")
-        self._closed = True
+        with self._state_lock:
+            self._closed = True
         self._executor.shutdown(wait=False, cancel_futures=False)
         try:
             await asyncio.wait_for(self._wait(), timeout)
@@ -219,8 +278,14 @@ class ExactTextConsumer:
     async def run_one(self) -> str:
         if self._busy:
             return "busy"
+        # A cancelled consumer may have left a real operation behind. Do not
+        # enqueue a claim that could outlive its late observer-fault decision.
+        if self.repository.runner.snapshot().pending:
+            return "busy"
         self._busy = True
         try:
+            if self.worker.observation_failed:
+                raise DelegationUnavailable("delegation_unavailable")
             grant = await self.repository.claim()
             if grant is None:
                 return "idle"
@@ -231,6 +296,8 @@ class ExactTextConsumer:
             if state != "executable":
                 return "not_claimed"
             result = await self.worker.run_one(actor_id=grant.actor_user_id, job_id=grant.job_id)
+            if self.worker.observation_failed:
+                raise DelegationUnavailable("delegation_unavailable")
             if result in ("succeeded", "failed"):
                 return result if await self.repository.acknowledge(grant) else "lease_lost"
             if result not in ("not_claimed", "yielded", "lease_lost"):

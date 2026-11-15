@@ -1,6 +1,12 @@
 # Task6 — supervised text worker and trusted startup plan
 
-## Status, authority and evidence boundary
+## Current coordination update — N0 and local S1 accepted on 2026-11-15
+
+The separately authorized native **5f337cc** delegation packet passed all six phases and default1735passes/40prescribed skips; parent authenticated/validated results and independent review922406e2 found no issues. [Actual evidence and limits](../handoffs/Task6-native-5f337cc.md). **N0 is accepted.** The subsequent [S1 lifecycle/observation slice](../handoffs/Task6-supervisor-lifecycle.md) is also independently accepted **locally**: parent103passes/309phases/zero I/O/100joined executors; reviews203a5b83 ande8632244 found no issues. Implemented interfaces are recorded in [contracts](contracts.md#s1-local-lifecycle-and-committed-progress-observation), including pending-future admission and preserved terminal observation. These supersede the corresponding proposed S1 API names/fields below. Main may now explicitly assign **local S2** with its own API checkpoint and independent review. S2/S3 and supervision/dependency/restart acceptance remain unimplemented/unproved; numerical policies below remain candidates until their stated tests and native measurements. No deployment/capability authorization or new remote attempt follows.
+
+The source observations and candidate policies below retain their original e54c767 design baseline. Their statements about failed/unrun native attempts describe the **historical authoring state**, not the latest N0 status. Existing accepted packets and evidence remain immutable.
+
+## Original design status, authority and evidence boundary
 
 **LOCAL DESIGN ONLY — no runtime implementation, installation or capability approval.** Source inspected: `integration/notebooklm` at **e54c76720e5c74d028836f16eaf1a58737a21418**, including existing uncommitted status documentation. This document is the only new file in this assignment. Existing files, prepared archives and `.pi/` evidence are not changed. Main owns any later index/contract/plan updates and acceptance; E remains the sole runtime-role/BWS provisioning writer.
 

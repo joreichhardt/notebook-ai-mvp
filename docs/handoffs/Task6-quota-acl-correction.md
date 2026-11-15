@@ -1,5 +1,9 @@
 # Task6 — current-head quota ACL correction
 
+## Corrected snapshot native result: PASS
+
+The separately authorized single **5f337cc** attempt on2026-11-15 passed migration1/delegation23/concurrency1/worker20/dispatch21/focused37 and default **1735passes/40prescribed skips of1775selected**. This genuinely exercised the strengthened PostgreSQL ACL/grant-option assertions and exact current-head quota role equality. Parent authenticated/strictly validated results; independent review922406e2 found no issues. Same-SSH postchecks confirmed source273/namespace0/0/0/host credentials absent/permanent lock unchanged. [Actual evidence, hashes, cleanup provenance and remaining gates](Task6-native-5f337cc.md).40Nodeexclusions remain unrun. Historical failures below are retained and their actual causes remain UNKNOWN; passing the corrected snapshot does not retrospectively diagnose them.
+
 ## Historical native result: HOLD
 
 The single approved native attempt for `13fb8234a1750d5a70850644fb350b46d7327dc4` ran on kube1 on 2026-11-15, 13:24:00.428250Z–13:30:03.478494Z. All six phases passed with every setup/call/teardown: migration1, delegation23, concurrency1, worker20, dispatch21 and focused37. Worker case17 passed in this run; the previous setup failure's cause remains unknown.

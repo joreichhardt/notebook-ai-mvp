@@ -9,6 +9,9 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from hashlib import sha256
+from inspect import isasyncgenfunction, iscoroutine, iscoroutinefunction
+from threading import Lock
+from time import monotonic
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid5
 
@@ -30,6 +33,20 @@ from app.ingestion.text import TextChunk, TextRejected, chunks, decode_text
 
 class LeaseLost(RuntimeError):
     pass
+
+
+class ObservationUnavailable(RuntimeError):
+    """Fixed observer fault; never a retryable database or lease failure."""
+
+
+TextPhase = Literal["ingestion_claim", "pulse", "publish", "finish"]
+
+
+@dataclass(frozen=True)
+class TextProgress:
+    phase: TextPhase
+    started_at: float
+    committed_at: float | None
 
 
 class OriginalStore(Protocol):
@@ -59,9 +76,23 @@ class TextWorker:
         lease_seconds: int = 30,
         heartbeat_seconds: float = 5,
         operation_runner: OperationRunner | None = None,
+        progress_observer: Callable[[TextProgress], None] | None = None,
     ):
         if not 1 <= lease_seconds <= 300 or not 0 < heartbeat_seconds < lease_seconds / 2:
             raise ValueError("invalid bounded heartbeat/lease")
+        if progress_observer is not None and (
+            operation_runner is None
+            or not callable(progress_observer)
+            or iscoroutinefunction(progress_observer)
+            or iscoroutinefunction(progress_observer.__call__)
+            or isasyncgenfunction(progress_observer)
+            or isasyncgenfunction(progress_observer.__call__)
+        ):
+            raise ValueError("invalid_progress_observer")
+        self._progress_observer = progress_observer
+        self._progress_lock = Lock()
+        self._observation_failed = False
+        self._last_progress: TextProgress | None = None
         self.engine = engine
         # Optional delegation seam: serialize actual outstanding thread work even
         # after waiter cancellation. Existing verified-Identity path is unchanged.
@@ -72,6 +103,58 @@ class TextWorker:
         self.store_factory = store_factory or (
             lambda auth: SupabaseStorage(storage, authorize=auth)
         )
+
+    @property
+    def observation_failed(self) -> bool:
+        with self._progress_lock:
+            return self._observation_failed
+
+    @property
+    def last_progress(self) -> TextProgress | None:
+        with self._progress_lock:
+            return self._last_progress
+
+    def _observe(self, progress: TextProgress) -> None:
+        with self._progress_lock:
+            if self._observation_failed:
+                raise ObservationUnavailable("observation_unavailable")
+            # A late watchdog still executes its real authorization transaction,
+            # but cannot erase terminal truth while publication returns/joins.
+            if (
+                progress.phase == "pulse"
+                and self._last_progress is not None
+                and self._last_progress.phase in ("publish", "finish")
+                and self._last_progress.committed_at is not None
+            ):
+                return
+            self._last_progress = progress
+        observer = self._progress_observer
+        if observer is None:
+            return
+        try:
+            result = observer(progress)
+            if result is not None:
+                if iscoroutine(result):
+                    result.close()
+                raise ObservationUnavailable("observation_unavailable")
+        except (Exception, asyncio.CancelledError):
+            # Observer cancellation is NOT cancellation of the worker's waiter.
+            # Persist terminal truth before calling any external trusted observer.
+            with self._progress_lock:
+                self._observation_failed = True
+            if progress.committed_at is None or progress.phase not in ("publish", "finish"):
+                raise ObservationUnavailable("observation_unavailable") from None
+
+    def _start_progress(self, phase: TextPhase) -> float | None:
+        if self._progress_observer is None:
+            return None
+        started_at = monotonic()
+        self._observe(TextProgress(phase, started_at, None))
+        return started_at
+
+    def _commit_progress(self, phase: TextPhase, started_at: float | None) -> None:
+        if started_at is not None:
+            self._observe(TextProgress(phase, started_at, monotonic()))
 
     @contextmanager
     def _session(self, actor: UUID) -> Iterator[Session]:
@@ -99,6 +182,7 @@ class TextWorker:
 
     @retry_transaction
     def _claim(self, actor: UUID, job_id: UUID) -> tuple[UUID, Source] | None:
+        started_at = self._start_progress("ingestion_claim")
         with self._session(actor) as db:
             # Cooperating callers serialize per actor, across notebooks/processes.
             # Actor-private SELECT cannot establish notebook-wide cross-actor quotas.
@@ -139,29 +223,35 @@ class TextWorker:
                 version.media_type,
                 job.connection_id is not None or job.index_profile_id is not None,
             )
-            return token, source  # context exits and commits BEFORE any I/O
+        self._commit_progress("ingestion_claim", started_at)
+        return token, source  # context exits and commits BEFORE observation or I/O
 
     @retry_transaction
     def _pulse(self, actor: UUID, job: UUID, token: UUID) -> None:
+        started_at = self._start_progress("pulse")
         with self._session(actor) as db:
             if not heartbeat_job(db, job, token, lease_seconds=self.lease_seconds):
                 raise LeaseLost()
+        self._commit_progress("pulse", started_at)
 
     @retry_transaction
     def _finish(
         self, actor: UUID, job: UUID, token: UUID, status: Literal["failed", "cancelled"], code: str
     ) -> bool:
+        started_at = self._start_progress("finish")
         with self._session(actor) as db:
             if not lock_job_for_publish(db, job, token):
                 raise LeaseLost()
             if not finish_job(db, job, token, status=status, error_code=code):
                 raise LeaseLost()
-            return True
+        self._commit_progress("finish", started_at)
+        return True
 
     @retry_transaction
     def _publish(
         self, actor: UUID, job: UUID, token: UUID, source: Source, parts: tuple[TextChunk, ...]
     ) -> None:
+        started_at = self._start_progress("publish")
         with self._session(actor) as db:
             if not lock_job_for_publish(db, job, token):
                 raise LeaseLost()
@@ -186,6 +276,7 @@ class TextWorker:
             if not finish_job(db, job, token, status="succeeded"):
                 # Exception leaves context -> rollback ALL chunk writes.
                 raise LeaseLost()
+        self._commit_progress("publish", started_at)
 
     async def _run_operation(self, operation: Callable, *args):
         if self.operation_runner is not None:
@@ -194,6 +285,8 @@ class TextWorker:
 
     async def run_one(self, *, actor_id: UUID, job_id: UUID) -> str:
         """Trusted actor-bound seam; never registers a route or discovers other actors."""
+        if self.observation_failed:
+            raise ObservationUnavailable("observation_unavailable")
         try:
             claimed = await self._run_operation(self._claim, actor_id, job_id)
         except (LeaseLost, QuotaUnavailable):
