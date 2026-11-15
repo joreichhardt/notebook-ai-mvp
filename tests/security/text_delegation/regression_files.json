@@ -65,6 +65,7 @@
   "tests/security/seam_v3/test_database_boundaries.py",
   "tests/security/seam_v3/test_protocol_boundaries.py",
   "tests/security/text_delegation/test_concurrency_correction.py",
+  "tests/security/text_delegation/test_quota_acl.py",
   "tests/security/text_delegation/test_scheduler_concurrency.py",
   "tests/security/text_delegation/test_text_delegation_packet.py",
   "tests/security/text_delegation/test_worker_fixture.py",

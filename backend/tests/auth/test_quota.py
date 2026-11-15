@@ -205,6 +205,7 @@ def test_gate_and_mirror_privileges_are_exact(scope):
                     "notebook_document_lifecycle",
                     "notebook_upload_finalize",
                     "notebook_upload_io_owner",
+                    "notebook_text_dispatch_owner",
                 ]
             )
         ]

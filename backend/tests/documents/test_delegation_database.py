@@ -225,15 +225,34 @@ def test_acl_isolation_fixed_definer_and_no_raw_job_visibility_widening(delegati
         "ack_text_job(uuid,uuid,uuid,uuid,uuid,text,uuid)",
     ]
     with psycopg.connect(URL) as db:
-        assert db.execute(
-            "SELECT rolcanlogin,rolsuper,rolbypassrls FROM pg_roles "
-            "WHERE rolname='notebook_text_dispatch_owner'"
-        ).fetchone() == (False, False, False)
+        owner = "notebook_text_dispatch_owner"
+        scheduler = "notebook_text_scheduler"
+        for role in (owner, scheduler):
+            # Only the scheduler has temporary LOGIN in delegation_scene.
+            assert db.execute(
+                "SELECT rolcanlogin,rolsuper,rolbypassrls,rolinherit,rolcreaterole,"
+                "rolcreatedb,rolreplication FROM pg_catalog.pg_roles WHERE rolname=%s",
+                (role,),
+            ).fetchone() == (role == scheduler, False, False, False, False, False, False)
+            assert db.execute(
+                "SELECT count(*) FROM pg_catalog.pg_auth_members m "
+                "JOIN pg_catalog.pg_roles r ON r.oid=m.roleid OR r.oid=m.member "
+                "WHERE r.rolname=%s",
+                (role,),
+            ).fetchone() == (0,)
+            assert db.execute(
+                "SELECT has_schema_privilege(%s,'public','USAGE'),"
+                "has_schema_privilege(%s,'public','CREATE'),"
+                "has_function_privilege(%s,'public.quota_gate()','EXECUTE')",
+                (role, role, role),
+            ).fetchone() == (True, False, role == owner)
         for signature in signatures:
             assert db.execute(
-                "SELECT prosecdef,proconfig FROM pg_proc WHERE oid=%s::regprocedure",
+                "SELECT r.rolname,p.prosecdef,p.proconfig FROM pg_catalog.pg_proc p "
+                "JOIN pg_catalog.pg_roles r ON r.oid=p.proowner "
+                "WHERE p.oid=%s::regprocedure",
                 ("public." + signature,),
-            ).fetchone() == (True, ["search_path=pg_catalog"])
+            ).fetchone() == (owner, True, ["search_path=pg_catalog"])
             for role in ("notebook_app", "notebook_storage_io"):
                 assert db.execute(
                     "SELECT has_function_privilege(%s,%s,'EXECUTE')", (role, "public." + signature)
@@ -242,6 +261,69 @@ def test_acl_isolation_fixed_definer_and_no_raw_job_visibility_widening(delegati
             "SELECT has_function_privilege('notebook_text_scheduler',"
             "'public.text_dispatch_eligible()','EXECUTE')"
         ).fetchone() == (False,)
+        # Exact effective grants from 0007: table checks alone miss column grants.
+        reads = {
+            "text_job_tickets": "job_id intent_id actor_user_id workspace_id notebook_id "
+            "document_version_id purpose created_at delivery_token delivery_expires_at "
+            "available_at acknowledged_at",
+            "upload_intents": "id job_id actor_user_id workspace_id notebook_id version_id "
+            "document_id media_type state work_cancelled idempotency_key sha256 byte_count "
+            "storage_key",
+            "app_admissions": "user_id",
+            "workspace_members": "user_id workspace_id role",
+            "documents": "id current_version_id workspace_id notebook_id created_by deleted_at",
+            "document_versions": "id document_id workspace_id notebook_id media_type sha256 "
+            "byte_count storage_key",
+            "ingestion_jobs": "id actor_user_id workspace_id notebook_id document_version_id "
+            "idempotency_key connection_id index_profile_id status attempts lease_expires_at "
+            "available_at",
+        }
+        updates = ("delivery_token", "delivery_expires_at", "available_at", "acknowledged_at")
+        for role in (owner, scheduler):
+            for table, columns in reads.items():
+                ticket_owner = role == owner and table == "text_job_tickets"
+                relation = "public." + table
+                for privilege in (
+                    "SELECT",
+                    "INSERT",
+                    "UPDATE",
+                    "DELETE",
+                    "TRUNCATE",
+                    "REFERENCES",
+                    "TRIGGER",
+                ):
+                    assert db.execute(
+                        "SELECT has_table_privilege(%s,%s,%s)", (role, relation, privilege)
+                    ).fetchone() == (ticket_owner and privilege in ("SELECT", "INSERT"),)
+                    assert db.execute(
+                        "SELECT has_table_privilege(%s,%s,%s)",
+                        (role, relation, privilege + " WITH GRANT OPTION"),
+                    ).fetchone() == (False,)
+                for privilege in ("SELECT", "INSERT", "UPDATE", "REFERENCES"):
+                    expected = []
+                    if role == owner and (
+                        privilege == "SELECT" or (ticket_owner and privilege == "INSERT")
+                    ):
+                        expected = sorted(columns.split())
+                    elif ticket_owner and privilege == "UPDATE":
+                        expected = sorted(updates)
+                    assert db.execute(
+                        "SELECT a.attname FROM pg_catalog.pg_attribute a "
+                        "WHERE a.attrelid=%s::regclass AND a.attnum>0 AND NOT a.attisdropped "
+                        "AND has_column_privilege(%s,a.attrelid,a.attnum,%s) "
+                        "ORDER BY a.attname",
+                        (relation, role, privilege),
+                    ).fetchall() == [(column,) for column in expected]
+                    assert (
+                        db.execute(
+                            "SELECT a.attname FROM pg_catalog.pg_attribute a "
+                            "WHERE a.attrelid=%s::regclass AND a.attnum>0 AND NOT a.attisdropped "
+                            "AND has_column_privilege(%s,a.attrelid,a.attnum,%s) "
+                            "ORDER BY a.attname",
+                            (relation, role, privilege + " WITH GRANT OPTION"),
+                        ).fetchall()
+                        == []
+                    )
     with c["actor_tx"](c["actor"]) as db:
         assert not db.execute(
             text("SELECT pg_has_role(current_user,'notebook_text_scheduler','MEMBER')")
