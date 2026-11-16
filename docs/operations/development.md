@@ -6,4 +6,6 @@ Pro Schreibbereich ein verantwortlicher Agent; Agenten verwenden Pi. Der Hauptag
 
 Verhalten und Schnittstellen werden zusammen mit der Implementierung dokumentiert.
 
+Gezielte Python-Prüfungen: `uv run python -m pytest <Testpfad>`. Container- und Datenbanktests auf kube1 ausführen.
+
 [Arbeitsanweisungen](../../AGENTS.md) · [Zuständigkeiten](../../multi-agent.md)
