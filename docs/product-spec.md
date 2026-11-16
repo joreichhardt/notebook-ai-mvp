@@ -4,17 +4,15 @@ Du bist der verantwortliche Software- und Deployment-Agent. Entwickle eine funkt
 
 Arbeitsweise, Homeserver-Kontext und verbindliche Secret-Regeln: siehe [AGENTS.md](../AGENTS.md).
 
-**Bezeichnung: MVP (Minimum Viable Product).** Ziel ist eine tatsächlich nutzbare erste Produktversion, nicht nur ein Machbarkeitsnachweis. Der Login-/Workspace-Meilenstein ist eine Zwischenstufe, noch nicht das vollständige MVP. Die Bezeichnung ändert keine Funktionen, Sicherheitsanforderungen, Abnahmekriterien oder Freischaltungsgrenzen. Das App-Repository wird ausdrücklich in `notebook-ai-mvp` umbenannt und öffentlich bereitgestellt; das Deployment-Repository bleibt privat. Andere technische `poc`-Kennungen und historische Nachweise bleiben unverändert.
-
 ## 1. Festgelegter Rahmen
 
 - Backend und Hintergrundverarbeitung: Python, FastAPI, Pydantic, SQLAlchemy und Alembic.
 - Frontend: React mit TypeScript; übersichtliche NotebookLM-ähnliche Bedienung, eigenes Erscheinungsbild ohne übernommene Google-Logos oder Assets.
-- Datenbank und Authentifizierung: lokale, selbst gehostete Supabase-Instanz mit Docker auf kube1. Keine Supabase-Cloud als Produktionsabhängigkeit.
+- Datenbank und Authentifizierung: lokale, selbst gehostete Supabase-Instanz mit Rootless Podman auf kube1. Keine Supabase-Cloud als Produktionsabhängigkeit.
 - Dateispeicherung für das erste MVP: persistentes, privates lokales Dateiverzeichnis des Backends; bei Containerbetrieb ein persistentes Volume. Eine Cloud-Storage-Anbindung ist dafür keine Voraussetzung. Siehe die folgende MVP-Präzisierung.
 - PostgreSQL mit pgvector, Volltextsuche und zusätzlichem Wissensgraph in relationalen Tabellen.
 - Anwendung und Worker ebenfalls in Containern auf kube1.
-- Deployment über GitHub Actions auf kube1, reproduzierbar mit Docker Compose. Der Hostname kube1 bedeutet nicht automatisch Kubernetes; führe ohne ausdrücklichen Grund keine Kubernetes-Migration durch.
+- Deployment über GitHub Actions auf kube1, reproduzierbar mit Rootless Podman und gepinntem Compose-Provider. Der Hostname kube1 bedeutet nicht automatisch Kubernetes; führe ohne ausdrücklichen Grund keine Kubernetes-Migration durch.
 - Öffentliche Adresse: https://note.yokoma.de über Cloudflare Tunnel.
 - Nutzerregistrierung ausschließlich nach Einladung, mit E-Mail/Passwort oder Google-Konto.
 - Jeder zugelassene Nutzer erhält einen eigenen privaten Workspace. Workspaces können mit anderen Nutzern geteilt werden.
@@ -34,7 +32,7 @@ Autorisierung und private Speicherung bleiben erforderlich: Das Backend prüft d
 
 ## 2. Bestand zuerst prüfen
 
-Prüfe das bestehende Repository, Projektanweisungen und den autorisierten Zugang zu kube1. Ermittle Docker-/Compose-Versionen, freie Ressourcen, belegte Ports, bestehende Supabase-Dienste, Reverse-Proxys, Cloudflare-Tunnel, GitHub-Runner und vorhandene Deployment-Verfahren. Verwende bestehende Komponenten, wenn geeignet. Verändere oder ersetze keine fremden Dienste und überschreibe keine fremden Secrets oder DNS-Einträge.
+Prüfe das bestehende Repository, Projektanweisungen und den autorisierten Zugang zu kube1. Ermittle Podman-/Compose-Versionen, freie Ressourcen, belegte Ports, bestehende Supabase-Dienste, Reverse-Proxys, Cloudflare-Tunnel, GitHub-Runner und vorhandene Deployment-Verfahren. Verwende bestehende Komponenten, wenn geeignet. Verändere oder ersetze keine fremden Dienste und überschreibe keine fremden Secrets oder DNS-Einträge.
 
 Dokumentiere kurz die festgestellte Ausgangslage und Architekturentscheidungen. Beginne anschließend mit der Implementierung. Arbeite unabhängig an allem weiter, was keine fehlenden Zugangsdaten benötigt. Frage gebündelt nur nach tatsächlich fehlenden Informationen, beispielsweise LLM-Zugang, SMTP und Google-OAuth-Credentials. Fehlende externe Konfiguration ist transparent als offen zu kennzeichnen, niemals durch einen angeblich erfolgreichen Test zu ersetzen.
 
@@ -141,7 +139,7 @@ Indexierung und Extraktion außerhalb des HTTP-Requests über einen separaten Py
 
 ## 7. Container, Netzwerk und Cloudflare
 
-Nutze den offiziellen Self-Hosting-Docker-Stack von Supabase als gepflegte, gepinnte Grundlage und versioniere projektspezifische Anpassungen nachvollziehbar. Kein supabase start als dauerhafte Produktionsinstallation. Halte Anwendungs-Migrationen getrennt von Supabase-internen Schemata.
+Nutze die offiziellen Self-Hosting-Images und Compose-Konfiguration von Supabase mit Podman als gepflegte, gepinnte Grundlage und versioniere projektspezifische Anpassungen nachvollziehbar. Kein supabase start als dauerhafte Produktionsinstallation. Halte Anwendungs-Migrationen getrennt von Supabase-internen Schemata.
 
 Container: Frontend/Reverse-Proxy, FastAPI, Worker, Supabase-Dienste und optional cloudflared, falls nicht bereits vorhanden. API und Worker möglichst aus demselben Image mit unterschiedlichen Startbefehlen. Nicht privilegiert laufen lassen, persistente Volumes, Healthchecks, Restart-Regeln, Ressourcenlimits und geordnetes Herunterfahren einrichten.
 
@@ -177,10 +175,10 @@ Release/Deployment:
 - Tags mit Commit-SHA und Deployment mit unveränderlichem Image-Digest; kein Produktions-Rollout ausschließlich über latest.
 - Tests und Build müssen vor Deployment erfolgreich sein. Least-Privilege-GITHUB_TOKEN und Actions auf geprüfte Commit-SHAs pinnen; Updates dokumentieren.
 - Prüfe vorhandene Runner und die tatsächliche Erreichbarkeit von kube1. Bevorzuge einen bestehenden vertrauenswürdigen Deployment-Runner mit passendem privaten Netzwerkzugang. Falls erforderlich, kann ein dedizierter Self-hosted-Runner mit ausgehendem GitHub-Zugang genutzt werden. Das ist keine Voraussetzung, einen neuen öffentlichen SSH-Port zu öffnen.
-- Ein Self-hosted-Runner auf kube1 darf ausschließlich vertrauenswürdige Deployment-Jobs ausführen, niemals fremde PRs. Docker-Socket-Zugriff entspricht weitreichenden Hostrechten; Runner und Workflow entsprechend isolieren. Falls diese Isolation im vorhandenen Repository nicht gewährleistet werden kann, einen separaten vertrauenswürdigen Deployment-Weg wählen.
+- Ein Self-hosted-Runner auf kube1 darf ausschließlich vertrauenswürdige Deployment-Jobs ausführen, niemals fremde PRs. Zugriff auf einen Containersocket gewährt weitreichende Rechte des Runtime-Kontos; Runner und Workflow entsprechend isolieren. Falls diese Isolation im vorhandenen Repository nicht gewährleistet werden kann, einen separaten vertrauenswürdigen Deployment-Weg wählen.
 - Alternative nur bei vorhandenem sicheren Zugang: SSH-Deployment mit eingeschränktem Deploy-Benutzer, geprüftem Host-Key und kontrolliertem Skript. Kein StrictHostKeyChecking=no und kein ungeprüftes Vertrauen in einen erst während des Deployments abgefragten Host-Key.
 - Produktions-Secrets einschließlich Supabase-Startkonfiguration werden auf kube1 über die bws CLI aus Bitwarden Secrets Manager bezogen und gemäß AGENTS.md geschützt bereitgestellt. Kein vollständiges Produktions-.env im Repository, in Build-Args oder in Logs.
-- GHCR-Pull-Rechte für kube1 minimal vergeben; Docker-Login ohne Tokenausgabe und ohne dauerhafte Speicherung in ungeschützten Pfaden.
+- GHCR-Pull-Rechte für kube1 minimal vergeben; Podman-Login über Standardeingabe, ohne Tokenausgabe und ohne dauerhafte Speicherung in ungeschützten Pfaden.
 - Deployments mit GitHub-Concurrency und serverseitigem Lock serialisieren. Laufende Deployments nicht mitten in Migrationen abbrechen.
 - Preflight: Speicherplatz, Konfiguration, Erreichbarkeit und Backup-Zustand prüfen. Images zuerst herunterladen, Schema-Migrationen einmalig ausführen, Dienste aktualisieren und Readiness prüfen.
 - Supabase nicht bei jedem App-Release automatisch upgraden oder Datenbank-Volumes neu erzeugen. Plattform-Updates als separaten kontrollierten Vorgang behandeln.
@@ -229,11 +227,11 @@ Diese Anforderungen konkretisieren alle vorherigen Abschnitte. Sicherheit ist ei
 
 ### Rootless-Betrieb und minimale Images
 
-- Unterscheide Non-root im Container und Rootless Docker auf dem Host. Eigene Images benötigen eine feste numerische UID/GID ungleich 0 und USER im Dockerfile. Startskripte dürfen kein Root benötigen. Verwende unprivilegierte Ports.
-- Ziel ist zusätzlich ein dedizierter Rootless-Docker-Daemon auf kube1. Prüfe systemd-User-Service, Neustart, Volume-Rechte, Netzwerk und tatsächlich wirksame cgroup-Limits. Vorhandene fremde Docker-Dienste nicht unkontrolliert umstellen. Non-root im Image allein erfüllt Rootless nicht.
+- Unterscheide Non-root im Container und Rootless Podman auf dem Host. Eigene Images benötigen eine feste numerische UID/GID ungleich 0 und USER im Dockerfile. Startskripte dürfen kein Root benötigen. Verwende unprivilegierte Ports.
+- Ziel ist zusätzlich Rootless Podman unter einem dedizierten Appkonto auf kube1. Prüfe systemd-User-Service, Neustart, Volume-Rechte, Netzwerk und tatsächlich wirksame cgroup-Limits. Vorhandene fremde Docker-Dienste nicht unkontrolliert umstellen. Non-root im Image allein erfüllt Rootless nicht.
 - Prüfe Supabase-Dienste einzeln auf Kompatibilität. Keine pauschale UID erzwingen, die Herstellerimages oder Dateninitialisierung bricht. Notwendige Ausnahmen mit Dienst, Ursache, minimalen Rechten und Kompensationen dokumentieren. Rootful/privileged nicht stillschweigend als Ersatz einsetzen; ungelöste Abweichungen als Blocker melden.
 - Eigene Dienste mit read_only: true, cap_drop: [ALL], no-new-privileges, Standard-Seccomp und vorhandenem AppArmor/SELinux betreiben. Nur erforderliche Schreibpfade als begrenztes tmpfs oder gezielte Volumes. Kein privileged, Host-PID/IPC/Netzwerk oder deaktiviertes Sandbox-Profil. CPU, RAM, PIDs, Dateigrößen und temporären Speicher begrenzen und Wirksamkeit prüfen.
-- Kein Docker-Socket in Anwendung, Parser oder allgemeinen Workern. Auch ein read-only Socket-Mount bietet keine verlässlich lesende Docker-API. Rootless-Deployment-Zugriff erlaubt weiterhin Kontrolle über alle Container und Daten dieses Daemons; Runner entsprechend isolieren.
+- Kein Containersocket in Anwendung, Parser oder allgemeinen Workern. Auch ein read-only Socket-Mount begrenzt die API nicht auf Lesen. Rootless-Deployment-Zugriff erlaubt weiterhin Kontrolle über alle Container und Daten des Runtime-Kontos; Runner entsprechend isolieren.
 - Multi-stage Builds und gepflegte, kompatible Basisimages nach Digest. Nur Runtime-Abhängigkeiten und Build-Artefakte übernehmen. Keine Compiler, Header, Git-/SSH-Clients, Development-Pakete, Tests oder Paket-Caches im Produktionsimage.
 - Distroless bevorzugen, wenn die erforderlichen Python-Bibliotheken und der Betriebsweg funktionieren; alternativ ein begründet minimales gepflegtes Image. Keine Shell oder Paketmanager ohne konkrete Laufzeitnotwendigkeit. Kleine Größe allein beweist keine Sicherheit.
 - Frontend statisch bauen, kein Node-Entwicklungsserver in Produktion. Python ohne Debugger/Hot Reload. Healthchecks ohne zusätzlich installierte Diagnosepakete. Diagnose über getrennte kontrollierte Werkzeuge.
@@ -254,7 +252,7 @@ Diese Anforderungen konkretisieren alle vorherigen Abschnitte. Sicherheit ist ei
 ### Uploads, Parser, Browser und Modellzugriff
 
 - Dateityp anhand Inhalt und Allowlist prüfen, zufällige Objekt-IDs verwenden. Dateinamen nicht als Pfade übernehmen. Path Traversal, Symlinks, Dekompressionsbomben und unbeschränkte Datei-/Seiten-/Textmengen verhindern.
-- PDF-/OCR-Parsing isoliert und ohne Netzwerk, DB-/Storage-/LLM-Credentials ausführen. Nur Eingabe und begrenzte Ausgabe zugänglich machen. Laufzeit und Ressourcen hart begrenzen. Der vertrauenswürdige Worker übernimmt I/O und Modellaufrufe. Separates minimales Parser-Image ist trotz gemeinsamer API-/Worker-Codebasis erwünscht. Kein Docker-Socket als allgemeine Parser-Steuerung.
+- PDF-/OCR-Parsing isoliert und ohne Netzwerk, DB-/Storage-/LLM-Credentials ausführen. Nur Eingabe und begrenzte Ausgabe zugänglich machen. Laufzeit und Ressourcen hart begrenzen. Der vertrauenswürdige Worker übernimmt I/O und Modellaufrufe. Separates minimales Parser-Image ist trotz gemeinsamer API-/Worker-Codebasis erwünscht. Kein Containersocket als allgemeine Parser-Steuerung.
 - SQL parametrisieren; keine Shell-Kommandos aus Datei-/Nutzernamen oder Modelltext. Keine Ausführung von modellgeneriertem SQL, Python oder Shell. RAG erhält keine schreibenden Infrastrukturwerkzeuge.
 - Markdown und Modellantworten sicher rendern: kein ungeprüftes HTML, keine gefährlichen URL-Schemata, Skripte oder aktiven PDF-Inhalte. CSP, nosniff und restriktive Referrer-/Permissions-Policy setzen. HSTS auf bestätigte HTTPS-Domain begrenzen.
 - Nutzer dürfen persönliche Modellzugänge nur zu administrativ freigegebenen Provider-Endpunkten konfigurieren; keine beliebigen Provider-Basis-URLs. Bei späterem URL-Import SSRF-Schutz einschließlich DNS/IP-Prüfung und aller Redirects; private, Loopback-, Link-local- und Metadatenziele sperren. Interne Modellziele ausschließlich administrativ freigeben.
@@ -275,15 +273,15 @@ Diese Anforderungen konkretisieren alle vorherigen Abschnitte. Sicherheit ist ei
 
 ### Zusätzliche Abnahme und Liefergegenstände
 
-- Container zur Laufzeit auf tatsächliche UID/GID, Capabilities, Read-only-Dateisystem, erlaubte Schreibpfade und fehlenden Docker-Socket prüfen; Rootless-Daemon und Ressourcenbegrenzungen nachweisen.
+- Container zur Laufzeit auf tatsächliche UID/GID, Capabilities, Read-only-Dateisystem, erlaubte Schreibpfade und fehlenden Containersocket prüfen; Rootless-Laufzeit und Ressourcenbegrenzungen nachweisen.
 - Negative Tests für schädliche Uploads, Parser-Timeouts, XSS, Quoten, direkten Auth-Bypass, Account-Linking, RLS-Hilfsfunktionen und konkurrierende Einladungsannahme durchführen.
 - Security-Gate mit einer kontrollierten Test-Fixture auf Blockierung prüfen. Ein absichtlich unsicheres Testimage niemals deployen. Trivy-Ausfall darf keine Freigabe ergeben.
 - SECURITY.md, Threat Model, Image-/Dienst-Härtungsmatrix, SBOM/Scanberichte, zeitlich begrenzte Ausnahmen und Update-/Incident-/Recovery-Anleitung liefern.
 - Abschließend getrennt berichten: implementiert, tatsächlich getestet, offen/blockiert. Keine Aussage „rootless“ ohne Runtime-Nachweis und keine Aussage „sicher“ allein aufgrund eines grünen Scans.
 
 Referenzen zur versionsbezogenen Prüfung:
-- https://docs.docker.com/engine/security/rootless/
-- https://docs.docker.com/engine/security/
+- https://docs.podman.io/en/latest/markdown/podman.1.html
+- https://docs.podman.io/en/latest/markdown/podman-compose.1.html
 - https://trivy.dev/docs/
 
 ## 12. KI-Anbieter in den Einstellungen: Codex, Claude und lokale LLMs
@@ -312,7 +310,7 @@ Diese Funktion gehört verbindlich zum Produktumfang und muss über die Oberflä
    - OpenAI-Modell-API und tatsächliche Codex-Integration in UI und Implementierung unterscheiden. Ein OpenAI-API-Key-Formular allein darf nicht als fertige Codex-Anbindung bezeichnet werden.
    - Implementiere einen separaten Codex-Adapter über eine zum Implementierungszeitpunkt offiziell unterstützte Schnittstelle, beispielsweise Codex App Server. Prüfe aktuelle Authentifizierung, verfügbare Modelle, Voraussetzungen und erlaubten Mehrnutzerbetrieb anhand offizieller Dokumentation.
    - Falls ChatGPT-Anmeldung angeboten wird, nur den dokumentierten autorisierten OAuth-Ablauf mit erforderlicher App-Registrierung, Scopes, Refresh und Widerruf verwenden. Keine Browser-Cookies oder auth.json-Dateien extrahieren und weitergeben. Verfügbarkeit von Abo-Nutzung nicht voraussetzen.
-   - SDK-/App-Server-Sitzungen und Thread-IDs pro Nutzer und Unterhaltung isolieren. Kein geteiltes Home-Verzeichnis mit Auth-/Chat-Daten. Adapter ohne Hostdateien, Docker-Socket, Shell-, MCP- oder Infrastrukturwerkzeuge betreiben. Nur autorisierten RAG-Kontext übergeben. Können die unnötigen Agentenfähigkeiten nicht zuverlässig abgeschaltet werden, die Anbindung als blockiert melden und keine unsichere Freigabe vornehmen.
+   - SDK-/App-Server-Sitzungen und Thread-IDs pro Nutzer und Unterhaltung isolieren. Kein geteiltes Home-Verzeichnis mit Auth-/Chat-Daten. Adapter ohne Hostdateien, Containersocket, Shell-, MCP- oder Infrastrukturwerkzeuge betreiben. Nur autorisierten RAG-Kontext übergeben. Können die unnötigen Agentenfähigkeiten nicht zuverlässig abgeschaltet werden, die Anbindung als blockiert melden und keine unsichere Freigabe vornehmen.
    - App Server bleibt ein interner gekapselter Dienst; Python/FastAPI bleibt die Anwendung. Diese ausdrücklich angeforderte Integration ist eine begründete Ausnahme von einem rein Python-basierten Runtime-Umfang.
    - Fehlende Freischaltung oder Credentials transparent zeigen; Adaptertests mit Protokoll-Fixtures plus echte Abnahme, sobald Zugang verfügbar ist. Keine angeblich produktive Unterstützung ohne erfolgreichen Lauf.
 

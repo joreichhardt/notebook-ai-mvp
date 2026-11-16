@@ -1,57 +1,26 @@
-# Notebook auf kube1 · MVP
+# Notebook AI
 
-Private Notebooks mit nachvollziehbaren Quellenantworten. Python/FastAPI, React/TypeScript und selbst gehostetes Supabase; Secrets aus Bitwarden Secrets Manager über `bws`.
+Private Notebooks, eigene Quellen und KI-Antworten mit Quellenbelegen.
 
-Quellrepository (öffentlich): [joreichhardt/notebook-ai-mvp](https://github.com/joreichhardt/notebook-ai-mvp). Das separate Deployment-Repository bleibt privat. Verfügbare Commits und tatsächliche CI-Ergebnisse sind im GitHub-Repository einsehbar; ein öffentliches Repository allein ist keine Betriebsfreigabe.
+## Stand
 
-Dokumentation: [Übersicht und Einstieg](docs/README.md).
+Login und Workspace-Verwaltung sind vorbereitet. Der öffentliche Betrieb ist noch nicht freigeschaltet. Als Nächstes folgt Upload → Textverarbeitung → Anzeige mit persistentem lokalem Speicher. Cloud-Speicher kommt später.
 
-## Entwicklungsstand
+## Technik
 
-**Ziel ist ein MVP (Minimum Viable Product):** eine tatsächlich nutzbare erste Produktversion, kein reiner Machbarkeitsnachweis. Der aktuelle Login-/Workspace-Stand ist eine Zwischenstufe, noch nicht das vollständige MVP. Die Umbenennung ändert weder Funktionsumfang noch Sicherheits- und Abnahmekriterien und ist keine Betriebsfreigabe.
+- Backend: Python/FastAPI
+- Frontend: React/TypeScript
+- Datenbank und Anmeldung: selbst gehostetes Supabase/PostgreSQL
+- Secrets: Bitwarden Secrets Manager
+- Betrieb: lokaler Testserver mit Rootless Podman hinter Cloudflare
 
-**Aktuelle MVP-Priorität:** benutzbarer Upload → Textverarbeitung → Anzeige mit persistentem privatem **lokalem Dateispeicher**. Ein austauschbarer **Cloud-/Object-Storage-Adapter**, etwa über eine S3-kompatible API, ist ein späteres Ziel und keine Voraussetzung für das MVP. Diese Speicheranpassung ist geplant, noch nicht implementiert oder freigeschaltet; zusätzliche Supervisor-/Produktionshärtung ist vorerst zurückgestellt. [Präzisierung der Produktspezifikation](docs/product-spec.md#aktuelle-mvp-präzisierung-lokaler-speicher-später-cloud-storage-adapter).
-
-Das App-Repository heißt `notebook-ai-mvp`; Repository- und Image-Verweise werden entsprechend angepasst. Andere bestehende technische Kennungen mit `poc` (Secret-Projekt-, Datei- und API-Namen) bleiben vorerst unverändert, damit Verweise und Deployment-Verträge nicht brechen. Historische Prüfberichte behalten ihre damalige Bezeichnung.
-
-Implementiert sind Authentifizierung, Workspace-/Notebook-Verwaltung, Einladungsannahme für bestätigte Konten, Mitgliederrollen und persönliche Anbieter-Verbindungen mit Modellprüfung. Zusätzlich sind die Datenbasis für Dokumentversionen, Chunks und abgeschirmte Jobs (Migrationen 0003/0004), dauerhafte Upload-Intents mit geschützter Finalisierung/Cleanup und sicherer Statusprojektion (0005) sowie interne Streaming-/Embedding-Adapter mit persönlicher Ausführungsprüfung integriert. Auch der begrenzte TXT-/Markdown-Service mit privatem Storage-Adapter, sicheren Status-DTOs und gefencetem Worker ist inzwischen integriert und unter synthetischen Storagebedingungen geprüft. Diese Bausteine sind noch nicht als HTTP-/UI-Upload oder Chat freigeschaltet. Dies ist noch kein produktionsfertiger NotebookLM-Klon. HTTP-/UI-Upload, belegte Modellantworten, Graphretrieval und die Registrierung neuer Konten sind noch offen; die Quotenmigration0006 ist integriert, während produktive Storage-/Dispatch- und Release-Gates offen bleiben. Persönliche Anbieter-Verbindungen benötigen eine konfigurierte Bitwarden-Instanz und freigegebene Endpoints. Es gibt keine fingierten Antworten oder Produktions-Auth-Mocks.
-
-Die lesende Quellenstatus-Oberfläche ist integriert und anhand synthetischer Komponenten-/Transporttests geprüft (33 Tests und TypeScript auf kube1). Sie bleibt hinter der unveränderten Dokument-Capability; echte API-/Storage-/Upload-/Chat-Flows sind damit nicht freigeschaltet. Details: [D3a-Handoff](docs/handoffs/D3a.md). Quellen-GET und begrenzter TXT/MD-Upload-POST sind jetzt in der ASGI-App registriert, aber standardmäßig geschlossen; Storage-I/O ist nicht automatisch konfiguriert. Main prüfte das gemeinsame Wiring mit 216 fokussierten Tests und 20 expliziten DB-Skips. Das ersetzt keine echte Upload-/Storage-Abnahme. [Upload-Vertrag und Nachweise](docs/handoffs/B5.md).
-
-Die Modellprüfung revalidiert persönliche Verbindungen nach dem Secret-Abruf und während der Discovery; Metadaten werden in einer frischen Kurztransaktion publiziert. Die begrenzte F4-Abnahme auf kube1 ist bestätigt: 30 echte PostgreSQL-/ASGI-HTTP-Parallelitätsfälle und 135 fokussierte Regressionstests ohne Fehler oder Skips; externe Auth-/Secret-/Providerantworten bleiben synthetisch. Kein Produktions-/Liveprovider-Nachweis. A5s nativer DB-/Phase-A-/ACL-Nachweis ist auf `88ad94d` bestanden und unabhängig geprüft: 14 Relationen, 26 Funktionen, 3 Actor-Rollen; Cleanup 0/0/0. Main lokal 64 Tests und 1 expliziter DB-Skip. Das DB-Problem ist gelöst; echte Storage-HTTP-/Upload- und Quellenstatus-Prüfungen werden parallel weitergeführt, ohne Produktions-/Capabilityfreischaltung. [Prüfstand und nächste Gates](docs/orchestration/plan.md).
-
-Task6: Die dauerhafte TXT-/Markdown-Delegation (0007) ist auf dem unveränderlichen Snapshot `5f337cc` nativ geprüft. Die anschließende Consumer-eigene Renewal-/Lifecycle-Logik ist **nur lokal** unabhängig abgenommen: 190 Tests, keine externe I/O. Supervisor, frische Worker-Readiness, vertrauenswürdiger Startup und native Ausfall-/Neustart-/Storage-Nachweise bleiben offen; keine Capability- oder Deploymentfreigabe. [S2a-Vertrag und Evidenz](docs/handoffs/Task6-consumer-renewal.md).
-
-Verbindliche Anforderungen: [agent.md](agent.md), [AGENTS.md](AGENTS.md), [Multi-Agent-Arbeit](multi-agent.md), [Produktspezifikation](docs/product-spec.md). Aktueller Stand: [Plan](docs/orchestration/plan.md) und [Integrationslog](docs/orchestration/integration-log.md).
-
-## Backend lokal starten
-
-Python 3.12+ und uv installieren, dann:
+## Backend starten
 
 ```sh
 uv sync --frozen
 uv run uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
-`GET /api/health/live` bestätigt nur, dass der API-Prozess läuft. Es ist kein Nachweis für Datenbank, Supabase oder produktive Bereitschaft. Ohne konfigurierte Dienste bleiben davon abhängige Funktionen nicht verfügbar.
+Konfiguration: [.env.example](.env.example). Anmeldung benötigt konfigurierte Dienste und HTTPS.
 
-```sh
-uv run pytest
-uv run ruff check --no-cache backend tests/security
-```
-
-Konfiguration: [.env.example](.env.example). Umgebungsvariablen explizit an den Prozess übergeben; diese Vorlage enthält keine Zugangsdaten. Auth-Cookies sind Secure; integrierte Login-Tests und lokale Nutzung benötigen einen passenden HTTPS-Ursprung. Keine Cookie-Sicherheitsabsenkung als Produktions-Fallback.
-
-## Betrieb
-
-Produktionsziel: `https://note.yokoma.de`, Docker Compose auf kube1. Bestehende Hostdienste bleiben unverändert. Der [lesende Infrastrukturcheck](docs/architecture/inventory.md) dokumentiert offene Voraussetzungen. Kein Git-Remote oder GitHub-Workflow-Lauf ist bisher eingerichtet bzw. nachgewiesen. Ein Release setzt die Security- und Abnahmekriterien der Produktspezifikation voraus.
-
-## Architektur
-
-[Verträge](docs/architecture/contracts.md) · [Entscheidungen](docs/architecture/decisions.md). Normale Nutzerabfragen laufen mit eingeschränkter Datenbankrolle und transaktionslokalem Nutzerkontext. Supabase-Identität allein gewährt keinen App-Zugang. Persönliche Modell-Credentials bleiben strikt nutzergebunden; die Datenbank speichert nur Referenzen.
-
-## Container-Tests auf kube1
-
-Docker-Builds und Compose-Teststacks laufen ausschließlich auf **kube1**, nicht auf dem Laptop. Anleitung inklusive isoliertem Testprojekt und SSH-Zugriff: [kube1-Testbetrieb](docs/operations/testing-kube1.md).
-
-Der Foundation-Teststack enthält API und statisches Frontend, noch kein Supabase. Er prüft Start, Darstellung und sicheres Verhalten bei fehlender Konfiguration; echte Anmeldung benötigt Supabase, Zulassung und HTTPS. Kein Produktionsrollout. Frontend-Quellcode: `frontend/`.
+[Dokumentation](docs/README.md)

@@ -16,7 +16,7 @@ Unveränderliche Leitplanken
 
 
 
-Python/FastAPI, lokale Supabase-Docker-Instanz, pgvector plus belegter Wissensgraph, React/TypeScript.
+Python/FastAPI, lokale Supabase-Instanz mit Rootless Podman, pgvector plus belegter Wissensgraph, React/TypeScript.
 
 
 
@@ -32,7 +32,7 @@ Jeder Nutzer verbindet seine eigenen Modelle. Keine geteilten persönlichen Cred
 
 
 
-Non-root-Images, Rootless-Docker-Ziel, minimale Runtime, Trivy-Gates und isoliertes Parsing gemäß agent.md.
+Non-root-Images, Rootless Podman, minimale Runtime, Trivy-Gates und isoliertes Parsing gemäß agent.md.
 
 
 
@@ -265,7 +265,7 @@ Bei knappen Ressourcen vollständige Supabase-Integrationstests mit einem vom Ha
 
 
 
-Tests grundsätzlich in Entwicklungs-/Testumgebung; Teilagenten wenden keine Migrationen auf produktive Daten an. Kein docker compose down -v gegen einen fremden oder produktiven Stack.
+Tests grundsätzlich in Entwicklungs-/Testumgebung; Teilagenten wenden keine Migrationen auf produktive Daten an. Kein Compose down -v gegen einen fremden oder produktiven Stack.
 
 Schnittstellen vor Parallelstart
 
@@ -376,7 +376,7 @@ Review/Fixes beziehen sich immer auf konkrete SHAs. Ändert sich der Kandidat, b
 
 
 
-Hauptagent nimmt produktionsreife Änderungen erst nach vollständigen Gates auf main. Wenn ein Push auf main automatisch deployt, ist dieser Push Teil des kontrollierten Releases; keine Zwischenstände auf main.
+Hauptagent veröffentlicht nur geprüfte Source-Commits auf main. Der öffentliche Source-Push deployt nicht auf kube1; Produktionsfreigabe erfolgt getrennt über die private Deployment-Lane nach vollständigen Gates.
 
 Deployment und Abgabe
 
