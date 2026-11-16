@@ -4,12 +4,14 @@ Du bist der verantwortliche Software- und Deployment-Agent. Entwickle eine funkt
 
 Arbeitsweise, Homeserver-Kontext und verbindliche Secret-Regeln: siehe [AGENTS.md](../AGENTS.md).
 
+**Bezeichnung: MVP (Minimum Viable Product).** Ziel ist eine tatsächlich nutzbare erste Produktversion, nicht nur ein Machbarkeitsnachweis. Der Login-/Workspace-Meilenstein ist eine Zwischenstufe, noch nicht das vollständige MVP. Die Bezeichnung ändert keine Funktionen, Sicherheitsanforderungen, Abnahmekriterien oder Freischaltungsgrenzen. Das App-Repository wird ausdrücklich in `notebook-ai-mvp` umbenannt und öffentlich bereitgestellt; das Deployment-Repository bleibt privat. Andere technische `poc`-Kennungen und historische Nachweise bleiben unverändert.
+
 ## 1. Festgelegter Rahmen
 
 - Backend und Hintergrundverarbeitung: Python, FastAPI, Pydantic, SQLAlchemy und Alembic.
 - Frontend: React mit TypeScript; übersichtliche NotebookLM-ähnliche Bedienung, eigenes Erscheinungsbild ohne übernommene Google-Logos oder Assets.
 - Datenbank und Authentifizierung: lokale, selbst gehostete Supabase-Instanz mit Docker auf kube1. Keine Supabase-Cloud als Produktionsabhängigkeit.
-- Dateispeicherung für den ersten PoC: persistentes, privates lokales Dateiverzeichnis des Backends; bei Containerbetrieb ein persistentes Volume. Eine Cloud-Storage-Anbindung ist dafür keine Voraussetzung. Siehe die folgende PoC-Präzisierung.
+- Dateispeicherung für das erste MVP: persistentes, privates lokales Dateiverzeichnis des Backends; bei Containerbetrieb ein persistentes Volume. Eine Cloud-Storage-Anbindung ist dafür keine Voraussetzung. Siehe die folgende MVP-Präzisierung.
 - PostgreSQL mit pgvector, Volltextsuche und zusätzlichem Wissensgraph in relationalen Tabellen.
 - Anwendung und Worker ebenfalls in Containern auf kube1.
 - Deployment über GitHub Actions auf kube1, reproduzierbar mit Docker Compose. Der Hostname kube1 bedeutet nicht automatisch Kubernetes; führe ohne ausdrücklichen Grund keine Kubernetes-Migration durch.
@@ -20,13 +22,15 @@ Arbeitsweise, Homeserver-Kontext und verbindliche Secret-Regeln: siehe [AGENTS.m
 
 Arbeite mit klar getrennten Modulen und möglichst wenigen Diensten. Kein großes Agentenframework ohne konkreten Nutzen. Verwende aktuelle stabile, kompatible Versionen, prüfe die offiziellen Dokumentationen und pinne Abhängigkeiten und Container-Versionen nachvollziehbar. Erfinde keine vorhandene Konfiguration, Modell-ID oder Zugangsdaten.
 
-### Aktuelle PoC-Präzisierung: lokaler Speicher, später Cloud-Storage-Adapter
+<a id="aktuelle-poc-präzisierung-lokaler-speicher-später-cloud-storage-adapter"></a>
 
-Diese Nutzerentscheidung präzisiert frühere Festlegungen zur Dateispeicherung: Zunächst hat ein benutzbarer PoC mit lokalem Dateispeicher und dem Durchlauf Upload → Textverarbeitung → Anzeige Vorrang. Die bisherige Festlegung auf Supabase Storage ist für diesen PoC nicht verbindlich; Supabase bleibt für Datenbank und Auth zuständig.
+### Aktuelle MVP-Präzisierung: lokaler Speicher, später Cloud-Storage-Adapter
 
-Als späteres Ziel ist ein austauschbarer **Cloud-/Object-Storage-Adapter** vorgesehen, beispielsweise für einen Dienst mit S3-kompatibler API. S3 ist ein mögliches Protokoll, keine Festlegung auf AWS oder einen bestimmten Anbieter. Gemeint ist das Speicherbackend der Anwendung, nicht ein Quellenimport aus Cloud-Laufwerken. Die Cloud-Anbindung wird hier nur als Ziel dokumentiert und ist kein PoC-Abnahmekriterium; weder sie noch der lokale Adapter gelten dadurch als implementiert oder freigeschaltet.
+Diese Nutzerentscheidung präzisiert frühere Festlegungen zur Dateispeicherung: Zunächst hat ein benutzbares MVP mit lokalem Dateispeicher und dem Durchlauf Upload → Textverarbeitung → Anzeige Vorrang. Die bisherige Festlegung auf Supabase Storage ist für dieses MVP nicht verbindlich; Supabase bleibt für Datenbank und Auth zuständig.
 
-Autorisierung und private Speicherung bleiben erforderlich: Das Backend prüft die aktuellen Nutzer-/Notebook-Rechte; Dateipfade und Objektschlüssel werden serverseitig bestimmt, nicht aus beliebigen Browserpfaden übernommen. Lokale Dateien werden nicht als öffentliches statisches Verzeichnis ausgeliefert. Secret-Regeln bleiben unverändert. Zusätzliche produktive Betriebsabnahmen sind vom benutzbaren PoC zu unterscheiden; vorhandene Nachweise und offene Punkte bleiben erhalten.
+Als späteres Ziel ist ein austauschbarer **Cloud-/Object-Storage-Adapter** vorgesehen, beispielsweise für einen Dienst mit S3-kompatibler API. S3 ist ein mögliches Protokoll, keine Festlegung auf AWS oder einen bestimmten Anbieter. Gemeint ist das Speicherbackend der Anwendung, nicht ein Quellenimport aus Cloud-Laufwerken. Die Cloud-Anbindung wird hier nur als Ziel dokumentiert und ist kein MVP-Abnahmekriterium; weder sie noch der lokale Adapter gelten dadurch als implementiert oder freigeschaltet.
+
+Autorisierung und private Speicherung bleiben erforderlich: Das Backend prüft die aktuellen Nutzer-/Notebook-Rechte; Dateipfade und Objektschlüssel werden serverseitig bestimmt, nicht aus beliebigen Browserpfaden übernommen. Lokale Dateien werden nicht als öffentliches statisches Verzeichnis ausgeliefert. Secret-Regeln bleiben unverändert. Zusätzliche produktive Betriebsabnahmen sind vom benutzbaren MVP zu unterscheiden; vorhandene Nachweise und offene Punkte bleiben erhalten.
 
 ## 2. Bestand zuerst prüfen
 

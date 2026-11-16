@@ -1,5 +1,5 @@
 ---
-name: CI and immutable PoC images
+name: CI and immutable MVP images
 'on':
   pull_request:
   push:
@@ -97,7 +97,7 @@ jobs:
   publish:
     needs: checks
     if: >-
-      github.repository == 'joreichhardt/notebook-ai-poc' &&
+      github.repository == 'joreichhardt/notebook-ai-mvp' &&
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
@@ -107,7 +107,7 @@ jobs:
       id-token: write
       attestations: write
     env:
-      REGISTRY_PREFIX: ghcr.io/joreichhardt/notebook-ai-poc
+      REGISTRY_PREFIX: ghcr.io/joreichhardt/notebook-ai-mvp
       RELEASE_SHA: ${{ github.sha }}
       AUTH_IMAGE: "supabase/gotrue@sha256:\
         1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b"
@@ -183,13 +183,13 @@ jobs:
       - uses: >-
           actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
         with:
-          subject-name: ghcr.io/joreichhardt/notebook-ai-poc-api
+          subject-name: ghcr.io/joreichhardt/notebook-ai-mvp-api
           subject-digest: ${{ steps.images.outputs.api }}
           push-to-registry: true
       - uses: >-
           actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
         with:
-          subject-name: ghcr.io/joreichhardt/notebook-ai-poc-frontend
+          subject-name: ghcr.io/joreichhardt/notebook-ai-mvp-frontend
           subject-digest: ${{ steps.images.outputs.frontend }}
           push-to-registry: true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -120,7 +120,7 @@ def validate_approval(value: dict, commit: str, *, now: int, uid: int, gid: int)
             raise ValueError()
         for role in ("api", "frontend"):
             if not re.fullmatch(
-                r"ghcr\.io/joreichhardt/notebook-ai-poc-" + role + r"@sha256:[0-9a-f]{64}",
+                r"ghcr\.io/joreichhardt/notebook-ai-mvp-" + role + r"@sha256:[0-9a-f]{64}",
                 images[role],
             ):
                 raise ValueError()

@@ -20,12 +20,35 @@ def evidence(m):
             name: {"passed": True, "artifact_sha256": "b" * 64} for name in m.REQUIRED_CHECKS
         },
         "images": {
-            "api": "ghcr.io/joreichhardt/notebook-ai-poc-api@sha256:" + "1" * 64,
-            "frontend": "ghcr.io/joreichhardt/notebook-ai-poc-frontend@sha256:" + "2" * 64,
+            "api": "ghcr.io/joreichhardt/notebook-ai-mvp-api@sha256:" + "1" * 64,
+            "frontend": "ghcr.io/joreichhardt/notebook-ai-mvp-frontend@sha256:" + "2" * 64,
             "auth": m.AUTH_IMAGE,
             "db": m.DB_IMAGE,
         },
     }
+
+
+@pytest.mark.parametrize("roles", [("api",), ("frontend",), ("api", "frontend")])
+def test_publication_rejects_old_poc_image_namespace(roles):
+    m = module()
+    value = evidence(m)
+    for role in roles:
+        value["images"][role] = value["images"][role].replace(
+            "notebook-ai-mvp-", "notebook-ai-poc-"
+        )
+    with pytest.raises(m.PublicationError):
+        m.propose(
+            value,
+            approved_commit="a" * 40,
+            live={
+                "status": "ready",
+                "profile": "login-workspace-v1",
+                "release": "a" * 40,
+                "documents": False,
+                "chat": False,
+            },
+            now=1800000010,
+        )
 
 
 def test_valid_evidence_emits_only_fixed_proposal():
@@ -86,7 +109,7 @@ def test_evidence_fails_closed(mutation):
     elif mutation == "missing":
         del value["checks"]["cross_user_isolation"]
     elif mutation == "digest":
-        value["images"]["api"] = "ghcr.io/joreichhardt/notebook-ai-poc-api:latest"
+        value["images"]["api"] = "ghcr.io/joreichhardt/notebook-ai-mvp-api:latest"
     elif mutation == "auth":
         value["images"]["auth"] = "supabase/gotrue@sha256:" + "3" * 64
     elif mutation == "artifact":

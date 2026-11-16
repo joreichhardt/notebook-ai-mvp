@@ -1,4 +1,32 @@
-# E · Login-PoC: lokaler Kandidat, Review und reale Inbetriebnahme offen
+# E · MVP-Zwischenstufe Login/Workspace: lokaler Kandidat, reale Inbetriebnahme offen
+
+**Aktuelle Bezeichnung: MVP.** Der Nutzer hat das Vorhaben von PoC in MVP umbenannt. Dieser Login-/Workspace-Slice ist eine Zwischenstufe, noch nicht das vollständige MVP; Sicherheits-, Funktions- und Abnahmekriterien bleiben unverändert. Der technische Dateiname `E-poc-login.md` und andere `poc`-Kennungen bleiben für stabile Verweise bestehen. Die folgende Prüfhistorie behält ihre damaligen Bezeichnungen und Aussagen.
+
+## Identitätsdelta · Repository/GHCR auf MVP umgestellt (lokal eingefroren)
+
+Arbeitsbasis dieses engen Folgeslices: `0913410b19f81b778b7d18b3671348d97529d4c3`. Neuer ausschließlicher Appname: `joreichhardt/notebook-ai-mvp`, Imagepräfix `ghcr.io/joreichhardt/notebook-ai-mvp-{api,frontend}`. Geändert sind nur CI-Repositorybedingung/Registrypräfix/Provenance-Subjectnamen/Anzeigename sowie beide exakten GHCR-Allowlisten und deren Testfixtures. Alte oder gemischte PoC-Namespaces werden abgelehnt, keine Übergangskompatibilität. Vendorpins, Digestpflicht, Profile, APIpfade, Interlock, private App-/BWS-Namen und technische `poc`-Dateinamen bleiben unverändert. Die drei Produktions-/Konfigurationsdateien wurden bytegenau gegen HEAD mit ausschließlich diesen Stringersetzungen verglichen.
+
+**GitHub-Umbenennung, Push und Public-Schaltung liegen beim Parent.** Dieser Worker hat keine GitHub-/Credential-/Infrastrukturaktion, keinen Commit und kein Staging ausgeführt. Neue Nutzernamenshinweise oben und alle früheren Belege bleiben erhalten; die folgende Historie wird nicht rückwirkend umgeschrieben.
+
+Neue exklusive Belege: `.pi/poc-login/mvp-identity/` (0700, Dateien0600), unveränderter Originalguard `4d1e74bb…`, Precollection-I/O-/DB-/SQLAlchemy-Sperren, Executorjoin, `env -i`, logischer `.venv/bin/python -B`, deaktivierte Plugin-Autoload-/Pytest-Caches.
+
+- `namespace-red.{json,log}`: **4 echte FAIL /4 PASS**,20 bestandene/4 fehlgeschlagene Phasen,0 externe IO/0 Executors. Altes Produktionsverhalten akzeptierte beide alten Imagerollen und verweigerte das neue MVP-Paar, jeweils an beiden Helpergrenzen. Die vier gemischten Fälle waren bereits wegen der jeweils anderen MVP-Rolle abgelehnt; deren frühes PASS ist kein eigenständiger Altrollen-Ablehnungsbeweis.
+- `namespace-green.{json,log}`: **8 PASS /24 bestandene Phasen /0 IO/0 Executors** nach minimaler Präfixänderung. Positive neue Paare plus Ablehnung alter API-, Frontend- und beider Rollen.
+- `combined.{json,log}`: **140 PASS /420 bestandene Phasen /0 IO/0 Executors**,2,34s, genau ein abschließender aktueller Sechs-Dateien-Lauf. App9/Setup29/Runtime8/Publication19/Ops34/Deploy41; sechs zusätzliche Namespacefälle gegenüber134. Keine alten190-/Nativefälle, Skips oder xfails. Zehn relevante Quellen-/Guardhashes und Modi vor/nach Combined identisch.
+- Scoped Ruff default und explizit E,F,I,B,BLE auf vier Pythondateien PASS; Formatcheck4PASS, alle explizit `--no-cache`. `yamllint .github/workflows/ci.yml` PASS. **actionlint nicht verfügbar** in PATH bzw. den gezielt geprüften lokalen Standardpfaden; nicht installiert/ausgeführt. YAMLlint ersetzt weder Actions-Semantikprüfung noch tatsächliche CI. Rohlogs: `ruff.log`, `ruff-extra.log`, `format.log`, `yamllint.log`.
+- Rohadvisories unverändert gesichert in `lens-advisories.json`: `cq:6fa9986966b5` und `cq:7aa63c2cc4c4`, tree-sitter/python-path-traversal an `test_poc_ops.py:198/212`. Beide betreffen unveränderte Testbodies, die synthetische Archive unter `tmp_path` schreiben, nicht neue Pfadverarbeitung. Keine Marks/Suppressionen/Scannerpolicyänderungen; kein blanket-LSP-/full-CI-PASS behauptet. Fremde Wizarddiagnostik wurde ausschließlich an Parent gemeldet, nicht bearbeitet.
+
+| Eingefrorene Identitätsquelle | SHA256 | Modus |
+| --- | --- | --- |
+| `.github/workflows/ci.yml` | `03b58e9f5a9fdda076a8c14871411be62cf944157ec700fca1f5c7e10be18a40` | 0664 |
+| `deploy/private-ops/notebook-poc-deploy.py` | `18e0cb79fd1cd8a9e10d5086038349d3f7e87ca5fd9eb55ec4e9e46bd1dd3a44` | 0755 |
+| `deploy/poc_publication.py` | `0b9beec88bc3bb2065b524eb412ef118721308b0aa03ecb337d9727f2eedd984` | 0664 |
+| `deploy/tests/test_poc_ops.py` | `a085204fe082912a0d1d4b49ac27821707d8a385610d37717a28559ed9a56c67` | 0664 |
+| `deploy/tests/test_poc_publication.py` | `a239964f5bd2d07c2bbc859a5c0232aa3c438772ebb7af2e999a334ec8324364` | 0664 |
+
+**Parent-Update / separate Archivlücke:** Parent meldet tatsächliche GitHub-Umbenennung und Public-Schaltung abgeschlossen (stabiles Repository1459167079, `joreichhardt/notebook-ai-mvp`), Deployrepository weiterhin privat, noch kein Sourcepush. Dies ist Parent-Bericht, keine Worker-GitHubprüfung. Read-only lokal bestätigt: `docker/nginx.poc.conf` ist untracked, obwohl `compose.poc.yaml:124` die Datei bind-mountet; im aktuellen HEAD-Baum fehlt sie. Die Runtimeprüfung liest die dirty lokale Datei direkt (`test_poc_runtime.py:186`), während die Composeprüfung nur den erwarteten Mountstring prüft. Die Deployfixture packt nur `compose.poc.yaml` in ihr synthetisches Archiv (`test_poc_deploy.py:35–42`) und mockt Compose; der Ops-Extraktionstest nutzt ebenfalls nur synthetische Composebytes. **140PASS beweist daher keine vollständige Releasearchiv-Closure.** Keine Änderung an nginx, Fixtures oder Scope; Parent übernimmt separate Closureprüfung/Review/Integration der fehlenden Datei.
+
+Nächster Schritt: unabhängiger Parentreview/Integration, separate Archiv-Closure und der Parent-owned Sourcepush. Lokale Umbenennung ist kein erfolgreicher Push-/Runtime-Nachweis. **Worker eingefroren; keine weitere Scopeerweiterung.**
 
 Stand: 2026-11-15, Arbeitsbasis `9db1cb0bb2a1fc6b0e7644a6074b1d7903f5a2ec`, Worktree `notebook-integration`. Recovery des Implementierungsworkers nach Harnesslimit; kein fehlgeschlagenes Deployment. **Quellen jetzt eingefroren für Parent-Review, keine Betriebsfreigabe.** Gemeinsamer aktueller Einstieg: [CONTINUE](CONTINUE.md); Anforderungen: [Produktspezifikation](../product-spec.md).
 

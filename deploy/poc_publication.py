@@ -88,7 +88,7 @@ def propose(evidence: dict, *, approved_commit: str, live: dict, now: int | None
             raise ValueError()
         for name in ("api", "frontend"):
             if not re.fullmatch(
-                r"ghcr\.io/joreichhardt/notebook-ai-poc-" + name + r"@sha256:[0-9a-f]{64}",
+                r"ghcr\.io/joreichhardt/notebook-ai-mvp-" + name + r"@sha256:[0-9a-f]{64}",
                 images[name],
             ):
                 raise ValueError()

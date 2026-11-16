@@ -1,10 +1,10 @@
-# Projektdokumentation
+# Projektdokumentation · Notebook-MVP
 
 ## Schnell einsteigen
 
 | Frage | Maßgebliches Dokument |
 | --- | --- |
-| Was soll das Produkt können? | [Produktspezifikation](product-spec.md) |
+| Was soll das MVP können? | [Produktspezifikation](product-spec.md), [aktuelle MVP-Präzisierung](product-spec.md#aktuelle-mvp-präzisierung-lokaler-speicher-später-cloud-storage-adapter) |
 | Wie starte und prüfe ich lokal? | [Repository-README](../README.md), [Betriebsgrundlage](operations/foundation.md) |
 | Was ist fertig, was läuft, was blockiert? | [Aktueller Aufgabenplan](orchestration/plan.md) |
 | Wo setze ich nach einer Pause fort? | [Aktueller Handoff](handoffs/CONTINUE.md), [gesicherter Neustartstand](handoffs/RESTART-PAUSE.md) |
@@ -41,6 +41,8 @@
 - [Bereichsübergaben](handoffs/CONTINUE.md): Einstieg zu den relevanten Worker-Berichten; diese sind technische Detailnachweise, keine zusätzliche Bedienungsanleitung.
 
 ## Dokumentationsprinzip
+
+Das Vorhaben heißt **MVP**, nicht PoC. Login und Workspace sind eine Zwischenstufe zur nutzbaren ersten Produktversion. Die Umbenennung ist keine Fertigstellungs- oder Betriebsfreigabe. Das öffentliche App-Repository heißt [notebook-ai-mvp](https://github.com/joreichhardt/notebook-ai-mvp); das Deployment-Repository bleibt privat. Andere technische `poc`-Kennungen, Dateipfade und historische Nachweise bleiben unverändert.
 
 Aktuelle Anweisungen stehen am Anfang ihres maßgeblichen Dokuments. Prüfhistorie bleibt im Integrationslog, nicht als mehrfach kopierter Status in jedem Dokument. Änderungen an Funktionen, Verträgen und Betrieb werden zusammen mit der Implementierung dokumentiert. Nur tatsächlich geprüfte Abläufe als funktionsfähig beschreiben; lokale Fixtures, reale lokale Dienste und Produktionsnachweise auseinanderhalten.
 

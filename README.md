@@ -1,12 +1,18 @@
-# Notebook auf kube1
+# Notebook auf kube1 · MVP
 
 Private Notebooks mit nachvollziehbaren Quellenantworten. Python/FastAPI, React/TypeScript und selbst gehostetes Supabase; Secrets aus Bitwarden Secrets Manager über `bws`.
+
+Quellrepository (öffentlich): [joreichhardt/notebook-ai-mvp](https://github.com/joreichhardt/notebook-ai-mvp). Das separate Deployment-Repository bleibt privat. Verfügbare Commits und tatsächliche CI-Ergebnisse sind im GitHub-Repository einsehbar; ein öffentliches Repository allein ist keine Betriebsfreigabe.
 
 Dokumentation: [Übersicht und Einstieg](docs/README.md).
 
 ## Entwicklungsstand
 
-**Aktuelle PoC-Priorität:** benutzbarer Upload → Textverarbeitung → Anzeige mit persistentem privatem **lokalem Dateispeicher**. Ein austauschbarer **Cloud-/Object-Storage-Adapter**, etwa über eine S3-kompatible API, ist ein späteres Ziel und keine Voraussetzung für den PoC. Diese Speicheranpassung ist geplant, noch nicht implementiert oder freigeschaltet; zusätzliche Supervisor-/Produktionshärtung ist vorerst zurückgestellt. [Präzisierung der Produktspezifikation](docs/product-spec.md#aktuelle-poc-präzisierung-lokaler-speicher-später-cloud-storage-adapter).
+**Ziel ist ein MVP (Minimum Viable Product):** eine tatsächlich nutzbare erste Produktversion, kein reiner Machbarkeitsnachweis. Der aktuelle Login-/Workspace-Stand ist eine Zwischenstufe, noch nicht das vollständige MVP. Die Umbenennung ändert weder Funktionsumfang noch Sicherheits- und Abnahmekriterien und ist keine Betriebsfreigabe.
+
+**Aktuelle MVP-Priorität:** benutzbarer Upload → Textverarbeitung → Anzeige mit persistentem privatem **lokalem Dateispeicher**. Ein austauschbarer **Cloud-/Object-Storage-Adapter**, etwa über eine S3-kompatible API, ist ein späteres Ziel und keine Voraussetzung für das MVP. Diese Speicheranpassung ist geplant, noch nicht implementiert oder freigeschaltet; zusätzliche Supervisor-/Produktionshärtung ist vorerst zurückgestellt. [Präzisierung der Produktspezifikation](docs/product-spec.md#aktuelle-mvp-präzisierung-lokaler-speicher-später-cloud-storage-adapter).
+
+Das App-Repository heißt `notebook-ai-mvp`; Repository- und Image-Verweise werden entsprechend angepasst. Andere bestehende technische Kennungen mit `poc` (Secret-Projekt-, Datei- und API-Namen) bleiben vorerst unverändert, damit Verweise und Deployment-Verträge nicht brechen. Historische Prüfberichte behalten ihre damalige Bezeichnung.
 
 Implementiert sind Authentifizierung, Workspace-/Notebook-Verwaltung, Einladungsannahme für bestätigte Konten, Mitgliederrollen und persönliche Anbieter-Verbindungen mit Modellprüfung. Zusätzlich sind die Datenbasis für Dokumentversionen, Chunks und abgeschirmte Jobs (Migrationen 0003/0004), dauerhafte Upload-Intents mit geschützter Finalisierung/Cleanup und sicherer Statusprojektion (0005) sowie interne Streaming-/Embedding-Adapter mit persönlicher Ausführungsprüfung integriert. Auch der begrenzte TXT-/Markdown-Service mit privatem Storage-Adapter, sicheren Status-DTOs und gefencetem Worker ist inzwischen integriert und unter synthetischen Storagebedingungen geprüft. Diese Bausteine sind noch nicht als HTTP-/UI-Upload oder Chat freigeschaltet. Dies ist noch kein produktionsfertiger NotebookLM-Klon. HTTP-/UI-Upload, belegte Modellantworten, Graphretrieval und die Registrierung neuer Konten sind noch offen; die Quotenmigration0006 ist integriert, während produktive Storage-/Dispatch- und Release-Gates offen bleiben. Persönliche Anbieter-Verbindungen benötigen eine konfigurierte Bitwarden-Instanz und freigegebene Endpoints. Es gibt keine fingierten Antworten oder Produktions-Auth-Mocks.
 

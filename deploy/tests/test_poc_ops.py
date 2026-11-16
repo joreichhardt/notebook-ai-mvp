@@ -36,8 +36,8 @@ def approval(m):
         "compose_provider_version": "2.40.3+ds1-0ubuntu1",
         "bws_sha256": "d" * 64,
         "images": {
-            "api": "ghcr.io/joreichhardt/notebook-ai-poc-api@sha256:" + "1" * 64,
-            "frontend": "ghcr.io/joreichhardt/notebook-ai-poc-frontend@sha256:" + "2" * 64,
+            "api": "ghcr.io/joreichhardt/notebook-ai-mvp-api@sha256:" + "1" * 64,
+            "frontend": "ghcr.io/joreichhardt/notebook-ai-mvp-frontend@sha256:" + "2" * 64,
             "auth": m.AUTH_IMAGE,
             "db": m.DB_IMAGE,
         },
@@ -51,6 +51,18 @@ def approval(m):
         },
         "smtp_host": "mail.example.invalid",
     }
+
+
+@pytest.mark.parametrize("roles", [("api",), ("frontend",), ("api", "frontend")])
+def test_host_approval_rejects_old_poc_image_namespace(roles):
+    m = ops()
+    value = approval(m)
+    for role in roles:
+        value["images"][role] = value["images"][role].replace(
+            "notebook-ai-mvp-", "notebook-ai-poc-"
+        )
+    with pytest.raises(m.DeploymentHold):
+        m.validate_approval(value, "a" * 40, now=1800000010, uid=2001, gid=2001)
 
 
 def test_explicit_root_approval_binds_vendor_identity_and_actor():
@@ -113,7 +125,7 @@ def test_bad_host_approval_fails_before_external_io(mutation):
     elif mutation == "smtp_injection":
         value["smtp_host"] = "mail.invalid\nBWS_ACCESS_TOKEN=x"
     elif mutation == "image_tag":
-        value["images"]["api"] = "ghcr.io/joreichhardt/notebook-ai-poc-api:latest"
+        value["images"]["api"] = "ghcr.io/joreichhardt/notebook-ai-mvp-api:latest"
     with pytest.raises(m.DeploymentHold):
         m.validate_approval(value, "a" * 40, now=1800000010, uid=2001, gid=2001)
 
