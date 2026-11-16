@@ -40,6 +40,10 @@ class ObservationUnavailable(RuntimeError):
     """Fixed observer fault; never a retryable database or lease failure."""
 
 
+class _ObserverFault(RuntimeError):
+    """Private control signal, caught before publishing an observer failure."""
+
+
 TextPhase = Literal["ingestion_claim", "pulse", "publish", "finish"]
 
 
@@ -48,6 +52,17 @@ class TextProgress:
     phase: TextPhase
     started_at: float
     committed_at: float | None
+
+
+def _notify_observer(observer: Callable[[TextProgress], None], progress: TextProgress) -> None:
+    try:
+        result = observer(progress)
+        if result is not None:
+            if iscoroutine(result):
+                result.close()
+            raise _ObserverFault()
+    except (Exception, asyncio.CancelledError) as error:
+        raise _ObserverFault() from error
 
 
 class OriginalStore(Protocol):
@@ -179,15 +194,14 @@ class TextWorker:
         observer = self._progress_observer
         if observer is None:
             return
+        failed = False
         try:
-            result = observer(progress)
-            if result is not None:
-                if iscoroutine(result):
-                    result.close()
-                raise ObservationUnavailable("observation_unavailable")
-        except (Exception, asyncio.CancelledError):
-            # Observer cancellation is NOT cancellation of the worker's waiter.
-            # Persist terminal truth before calling any external trusted observer.
+            _notify_observer(observer, progress)
+        except _ObserverFault:
+            failed = True
+        if failed:
+            # Leave the handler before raising: even __context__ must not retain
+            # the observer's private error. Logging is not part of this boundary.
             with self._progress_lock:
                 self._observation_failed = True
             if not committed or progress.phase not in ("publish", "finish"):
