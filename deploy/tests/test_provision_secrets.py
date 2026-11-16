@@ -1,13 +1,14 @@
 import importlib.util
 import json
 import os
-from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('provision', Path(__file__).parents[1] / 'provision_secrets.py')
+assert spec is not None and spec.loader is not None
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 SECRET = '00000000-0000-0000-0000-000000000001'
@@ -91,9 +92,8 @@ class ProvisionTests(unittest.TestCase):
             m.provision(self.manifest, self.token, self.target)
 
     def test_unexpected_bws_version_blocks_fetch(self):
-        with patch.object(m.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, b'bws 0.0.0')) as run:
-            with self.assertRaises(m.ProvisionError):
-                m.provision(self.manifest, self.token, self.target)
+        with patch.object(m.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, b'bws 0.0.0')) as run, self.assertRaises(m.ProvisionError):
+            m.provision(self.manifest, self.token, self.target)
         self.assertEqual(run.call_count, 1)
         self.assertFalse(self.target.exists())
 

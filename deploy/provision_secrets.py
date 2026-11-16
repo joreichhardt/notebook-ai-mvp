@@ -1,14 +1,13 @@
-#!/usr/bin/env python3
 """Fetch one declared release's secrets; never render credentials or run the app."""
 import argparse
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import stat
 import subprocess
 import tempfile
+from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -56,7 +55,7 @@ def provision(manifest: dict, token_file: Path, destination: Path, bws: str = 'b
     try:
         with tempfile.TemporaryDirectory(prefix='bws-home-') as home:
             env['HOME'] = home
-            result = subprocess.run([bws, '--version'], env=env, capture_output=True, timeout=15)
+            result = subprocess.run([bws, '--version'], env=env, capture_output=True, timeout=15, check=False)
             if result.returncode or result.stdout.decode().strip() != BWS_VERSION:
                 raise ProvisionError('Unexpected bws version')
             env['BWS_ACCESS_TOKEN'] = token
@@ -64,7 +63,7 @@ def provision(manifest: dict, token_file: Path, destination: Path, bws: str = 'b
                 result = subprocess.run(
                     [bws, '--server-url', manifest['server_url'], '--config-file',
                      str(Path(home) / 'config'), '--output', 'json', 'secret', 'get', secret_id],
-                    env=env, capture_output=True, timeout=30,
+                    env=env, capture_output=True, timeout=30, check=False,
                 )
                 if result.returncode:
                     raise ProvisionError('Secret retrieval failed')
