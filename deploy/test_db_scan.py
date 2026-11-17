@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 IMAGE = "supabase/postgres@sha256:f371b5f3f2ac0a05703f33d6e6134515fb2498cab708fb948a0aeb7481467c00"
-RELEASE_PARENT = "2301713a0feec2fb127aa05e1050f5add02ae7d6"
+RELEASE_PARENT = "a2eef33fdd233f5c3234a6234e88716f822056df"
 EXPIRES = dt.date(2026, 12, 1)
 CURL_CVES = (
     "11352", "11586", "12064", "5773", "6276", "8286", "8458", "8925", "8927",

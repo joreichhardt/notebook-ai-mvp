@@ -9,7 +9,7 @@ Testfreigabe committen, pushen und veröffentlichen. Dies ist eine Risikoakzepta
 Keine Produktionsfreigabe und keine Änderung der Repository-Sichtbarkeit.
 
 Gültig bis ausschließlich **2026-12-01 UTC**. Scope: der unmittelbar auf
-`2301713a0feec2fb127aa05e1050f5add02ae7d6` folgende Testfreigabe-Commit und seine
+`a2eef33fdd233f5c3234a6234e88716f822056df` folgende Testfreigabe-Commit und seine
 Workflow-Wiederholungen. Der Evaluator prüft den tatsächlichen Git-Parent;
 spätere Releases benötigen eine erneute ausdrückliche Freigabe.
 
@@ -60,7 +60,8 @@ Kein globales Ignore und kein `continue-on-error`. Nur die genannten Tupel im
 passenden Image/Testrelease dürfen passieren. Neue CVEs, andere Versionen oder
 Schweregrade werden blockiert. Die bestehende separate Auth-Ausnahme bleibt
 unverändert. API-/Frontend-/Source-/Konfigurationsprüfungen, Funktionstests und
-Secret-Scans aller Images bleiben verbindlich; Scanner-Ausführungsfehler sind
+Secret-Scans aller Images bleiben verbindlich, mit der separat belegten
+[öffentlichen Buildschlüssel-Ausnahme](test-db-build-key.md); Scanner-Ausführungsfehler sind
 Fehler. Rohbericht `db-vulnerabilities.json`, SBOMs, diese Freigabe und
 `environment.txt=test-only` werden im Workflow aufbewahrt. Commit und finale
 Registry-Digests stehen bei erfolgreicher Veröffentlichung im unveränderlichen

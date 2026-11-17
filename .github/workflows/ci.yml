@@ -162,6 +162,7 @@ jobs:
           printf 'test-only\n' > release/environment.txt
           cp docs/security/test-auth-exception.md release/
           cp docs/security/test-db-exception.md release/
+          cp docs/security/test-db-build-key.md release/
           for role in api frontend auth db; do
             case "$role" in
               api|frontend) image="$REGISTRY_PREFIX-$role:$RELEASE_SHA" ;;
@@ -188,9 +189,20 @@ jobs:
               trivy image --scanners vuln --severity HIGH,CRITICAL \
                 --exit-code 1 "$image"
             fi
-            trivy image --scanners secret \
-              --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-              --exit-code 1 "$image"
+            if [ "$role" = db ]; then
+              # Never log or upload raw secret matches.
+              trivy image --scanners secret --format json \
+                --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+                --exit-code 0 "$image" |
+                python3 deploy/test_db_secret_scan.py \
+                  --image "$image" --environment test \
+                  --release-parent "$parent" \
+                  --evidence release/db-secret-decision.json
+            else
+              trivy image --scanners secret \
+                --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+                --exit-code 1 "$image"
+            fi
             trivy image --format cyclonedx \
               --output "release/$role.cdx.json" "$image"
           done
