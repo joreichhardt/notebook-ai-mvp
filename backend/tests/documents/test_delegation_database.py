@@ -568,3 +568,59 @@ def test_app_cannot_read_tickets_schedule_or_assume_privilege(delegation_scene, 
         # Fixed test allowlist, never application-controlled SQL.
         db.execute(text(statement))
     assert isinstance(caught.value.orig, psycopg.errors.InsufficientPrivilege)
+
+
+def test_private_local_upload_is_processed_by_runtime_and_readable_as_source(
+    delegation_scene, tmp_path, monkeypatch
+):
+    """Real DB/filesystem/consumer; no container/process-manager acceptance claim."""
+    from app.documents.local_storage import LocalStorage, LocalStorageConfig
+    from app.workers import local_runtime
+
+    c = delegation_scene
+    root = tmp_path / "worker-originals"
+    root.mkdir(mode=0o700)
+    config = LocalStorageConfig(root)
+    c["service"].store_factory = lambda authorize: LocalStorage(config, authorize=authorize)
+    receipt = perform(c)
+    assert receipt.document.status == "queued"
+    app_file = tmp_path / "app.url"
+    scheduler_file = tmp_path / "scheduler.url"
+    for path, url in (
+        (app_file, c["actor_engine"].url),
+        (
+            scheduler_file,
+            c["scheduler_engine"].url.update_query_dict(
+                {"passfile": str(tmp_path / "scheduler.pgpass")}
+            ),
+        ),
+    ):
+        path.touch(mode=0o600)
+        path.write_text(url.render_as_string(hide_password=False))
+    settings = local_runtime.WorkerSettings(
+        local_text_worker_enabled=True,
+        local_storage_root=str(root),
+        database_url_file=str(app_file),
+        text_scheduler_database_url_file=str(scheduler_file),
+    )
+    monkeypatch.setattr(local_runtime, "WorkerSettings", lambda: settings)
+    runtime = local_runtime.configured_runtime()
+    assert runtime is not None
+    assert asyncio.run(local_runtime.execute(runtime)) == "succeeded"
+    preview = c["service"].source_text(
+        actor_id=c["actor"], notebook_id=c["notebook"], document_id=receipt.document.id
+    )
+    assert preview.status == "ready" and [chunk.text for chunk in preview.chunks] == ["hello"]
+    assert len(list(root.glob("*/*/*/*/original"))) == 1
+    # A NEW runtime lifetime observes the acknowledged ticket, not a replay.
+    again = local_runtime.configured_runtime()
+    assert again is not None
+    assert asyncio.run(local_runtime.execute(again)) == "idle"
+    with psycopg.connect(URL) as db:
+        assert db.execute(
+            "SELECT status,attempts FROM ingestion_jobs WHERE id=%s", (receipt.job.id,)
+        ).fetchone() == ("succeeded", 1)
+        assert db.execute(
+            "SELECT acknowledged_at IS NOT NULL FROM text_job_tickets WHERE job_id=%s",
+            (receipt.job.id,),
+        ).fetchone() == (True,)
