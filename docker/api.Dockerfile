@@ -1,5 +1,5 @@
 FROM ghcr.io/astral-sh/uv:0.9.9@sha256:f6e3549ed287fee0ddde2460a2a74a2d74366f84b04aaa34c1f19fec40da8652 AS uv
-FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS build
+FROM python:3.12-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS build
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
 RUN ["chown", "10001:10001", "/app"]
@@ -9,7 +9,7 @@ ARG NOTEBOOK_TEST_LIMITS="0"
 USER 10001:10001
 RUN if [ "$NOTEBOOK_TEST_LIMITS" = "1" ]; then python -I /tmp/notebook-check-build-limits.py; else test "$NOTEBOOK_TEST_LIMITS" = "0"; fi \
     && uv sync --frozen --no-dev --no-install-project --no-cache
-FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
+FROM python:3.12-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY backend/app /app/app
