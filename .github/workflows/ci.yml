@@ -129,15 +129,30 @@ jobs:
           docker build -f docker/frontend.Dockerfile \
             --label "org.opencontainers.image.revision=$RELEASE_SHA" \
             -t "$REGISTRY_PREFIX-frontend:$RELEASE_SHA" .
-      - name: Install pinned scanner and rescan the source
+      # Same policy as checks and product-spec: HIGH/CRITICAL findings,
+      # but detected secrets of ANY severity, block publication.
+      - name: Rescan source vulnerabilities and configuration
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           version: v0.69.3
           cache: 'false'
           scan-type: fs
-          scanners: vuln,misconfig,secret
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+      - name: Block any detected secret before publication
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          version: v0.69.3
+          cache: 'false'
+          scan-type: fs
+          scanners: secret
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           exit-code: '1'
+      - name: Report lower-severity source advisories
+        run: >-
+          trivy fs --scanners vuln,misconfig
+          --severity UNKNOWN,LOW,MEDIUM --exit-code 0 .
       - name: Scan all four final images before any publication
         run: |
           set -euo pipefail
