@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from app.documents.local_storage import LocalStorage, LocalStorageConfig
 from app.documents.service import DocumentError, UploadService
 from app.documents.storage import StorageError
 from app.ingestion.text import TextUpload
@@ -153,6 +154,64 @@ def perform(c, *, actor=None, key="upload-1", upload=None, **options):
             **options,
         )
     )
+
+
+def test_local_original_persists_through_durable_upload_and_replay(upload_scene, tmp_path):
+    c = upload_scene
+    root = tmp_path / "originals"
+    root.mkdir(mode=0o700)
+    config = LocalStorageConfig(root)
+    c["service"].store_factory = lambda authorize: LocalStorage(config, authorize=authorize)
+    result = perform(c)
+    assert result.document.status == "queued" and result.job.status == "queued"
+    assert result == perform(c)
+    originals = list(root.glob("*/*/*/*/original"))
+    assert len(originals) == 1 and originals[0].read_bytes() == sample().data
+    assert originals[0].stat().st_mode & 0o777 == 0o600
+    assert not list(root.glob("*/*/*/*/.*.upload"))
+    assert c["service"].list_documents(actor_id=c["viewer"], notebook_id=c["notebook"]) == [
+        result.document
+    ]
+    with pytest.raises(DocumentError):
+        perform(c, actor=c["viewer"], key="viewer-denied")
+    assert list(root.glob("*/*/*/*/original")) == originals
+
+
+def test_local_original_revocation_before_publication_leaves_no_visible_upload(
+    upload_scene, tmp_path
+):
+    c = upload_scene
+    root = tmp_path / "originals"
+    root.mkdir(mode=0o700)
+
+    def factory(authorize):
+        writes = 0
+
+        async def revoke(actor, scope, action):
+            nonlocal writes
+            if action == "write":
+                writes += 1
+                if writes == 2:
+                    with psycopg.connect(URL) as admin:
+                        admin.execute(
+                            "DELETE FROM workspace_members WHERE user_id=%s", (c["actor"],)
+                        )
+            await authorize(actor, scope, action)
+
+        return LocalStorage(LocalStorageConfig(root), authorize=revoke)
+
+    c["service"].store_factory = factory
+    with pytest.raises(DocumentError):
+        perform(c)
+    assert not list(root.glob("*/*/*/*/original"))
+    assert not list(root.glob("*/*/*/*/.*.upload"))
+    with psycopg.connect(URL) as db:
+        assert db.execute(
+            "SELECT count(*) FROM documents WHERE notebook_id=%s", (c["notebook"],)
+        ).fetchone() == (0,)
+        assert db.execute(
+            "SELECT count(*) FROM ingestion_jobs WHERE notebook_id=%s", (c["notebook"],)
+        ).fetchone() == (0,)
 
 
 def test_complete_storage_then_durable_finalize_replay_and_member_projection(upload_scene):

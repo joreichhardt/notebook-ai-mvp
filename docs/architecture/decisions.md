@@ -4,7 +4,7 @@
 
 React/TypeScript im Browser, FastAPI als Backend-for-Frontend. Das Backend verwaltet Sitzungen, Autorisierung und Providerzugriffe. Supabase liefert PostgreSQL und Authentifizierung. pgvector, Volltextsuche und relationale Graphdaten bilden die geplante Retrieval-Grundlage.
 
-Dateien liegen für das MVP persistent und privat im lokalen Dateisystem. Später folgt ein austauschbarer Cloud-/Object-Storage-Adapter. Der lokale Adapter ist noch umzusetzen.
+Für das MVP ist privater persistenter Dateispeicher vorgesehen. `LocalStorage` in `backend/app/documents/local_storage.py` implementiert das Originaldatei-Backend: serverbestimmte UUID-Pfade, private Dateirechte, atomare Veröffentlichung ohne Überschreiben und erneute Autorisierung vor/nach I/O. TXT, Markdown und PDF werden als unverarbeitete Bytes gespeichert; das ist kein PDF-Parsing-Nachweis. Die HTTP-/Runtime-Anbindung und Worker-Einbindung stehen noch aus; der Adapter allein schaltet keine Upload-Oberfläche frei. Später folgt ein austauschbarer Cloud-/Object-Storage-Adapter.
 
 Hintergrundaufgaben laufen in einem separaten Python-Worker aus derselben Codebasis. PostgreSQL verwaltet Jobs, Leases und Wiederaufnahme. Parser arbeiten isoliert ohne Netzwerk oder Credentials.
 
