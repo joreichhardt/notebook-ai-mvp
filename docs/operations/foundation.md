@@ -4,6 +4,7 @@ Vorgesehen ist ein lokaler Testserver mit **Rootless Podman** hinter Cloudflare 
 
 - `compose.yaml`: API und statisches Frontend.
 - `compose.poc.yaml`: Login-/Workspace-Stack mit PostgreSQL und Auth.
+- API-Image: digestgepinnte Chainguard-Python-Basis; Developer-Stage für Installation/SHA-Stempel, shellfreie Laufzeit unter UID10001. Python muss dem Projektbereich `>=3.12` entsprechen; eingefrorene native Abhängigkeiten werden beim Imagebau auch in der tatsächlichen Laufzeit importiert. Der SHA-Stempel bleibt root-owned und maßgeblich, nicht eine veränderbare Laufzeitvariable.
 - Rootless-Betrieb unter einem eigenen Appkonto; Compose über den gepinnten Provider am Podman-Socket.
 - Secrets aus Bitwarden über `deploy/provision_secrets.py`, nur als benötigte geschützte Dateien je Dienst. Bootstrap-Token nicht an Anwendungen vererben.
 - Source/CI/Images öffentlich auf GitHub/GHCR; Deployment in einer getrennten privaten Lane.
