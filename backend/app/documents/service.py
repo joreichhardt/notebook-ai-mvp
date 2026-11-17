@@ -13,12 +13,20 @@ from hashlib import sha256
 from typing import Literal, Protocol
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select, text
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.db.models import Admission, Document, DocumentVersion, IngestionJob, Member, Notebook
+from app.db.models import (
+    Admission,
+    Chunk,
+    Document,
+    DocumentVersion,
+    IngestionJob,
+    Member,
+    Notebook,
+)
 from app.db.uploads import (
     UploadConflict,
     UploadUnavailable,
@@ -56,6 +64,22 @@ class DocumentDTO(BaseModel):
     version_id: UUID
     status: Literal["queued", "processing", "ready", "failed"]
     error_code: Literal["not_processed", "processing_failed", "processing_cancelled"] | None
+
+
+class SourceChunkDTO(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    id: UUID
+    ordinal: int = Field(ge=0, le=2_000_000)
+    page: int | None = Field(ge=1, le=500)
+    text: str = Field(min_length=1, max_length=4000)
+    truncated: bool
+
+
+class SourceTextDTO(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    document: DocumentDTO
+    items: list[SourceChunkDTO] = Field(max_length=20)
+    next_ordinal: int | None = Field(ge=0, le=2_000_000)
 
 
 class JobDTO(BaseModel):
@@ -208,6 +232,61 @@ class UploadService:
             return [DocumentDTO(**row) for row in rows]  # NO raw/private job query for members
 
         return self._db(actor_id, listing)
+
+    def source_text(
+        self, *, actor_id: UUID, notebook_id: UUID, document_id: UUID, after: int = 0
+    ) -> SourceTextDTO:
+        """Bounded extracted text of the current, undeleted version only; no originals/jobs."""
+        if type(after) is not int or not 0 <= after <= 2_000_000:
+            raise DocumentError("invalid_request", 422)
+
+        def reading(db: Session):
+            self._notebook(db, actor_id, notebook_id, write=False)
+            row = (
+                db.execute(self._projection(notebook_id).where(Document.id == document_id))
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                raise DocumentError("document_not_found", 404)
+            document = DocumentDTO(**row)
+            if document.status != "ready":
+                return SourceTextDTO(document=document, items=[], next_ordinal=None)
+            rows = list(
+                db.execute(
+                    select(
+                        Chunk.id,
+                        Chunk.ordinal,
+                        Chunk.page,
+                        func.substr(Chunk.text, 1, 4000).label("text"),
+                        (func.length(Chunk.text) > 4000).label("truncated"),
+                    )
+                    .join(
+                        Document,
+                        (Document.id == Chunk.document_id)
+                        & (Document.current_version_id == Chunk.document_version_id),
+                    )
+                    .join(DocumentVersion, DocumentVersion.id == Document.current_version_id)
+                    .where(
+                        Document.id == document_id,
+                        Document.notebook_id == notebook_id,
+                        Document.deleted_at.is_(None),
+                        DocumentVersion.processing_status == "ready",
+                        Chunk.document_version_id == document.version_id,
+                        Chunk.ordinal >= after,
+                    )
+                    .order_by(Chunk.ordinal)
+                    .limit(21)
+                ).mappings()
+            )
+            items = [SourceChunkDTO(**item) for item in rows[:20]]
+            return SourceTextDTO(
+                document=document,
+                items=items,
+                next_ordinal=items[-1].ordinal + 1 if len(rows) > 20 else None,
+            )
+
+        return self._db(actor_id, reading)
 
     def authorize_upload(self, *, actor_id: UUID, notebook_id: UUID) -> None:
         """Short committing write/admission preflight; never spans payload or storage awaits."""

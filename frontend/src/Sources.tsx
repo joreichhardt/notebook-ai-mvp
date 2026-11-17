@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, uploadMediaType, type Role, type SourceDocument } from "./api";
+import { SourceTextPreview } from "./SourceText";
 
 function uploadError(error: unknown) {
   if (error instanceof ApiError) {
@@ -132,6 +133,7 @@ export function Sources({ notebookId, userId, role, documentsEnabled }: {
 }
 function SourceList({ notebookId, canUpload }: { notebookId: string; canUpload: boolean }) {
   const [items, setItems] = useState<SourceDocument[]>([]);
+  const [selected, setSelected] = useState<SourceDocument>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -151,6 +153,7 @@ function SourceList({ notebookId, canUpload }: { notebookId: string; canUpload: 
     return () => controller.abort();
   }, [notebookId, revision]);
   function reload() {
+    setSelected(undefined);
     setItems([]);
     setError("");
     setLoading(true);
@@ -171,10 +174,15 @@ function SourceList({ notebookId, canUpload }: { notebookId: string; canUpload: 
               <span className="source-filename">{item.filename}</span>
               <span className="source-status">{Object.hasOwn(statusLabels, item.status) ? statusLabels[item.status] : "Status unbekannt"}</span>
               {item.status === "failed" && <p>{sourceError(item.error_code)}</p>}
+              {item.status === "ready" && <button type="button"
+                aria-label={`Text ansehen: ${item.filename}`}
+                onClick={() => setSelected(item)}>Text ansehen</button>}
             </li>
           ))}
         </ul>
       )}
+      {selected && <SourceTextPreview key={JSON.stringify([selected.id, selected.version_id])}
+        notebookId={notebookId} source={selected} onClose={() => setSelected(undefined)} />}
       <button type="button" disabled={loading} onClick={reload}>
         {error ? "Quellen erneut laden" : "Quellen aktualisieren"}
       </button>

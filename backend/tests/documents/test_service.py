@@ -214,6 +214,80 @@ def test_local_original_revocation_before_publication_leaves_no_visible_upload(
         ).fetchone() == (0,)
 
 
+def test_extracted_source_text_is_bounded_current_and_revocable(upload_scene):
+    # Privileged text fixtures test reads/RLS, NOT extraction or a running parser.
+    c = upload_scene
+    receipt = perform(c)
+    arguments = {
+        "actor_id": c["viewer"],
+        "notebook_id": c["notebook"],
+        "document_id": receipt.document.id,
+    }
+    queued = c["service"].source_text(**arguments)
+    assert queued.document.status == "queued" and queued.items == []
+    # Establish the guarded ready projection through the accepted worker, rather
+    # than bypassing version_processing_guard. HostedCI uses committed code only;
+    # this case must not execute the parked local S2b worker.
+    from app.workers.text import TextWorker
+
+    worker = TextWorker(c["actor_engine"], store_factory=lambda authorize: c["store"])
+    assert asyncio.run(worker.run_one(actor_id=c["actor"], job_id=receipt.job.id)) == "succeeded"
+    content = "x" * 4005
+    with psycopg.connect(URL) as admin:
+        admin.execute(
+            "DELETE FROM chunks WHERE document_version_id=%s", (receipt.document.version_id,)
+        )
+        for ordinal in range(21):
+            admin.execute(
+                "INSERT INTO chunks(id,document_version_id,document_id,notebook_id,workspace_id,"
+                "ordinal,text,sha256,page,start_offset,end_offset) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NULL,%s,%s)",
+                (
+                    uuid4(),
+                    receipt.document.version_id,
+                    receipt.document.id,
+                    c["notebook"],
+                    c["workspace"],
+                    ordinal,
+                    content,
+                    sha256(content.encode()).hexdigest(),
+                    ordinal * len(content),
+                    (ordinal + 1) * len(content),
+                ),
+            )
+    first = c["service"].source_text(**arguments)
+    assert len(first.items) == 20 and first.next_ordinal == 20
+    assert all(len(item.text) == 4000 and item.truncated for item in first.items)
+    last = c["service"].source_text(**arguments, after=20)
+    assert len(last.items) == 1 and last.next_ordinal is None
+    with psycopg.connect(URL) as admin:
+        admin.execute(
+            "UPDATE documents SET current_version_id=NULL WHERE id=%s", (receipt.document.id,)
+        )
+    with pytest.raises(DocumentError, match="document_not_found"):
+        c["service"].source_text(**arguments)
+    with psycopg.connect(URL) as admin:
+        admin.execute(
+            "UPDATE documents SET current_version_id=%s WHERE id=%s",
+            (receipt.document.version_id, receipt.document.id),
+        )
+    with pytest.raises(DocumentError):
+        c["service"].source_text(**{**arguments, "notebook_id": uuid4()})
+    with pytest.raises(DocumentError):
+        c["service"].source_text(**{**arguments, "actor_id": uuid4()})
+    with psycopg.connect(URL) as admin:
+        admin.execute("DELETE FROM workspace_members WHERE user_id=%s", (c["viewer"],))
+    with pytest.raises(DocumentError):
+        c["service"].source_text(**arguments)
+    # Even existing stored chunks cannot be read through a deleted source.
+    with psycopg.connect(URL) as admin:
+        admin.execute(
+            "UPDATE documents SET deleted_at=clock_timestamp() WHERE id=%s", (receipt.document.id,)
+        )
+    with pytest.raises(DocumentError, match="document_not_found"):
+        c["service"].source_text(**{**arguments, "actor_id": c["actor"]})
+
+
 def test_http_upload_and_list_use_local_runtime_with_real_database(
     upload_scene, tmp_path, monkeypatch
 ):

@@ -1,4 +1,4 @@
-"""Unregistered, capability-closed read-only document adapter.
+"""Capability-closed read-only document adapter.
 
 Only the server-verified Identity may bind a fresh short actor transaction.
 No Storage/provider/IO transaction factory and no mutation routes are supplied.
@@ -8,13 +8,13 @@ from contextlib import contextmanager
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict
 
 from app.auth.supabase import Identity
 from app.capabilities import capabilities
 from app.db.session import authenticated_session, identity
-from app.documents.service import DocumentDTO, DocumentError, UploadService
+from app.documents.service import DocumentDTO, DocumentError, SourceTextDTO, UploadService
 
 router = APIRouter(prefix="/api/notebooks", tags=["documents"])
 
@@ -32,6 +32,7 @@ _ERRORS = {
     "email_unverified": (403, "E-Mail-Adresse ist nicht bestätigt."),
     "admission_required": (403, "Eine angenommene Einladung ist erforderlich."),
     "notebook_not_found": (404, "Notebook nicht gefunden."),
+    "document_not_found": (404, "Quelle nicht gefunden."),
     "invalid_request": (422, "Bitte Eingaben prüfen."),
     "documents_unavailable": (503, "Dokumente sind derzeit nicht verfügbar."),
 }
@@ -129,4 +130,35 @@ def list_documents(
         # not FastAPI's post-return response-validation exception path.
         return DocumentList(items=[DocumentDTO.model_validate(row) for row in rows])
     except Exception as error:  # noqa: BLE001 — service/DTO/commit failures stay opaque
+        raise sanitized(error) from None
+
+
+@router.get("/{notebook_id}/documents/{document_id}/text", response_model=SourceTextDTO)
+def read_source_text(
+    notebook_id: str,
+    document_id: str,
+    response: Response,
+    service: Annotated[UploadService, Depends(document_service)],
+    user: Annotated[Identity, Depends(document_identity)],
+    after: str = "0",
+) -> SourceTextDTO:
+    try:
+        if len(notebook_id) != 36 or len(document_id) != 36:
+            raise fixed_error("invalid_request")
+        try:
+            notebook, document = UUID(notebook_id), UUID(document_id)
+        except ValueError:
+            raise fixed_error("invalid_request") from None
+        if len(after) > 7 or not after.isascii() or not after.isdecimal():
+            raise fixed_error("invalid_request")
+        cursor = int(after)
+        if not 0 <= cursor <= 2_000_000:
+            raise fixed_error("invalid_request")
+        result = service.source_text(
+            actor_id=user.id, notebook_id=notebook, document_id=document, after=cursor
+        )
+        projected = SourceTextDTO.model_validate(result)
+        response.headers["Cache-Control"] = "no-store, private"
+        return projected
+    except Exception as error:  # noqa: BLE001 — no source text/driver details in errors
         raise sanitized(error) from None

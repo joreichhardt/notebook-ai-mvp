@@ -42,6 +42,11 @@ export type SourceDocument = {
 };
 // The UI consumes only the member-safe document projection, never the job.
 export type UploadReceipt = { document: SourceDocument };
+export type SourceText = {
+  document: SourceDocument;
+  items: { id: string; ordinal: number; page: number | null; text: string; truncated: boolean }[];
+  next_ordinal: number | null;
+};
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export function uploadMediaType(file: File): string {
   const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
@@ -208,6 +213,31 @@ export const api = {
       undefined,
       signal,
     ),
+  sourceText: async (notebook: string, document: string, version: string, after = 0, signal?: AbortSignal): Promise<SourceText> => {
+    if (!Number.isInteger(after) || after < 0 || after > 2_000_000)
+      throw new ApiError(422, "invalid_cursor", "Ungültiger Textabschnitt.");
+    const result = await request<SourceText>(
+      `/notebooks/${encodeURIComponent(notebook)}/documents/${encodeURIComponent(document)}/text?after=${after}`,
+      "GET", undefined, signal,
+    );
+    const doc = result?.document;
+    if (!doc || doc.id !== document || doc.notebook_id !== notebook || doc.version_id !== version ||
+        !["queued", "processing", "ready", "failed"].includes(doc.status) ||
+        typeof doc.filename !== "string" || !(doc.error_code === null || typeof doc.error_code === "string") ||
+        !Array.isArray(result.items) || result.items.length > 20 ||
+        !(result.next_ordinal === null || (Number.isInteger(result.next_ordinal) && result.next_ordinal > after && result.next_ordinal <= 2_000_000)) ||
+        result.items.some((item) => !item || typeof item.id !== "string" ||
+          !Number.isInteger(item.ordinal) || item.ordinal < after || item.ordinal > 2_000_000 ||
+          !(item.page === null || (Number.isInteger(item.page) && item.page >= 1 && item.page <= 500)) ||
+          typeof item.text !== "string" || !item.text.length || item.text.length > 8000 || typeof item.truncated !== "boolean"))
+      throw new ApiError(409, "source_changed", "Der Quellentext konnte nicht bestätigt werden. Bitte lade die Quellen neu.");
+    return {
+      document: { id: doc.id, notebook_id: doc.notebook_id, version_id: doc.version_id,
+        filename: doc.filename, status: doc.status, error_code: doc.error_code },
+      items: result.items.map(({ id, ordinal, page, text, truncated }) => ({ id, ordinal, page, text, truncated })),
+      next_ordinal: result.next_ordinal,
+    };
+  },
   uploadDocument: async (id: string, file: File, key: string, signal?: AbortSignal): Promise<UploadReceipt> => {
     const media = uploadMediaType(file);
     if (!key.length || key.length > 128 || /[^A-Za-z0-9._:-]/.test(key))
