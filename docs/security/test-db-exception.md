@@ -9,9 +9,11 @@ Testfreigabe committen, pushen und veröffentlichen. Dies ist eine Risikoakzepta
 Keine Produktionsfreigabe und keine Änderung der Repository-Sichtbarkeit.
 
 Gültig bis ausschließlich **2026-12-01 UTC**. Scope: der unmittelbar auf
-`a2eef33fdd233f5c3234a6234e88716f822056df` folgende Testfreigabe-Commit und seine
-Workflow-Wiederholungen. Der Evaluator prüft den tatsächlichen Git-Parent;
-spätere Releases benötigen eine erneute ausdrückliche Freigabe.
+`d799e73ef82e85b629cfacc5fcdf282c007e95da` folgende Testfreigabe-Commit und seine
+Workflow-Wiederholungen. Der Betreiber bestätigte am 2026-11-18 die weitere
+Freigabe derselben Befunde für private Testreleases. Der Evaluator prüft
+weiterhin den ausdrücklich dokumentierten Git-Parent. Andere Digests, neue
+Befunde, die öffentliche Route und eine Verlängerung sind nicht eingeschlossen.
 
 Ausschließlich dieses Image:
 `supabase/postgres@sha256:f371b5f3f2ac0a05703f33d6e6134515fb2498cab708fb948a0aeb7481467c00`.
