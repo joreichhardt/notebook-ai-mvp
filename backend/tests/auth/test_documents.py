@@ -187,7 +187,7 @@ def test_fresh_migrations_and_model_columns(upgrade_via):
 
 def test_document_tables_are_rls_protected():
     with psycopg.connect(URL) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0007",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0008",)
         db.execute("SET ROLE notebook_app")
         assert db.execute(
             "SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user"

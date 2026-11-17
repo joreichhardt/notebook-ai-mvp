@@ -39,7 +39,7 @@ def delegation_scene(upload_scene, tmp_path):
     c = upload_scene
     material = secrets.token_hex(24)
     with psycopg.connect(URL) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0007",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0008",)
         assert db.execute(
             "SELECT rolcanlogin,rolsuper,rolbypassrls FROM pg_roles "
             "WHERE rolname='notebook_text_scheduler'"
