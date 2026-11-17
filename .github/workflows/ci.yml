@@ -117,6 +117,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
+          fetch-depth: 2
       - name: Build the exact reviewed commit, without runtime credentials
         run: |
           set -euo pipefail
@@ -130,7 +131,7 @@ jobs:
             --label "org.opencontainers.image.revision=$RELEASE_SHA" \
             -t "$REGISTRY_PREFIX-frontend:$RELEASE_SHA" .
       # HIGH/CRITICAL findings block except the operator-approved test-only
-      # Auth tuples in deploy/test_auth_scan.py. Secrets always block.
+      # Auth/DB tuples in deploy/test_{auth,db}_scan.py. Secrets always block.
       - name: Rescan source vulnerabilities and configuration
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
@@ -160,6 +161,7 @@ jobs:
           date -u +%FT%TZ > release/scanned-at.txt
           printf 'test-only\n' > release/environment.txt
           cp docs/security/test-auth-exception.md release/
+          cp docs/security/test-db-exception.md release/
           for role in api frontend auth db; do
             case "$role" in
               api|frontend) image="$REGISTRY_PREFIX-$role:$RELEASE_SHA" ;;
@@ -174,6 +176,14 @@ jobs:
               python3 deploy/test_auth_scan.py \
                 release/auth-vulnerabilities.json \
                 --image "$image" --environment test
+            elif [ "$role" = db ]; then
+              trivy image --scanners vuln --severity HIGH,CRITICAL \
+                --format json --output release/db-vulnerabilities.json \
+                --exit-code 0 "$image"
+              # The approval is limited to this release's reviewed parent.
+              parent=$(git show -s --format=%P HEAD)
+              python3 deploy/test_db_scan.py release/db-vulnerabilities.json \
+                --image "$image" --environment test --release-parent "$parent"
             else
               trivy image --scanners vuln --severity HIGH,CRITICAL \
                 --exit-code 1 "$image"
