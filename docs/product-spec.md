@@ -75,12 +75,13 @@ Rollen:
 - Owner: Workspace verwalten, Eigentümerschaft übertragen, Mitglieder und Einladungen verwalten, Inhalte bearbeiten und Workspace löschen.
 - Editor: Notebooks und Quellen bearbeiten sowie Chats und Zusammenfassungen ausführen.
 - Viewer: vorhandene Inhalte lesen und Fragen stellen; keine Quellen, Mitglieder oder Workspace-Einstellungen verändern. Viewer-Chats sind standardmäßig nur für den jeweiligen Nutzer sichtbar.
-- Plattformadministrator: initiale App-Einladungen und administrative Betriebsaufgaben; keine stillschweigende Anzeige sämtlicher privater Inhalte im normalen UI.
+- Admin (Plattformadministrator): App-Einladungen und administrative Betriebsaufgaben; keine Vergabe von Adminrechten und keine stillschweigende Anzeige privater Inhalte oder Verwendung fremder KI-Zugänge.
+- Superadmin: zusätzlich bereits zugelassene Nutzer im Adminbereich zu Admins ernennen und die Plattform-Adminrollen auflisten. Dies ist keine Workspace-Mitgliedschaft und verleiht keinen Zugriff auf fremde private Inhalte oder persönliche KI-Zugänge. Superadminrechte werden nicht über die Browser-API vergeben; vorhandene Admins werden bei einer Migration nicht automatisch hochgestuft.
 
 Definiere und implementiere eine eindeutige Berechtigungsmatrix. Private Chats bleiben auch bei gemeinsamem Quellenbestand privat; ein späteres Teilen von Chats ist separat und explizit. Das letzte Owner-Mitglied darf nicht ersatzlos entfernt werden.
 
 Einladungsablauf:
-- Initialer Administrator wird mit einem einmaligen lokalen Bootstrap-Befehl und expliziter E-Mail-Adresse eingerichtet. Keine öffentliche Bootstrap-Route, keine Standardzugangsdaten.
+- Initialer Administrator wird als Superadmin mit einem einmaligen lokalen Bootstrap-Befehl und expliziter E-Mail-Adresse eingerichtet. Bereits bestehende bestätigte Admin-Konten dürfen nur durch einen getrennten, privilegierten Betreiber-Schritt anhand ihrer stabilen Auth-ID zu Superadmins hochgestuft werden; der erste Bootstrap wird dafür nicht wiederholt. Keine öffentliche Bootstrap-Route, keine Standardzugangsdaten.
 - Plattformadministrator kann zur App einladen; Workspace-Owner können Personen in ihren Workspace einladen und dadurch auch neue App-Nutzer zulassen.
 - Einladungen sind standardmäßig an eine Empfänger-E-Mail gebunden, enthalten Ziel-Workspace und Rolle, Ablaufdatum, Ersteller und Status.
 - Erzeuge kryptografisch zufällige Tokens; speichere ausschließlich deren Hash. Einmalige Nutzung, standardmäßig sieben Tage gültig, widerrufbar. Rolle und Workspace kommen ausschließlich aus dem gespeicherten Einladungsdatensatz.

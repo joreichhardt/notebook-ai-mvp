@@ -34,18 +34,43 @@ def bootstrap(email: str, database_url: str):
             text("INSERT INTO public.app_admissions VALUES(:uid) ON CONFLICT DO NOTHING"),
             {"uid": user},
         )
-        db.execute(text("INSERT INTO public.platform_admins VALUES(:uid)"), {"uid": user})
+        db.execute(
+            text("INSERT INTO public.platform_admins(user_id,role) VALUES(:uid,:role)"),
+            {"uid": user, "role": "superadmin"},
+        )
         db.execute(
             text(
-                "INSERT INTO public.workspaces(id,name,personal_owner_id) VALUES(:id,'Mein Workspace',:uid) ON CONFLICT(personal_owner_id) DO NOTHING"
+                "INSERT INTO public.workspaces(id,name,personal_owner_id) VALUES(:id,:name,:uid) ON CONFLICT(personal_owner_id) DO NOTHING"
             ),
-            {"id": uuid4(), "uid": user},
+            {"id": uuid4(), "name": "Mein Workspace", "uid": user},
         )
         db.execute(
             text(
                 "INSERT INTO public.workspace_members SELECT id,:uid,'owner' FROM public.workspaces WHERE personal_owner_id=:uid ON CONFLICT DO NOTHING"
             ),
             {"uid": user},
+        )
+    return user
+
+
+def promote_confirmed_superadmin(email: str, database_url: str):
+    """Privileged operator-only promotion of an existing confirmed app administrator."""
+    with create_engine(database_url, hide_parameters=True).begin() as db:
+        db.execute(text("LOCK TABLE public.platform_admins IN EXCLUSIVE MODE"))
+        user = db.execute(
+            text(
+                """SELECT u.id FROM auth.users u
+                JOIN public.app_admissions a ON a.user_id=u.id
+                JOIN public.platform_admins p ON p.user_id=u.id
+                WHERE lower(u.email)=lower(:email) AND u.email_confirmed_at IS NOT NULL"""
+            ),
+            {"email": email},
+        ).scalar_one_or_none()
+        if user is None:
+            raise ValueError("An existing confirmed administrator is required.")
+        db.execute(
+            text("UPDATE public.platform_admins SET role=:role WHERE user_id=:uid"),
+            {"uid": user, "role": "superadmin"},
         )
     return user
 

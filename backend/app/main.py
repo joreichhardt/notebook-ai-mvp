@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.auth.administration import router as administration_router
 from app.auth.invitations import router as invitations_router
 from app.auth.router import router as auth_router
 from app.capabilities import router as capabilities_router
@@ -47,6 +48,7 @@ app.include_router(notebooks_router)
 app.include_router(capabilities_router)
 
 app.include_router(invitations_router)
+app.include_router(administration_router)
 
 app.include_router(connections_router)
 

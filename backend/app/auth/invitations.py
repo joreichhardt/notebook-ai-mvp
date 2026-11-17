@@ -3,13 +3,15 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.auth.security import check_csrf, fail, invitation_hash, invitation_token
 from app.auth.settings import get_settings
-from app.db.session import user_session
+from app.auth.supabase import Identity
+from app.db.models import PlatformAdmin
+from app.db.session import identity, user_session
 from app.mutations import ActorMutations, actor_mutations
 
 router = APIRouter(prefix="/api", tags=["invitations", "members"])
@@ -142,5 +144,9 @@ def remove(
 
 
 @router.get("/auth/admission")
-def admission(db: Annotated[Session, Depends(user_session)]):
-    return {"admitted": True}
+def admission(
+    db: Annotated[Session, Depends(user_session)],
+    user: Annotated[Identity, Depends(identity)],
+):
+    role = db.scalar(select(PlatformAdmin.role).where(PlatformAdmin.user_id == user.id))
+    return {"admitted": True, "platform_role": role}

@@ -182,6 +182,13 @@ def test_compose_is_login_only_private_pinned_and_no_build():
     assert '"Host: note.yokoma.de"' in services["frontend"]
 
 
+def test_database_init_client_uses_the_configured_private_socket():
+    source = (ROOT / "compose.poc.yaml").read_text()
+    db = source.split("  db:\n", 1)[1].split("  auth:\n", 1)[0]
+    assert "      PGHOST: /tmp\n" in db
+    assert "      - unix_socket_directories=/tmp\n" in db
+
+
 def test_nginx_has_no_public_auth_or_readiness_alias_and_otp_is_internal():
     config = (ROOT / "docker/nginx.poc.conf").read_text()
     public, private = config.split("# Unpublished container port")

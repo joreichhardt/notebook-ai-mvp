@@ -22,6 +22,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: postgres
+      PGHOST: /tmp
       POSTGRES_PASSWORD_FILE: /run/secrets/notebook_postgres_password
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=trust
       PGDATA: /var/lib/postgresql/data

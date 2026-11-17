@@ -12,6 +12,8 @@ vi.mock("./api", async (importOriginal) => {
       session: vi.fn(),
       authConfig: vi.fn(),
       admission: vi.fn(),
+      administrators: vi.fn(),
+      grantAdministrator: vi.fn(),
       providers: vi.fn(),
       connections: vi.fn(),
       acceptInvitation: vi.fn(),
@@ -48,6 +50,7 @@ beforeEach(() => {
     members: true,
   });
   vi.mocked(api.admission).mockResolvedValue({ admitted: true });
+  vi.mocked(api.administrators).mockResolvedValue({ items: [] });
   vi.mocked(api.providers).mockResolvedValue({ items: [] });
   vi.mocked(api.connections).mockResolvedValue({ items: [] });
   vi.mocked(api.members).mockResolvedValue({ items: [] });
@@ -58,6 +61,22 @@ beforeEach(() => {
   vi.mocked(api.notebooks).mockResolvedValue({ items: [] });
   vi.mocked(api.documents).mockResolvedValue({ items: [] });
 });
+describe("server-authorized administration", () => {
+  it("does not offer global administration to workspace owners", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: /Meine Notebooks/ });
+    expect(screen.queryByRole("button", { name: /Adminbereich/ })).not.toBeInTheDocument();
+    expect(api.administrators).not.toHaveBeenCalled();
+  });
+  it.each(["admin", "superadmin"] as const)("offers the admin area only after the server reports %s", async (role) => {
+    vi.mocked(api.admission).mockResolvedValue({ admitted: true, platform_role: role });
+    render(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /Adminbereich/ }));
+    expect(await screen.findByRole("heading", { name: "Zur App einladen" })).toBeInTheDocument();
+    expect(Boolean(screen.queryByRole("heading", { name: "Admins ernennen" }))).toBe(role === "superadmin");
+  });
+});
+
 describe("Notebook workspace", () => {
   it("creates a notebook only after server success", async () => {
     vi.mocked(api.create).mockResolvedValue({

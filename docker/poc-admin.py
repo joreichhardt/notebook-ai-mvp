@@ -14,7 +14,7 @@ from pathlib import Path
 import psycopg
 from alembic import command
 from alembic.config import Config
-from app.auth.bootstrap import bootstrap
+from app.auth.bootstrap import bootstrap, promote_confirmed_superadmin
 from psycopg import ClientCursor
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import SQLAlchemyError
@@ -93,7 +93,10 @@ def activate_api_role(url: str, password: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["migrate", "activate-api-role", "admit-confirmed-owner"])
+    parser.add_argument(
+        "action",
+        choices=["migrate", "activate-api-role", "admit-confirmed-owner", "promote-confirmed-superadmin"],
+    )
     args = parser.parse_args()
     logging.disable(logging.CRITICAL)
     try:
@@ -110,6 +113,8 @@ def main() -> int:
                 private_value(Path("/run/poc-admin/notebook_database_url")).strip()
             )
             activate_api_role(url, password)
+        elif args.action == "promote-confirmed-superadmin":
+            promote_confirmed_superadmin(ADMIN_EMAIL, url)
         else:
             bootstrap(ADMIN_EMAIL, url)
     except (SetupError, DatabaseSetupError, SQLAlchemyError, psycopg.Error, ValueError, OSError):

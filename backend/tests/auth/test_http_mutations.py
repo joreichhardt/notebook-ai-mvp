@@ -156,7 +156,7 @@ def test_committed_notebook_and_invitation_flow_preserves_accept_without_admissi
         )
         accepted = client.post("/api/invitations/accept", json={"token": invited.json()["token"]})
         assert accepted.status_code == 200
-        assert client.get("/api/auth/admission").json() == {"admitted": True}
+        assert client.get("/api/auth/admission").json() == {"admitted": True, "platform_role": None}
         assert client.get(path).status_code == 200
         app.dependency_overrides[session_layer.identity] = lambda: Identity(
             scope[0], "http-mutation@example.test"

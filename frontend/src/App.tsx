@@ -1,5 +1,6 @@
 import { Invitation, Sharing } from "./Sharing";
 import { Connections } from "./Connections";
+import { Administration } from "./Administration";
 import { Sources } from "./Sources";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -10,6 +11,7 @@ import {
   type Session,
   type Workspace,
   type AuthConfig,
+  type PlatformRole,
 } from "./api";
 const message = (e: unknown) =>
   e instanceof Error
@@ -76,16 +78,21 @@ export default function App() {
     return () => c.abort();
   }, [retry]);
   const [admitted, setAdmitted] = useState<boolean>();
+  const [platformRole, setPlatformRole] = useState<PlatformRole | null>(null);
   const [admissionError, setAdmissionError] = useState("");
   useEffect(() => {
     setAdmitted(undefined);
+    setPlatformRole(null);
     setAdmissionError("");
     if (!session?.user) return;
     const c = new AbortController();
     api
       .admission(c.signal)
       .then((r) => {
-        if (!c.signal.aborted) setAdmitted(r.admitted);
+        if (!c.signal.aborted) {
+          setAdmitted(r.admitted);
+          setPlatformRole(r.platform_role === "admin" || r.platform_role === "superadmin" ? r.platform_role : null);
+        }
       })
       .catch((e) => {
         if (!c.signal.aborted) {
@@ -236,6 +243,7 @@ export default function App() {
     <WorkspaceApp
       key={session.user.id}
       config={config}
+      platformRole={platformRole}
       session={session}
       onLogout={async () => {
         await api.logout();
@@ -301,8 +309,10 @@ function WorkspaceApp({
   session,
   onLogout,
   config,
+  platformRole,
 }: {
   config?: AuthConfig;
+  platformRole: PlatformRole | null;
   session: Session;
   onLogout: () => Promise<void>;
 }) {
@@ -310,7 +320,7 @@ function WorkspaceApp({
     [workspace, setWorkspace] = useState(""),
     [notebooks, setNotebooks] = useState<Notebook[]>([]),
     [selected, setSelected] = useState(""),
-    [settings, setSettings] = useState<"notebooks" | "connections" | "sharing">(
+    [settings, setSettings] = useState<"notebooks" | "connections" | "sharing" | "administration">(
       "notebooks",
     ),
     [error, setError] = useState(""),
@@ -444,6 +454,12 @@ function WorkspaceApp({
               ♧ <span>Mitglieder</span>
             </button>
           )}
+          {platformRole && <button
+            className={settings === "administration" ? "nav active" : "nav"}
+            onClick={() => setSettings("administration")}
+          >
+            ⚙ <span>Adminbereich</span>
+          </button>}
         </nav>
         <div className="sidebar-note">
           <span className="status-dot" />
@@ -488,7 +504,9 @@ function WorkspaceApp({
               Erneut laden
             </button>
           )}
-          {settings === "connections" ? (
+          {settings === "administration" && platformRole ? (
+            <Administration role={platformRole} />
+          ) : settings === "connections" ? (
             <Connections />
           ) : settings === "sharing" &&
             config?.members &&

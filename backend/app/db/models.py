@@ -68,6 +68,8 @@ class Invitation(Base):
 class PlatformAdmin(Base):
     __tablename__ = "platform_admins"
     user_id: Mapped[UUID] = mapped_column(primary_key=True)
+    role: Mapped[str] = mapped_column(String(20), default="admin", server_default="admin")
+    __table_args__ = (CheckConstraint("role IN ('admin','superadmin')"),)
 
 
 class ProviderConnection(Base):

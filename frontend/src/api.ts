@@ -20,6 +20,8 @@ export type AuthConfig = {
   members: boolean;
   documents?: boolean;
 };
+export type PlatformRole = "admin" | "superadmin";
+export type Administrator = { user_id: string; role: PlatformRole };
 export type User = { id: string; email: string };
 export type Session = {
   user: User | null;
@@ -125,7 +127,13 @@ export async function request<T>(
 }
 export const api = {
   admission: (signal?: AbortSignal) =>
-    request<{ admitted: boolean }>("/auth/admission", "GET", undefined, signal),
+    request<{ admitted: boolean; platform_role?: PlatformRole | null }>(
+      "/auth/admission", "GET", undefined, signal,
+    ),
+  administrators: (signal?: AbortSignal) =>
+    request<{ items: Administrator[] }>("/admin/administrators", "GET", undefined, signal),
+  grantAdministrator: (user_id: string) =>
+    request<Administrator>("/admin/administrators", "POST", { user_id }),
   providers: (signal?: AbortSignal) =>
     request<{ items: Provider[] }>("/providers", "GET", undefined, signal),
   connections: (signal?: AbortSignal) =>
