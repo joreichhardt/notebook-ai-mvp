@@ -4,6 +4,12 @@ Du bist der verantwortliche Software- und Deployment-Agent. Entwickle eine funkt
 
 Arbeitsweise, Homeserver-Kontext und verbindliche Secret-Regeln: siehe [AGENTS.md](../AGENTS.md).
 
+## Aktuell freigegebener Vorführumfang
+
+Die jüngste Nutzerentscheidung priorisiert ein kleines, tatsächlich benutzbares Bewerbungs-MVP: echter Login mit privatem Workspace, privater persistenter PDF-/TXT-Upload, sichtbare Textverarbeitung sowie Fragen und echte Antworten mit anklickbaren Quellen. Zunächst genügt ein funktionierender Modellanbieter. systemd übernimmt die Prozessführung auf kube1; Tests begleiten konkrete Änderungen, bilden aber kein eigenständiges Vorabprojekt.
+
+Mehrere Modellanbieter, Subscription-OAuth, umfangreiche Admin-Demos und ausgefeilte Graphfunktionen bleiben Ausbauziele der folgenden Gesamtbeschreibung und sind keine Voraussetzungen für die erste Vorführung. Basis-Isolation, sichere Secrets, private Dateien, Ressourcenlimits und erforderliche CI-/Image-Sicherheitsprüfungen bleiben erhalten. Nicht fertige Funktionen werden ehrlich gekennzeichnet. Ein Prüfskriptfehler blockiert nur die betroffene Ausführung, nicht unabhängige MVP-Arbeit; keine weiteren generischen Containment-/Qualifizierungsframeworks ohne konkreten Produktnutzen.
+
 ## 1. Festgelegter Rahmen
 
 - Backend und Hintergrundverarbeitung: Python, FastAPI, Pydantic, SQLAlchemy und Alembic.

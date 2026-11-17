@@ -626,8 +626,33 @@ def test_closed_reporter_does_not_inspect_exception_or_capture_properties():
 def test_accepted_file_manifest_is_complete_and_unchanged():
     root = BASE.parents[2]
     packet = load("operator_b5")
-    packet.verify_pins(root)
-    pins = json.loads((BASE / "source_manifest.b5.json").read_text())["accepted_files"]
+    # Preserve the accepted historical packet, not a refreshed set of current pins.
+    manifest = (BASE / "source_manifest.b5.json").read_bytes()
+    assert hashlib.sha256(manifest).hexdigest() == (
+        "74b17fafddda0f4cacc56e3163c899b6facdedb1e6dd83712480435175ce2508"
+    )
+    pins = json.loads(manifest)["accepted_files"]
+    assert len(pins) == 35
+    mismatches = {
+        name
+        for name, digest in pins.items()
+        if hashlib.sha256((root / name).read_bytes()).hexdigest() != digest
+    }
+    assert mismatches == {"backend/tests/storage_real/Dockerfile"}
+    # These reviewed nonroot successors do not establish native A5/B5 acceptance.
+    successors = {
+        "backend/tests/storage_real/Dockerfile": (
+            "7af3b72337f40c5f1cf4dd299f5db26b61e26320a66465c9761efad341c61fa6"
+        ),
+        "tests/security/upload_http/Dockerfile.b5": (
+            "6615f1c64279b75792a2f48b743ec6d81e5213219a1eec8d0bf674cf8cbb0fef"
+        ),
+    }
+    for name, digest in successors.items():
+        assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest
+    # The historical operator must refuse before any native work on this tree.
+    with pytest.raises(packet.Refused):
+        packet.verify_pins(root)
     files = {
         p.relative_to(root).as_posix()
         for p in (root / "backend/tests/storage_real").iterdir()

@@ -6,4 +6,10 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-cache
 COPY backend ./backend
 ENV PATH="/workspace/.venv/bin:$PATH" PYTHONPATH=/workspace/backend PYTHONDONTWRITEBYTECODE=1
+RUN groupadd --gid 10001 notebook-test \
+    && useradd --uid 10001 --gid 10001 --home-dir /home/notebook-test --create-home --shell /usr/sbin/nologin notebook-test \
+    && chmod 0700 /home/notebook-test \
+    && install -d -o 10001 -g 10001 -m 0700 /stage-b-secrets
+ENV HOME=/home/notebook-test
+USER 10001:10001
 CMD ["python", "backend/tests/storage_real/phase_a.py"]
