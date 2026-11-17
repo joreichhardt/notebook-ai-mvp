@@ -25,7 +25,8 @@
     "backend/tests/documents/test_delegation_database.py::test_app_cannot_read_tickets_schedule_or_assume_privilege[statement=0]",
     "backend/tests/documents/test_delegation_database.py::test_app_cannot_read_tickets_schedule_or_assume_privilege[statement=1]",
     "backend/tests/documents/test_delegation_database.py::test_app_cannot_read_tickets_schedule_or_assume_privilege[statement=2]",
-    "backend/tests/documents/test_delegation_database.py::test_app_cannot_read_tickets_schedule_or_assume_privilege[statement=3]"
+    "backend/tests/documents/test_delegation_database.py::test_app_cannot_read_tickets_schedule_or_assume_privilege[statement=3]",
+    "backend/tests/documents/test_delegation_database.py::test_private_local_upload_is_processed_by_runtime_and_readable_as_source"
   ],
   "concurrency": [
     "tests/security/text_delegation/test_scheduler_concurrency.py::test_competing_direct_schedulers_issue_one_live_delivery"

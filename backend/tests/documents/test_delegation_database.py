@@ -610,7 +610,8 @@ def test_private_local_upload_is_processed_by_runtime_and_readable_as_source(
     preview = c["service"].source_text(
         actor_id=c["actor"], notebook_id=c["notebook"], document_id=receipt.document.id
     )
-    assert preview.status == "ready" and [chunk.text for chunk in preview.chunks] == ["hello"]
+    assert preview.document.status == "ready"
+    assert [chunk.text for chunk in preview.items] == ["hello"]
     assert len(list(root.glob("*/*/*/*/original"))) == 1
     # A NEW runtime lifetime observes the acknowledged ticket, not a replay.
     again = local_runtime.configured_runtime()
