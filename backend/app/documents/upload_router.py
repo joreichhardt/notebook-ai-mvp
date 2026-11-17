@@ -1,4 +1,4 @@
-"""Unregistered, default-CLOSED TXT/MD upload adapter; no runtime storage wiring.
+"""Default-CLOSED TXT/MD upload adapter with explicit local-runtime opt-in.
 
 Server dependencies only: preserve the verified Identity in every fresh actor
 transaction. StorageIo must use a separate restricted login; no implicit engine,
@@ -22,8 +22,9 @@ from app.capabilities import capabilities
 from app.db.session import authenticated_session, identity
 from app.documents.body_limit import UploadBodyError
 from app.documents.multipart import parse_text_form
-from app.documents.service import DocumentError, IoTx, UploadReceipt, UploadService
-from app.documents.storage import StorageConfig
+from app.documents.runtime import local_upload_runtime
+from app.documents.service import DocumentError, IoTx, UploadReceipt, UploadService, UploadStore
+from app.documents.storage import Authorize, StorageConfig
 
 router = APIRouter(prefix="/api/notebooks", tags=["documents"])
 AuthenticatedSessionFactory = Callable[[Identity], AbstractContextManager[Session]]
@@ -34,11 +35,15 @@ class StorageIo:
     """Trusted server-only wiring, never client input; service checks restricted role."""
 
     io_tx: IoTx
-    storage: StorageConfig
+    storage: StorageConfig | None = None
+    store_factory: Callable[[Authorize], UploadStore] | None = None
 
 
 def storage_io() -> StorageIo | None:
-    return None  # Main owns separate reviewed provisioning/wiring, NOT this adapter.
+    runtime = local_upload_runtime()
+    if runtime is None:
+        return None
+    return StorageIo(io_tx=runtime.io_tx, store_factory=runtime.store_factory)
 
 
 def authenticated_session_factory() -> AuthenticatedSessionFactory:
@@ -57,7 +62,10 @@ def upload_service(user: Identity) -> UploadService:
 
     io = storage_io()
     return UploadService(
-        actor_tx=actor_tx, io_tx=io.io_tx if io else None, storage=io.storage if io else None
+        actor_tx=actor_tx,
+        io_tx=io.io_tx if io else None,
+        storage=io.storage if io else None,
+        store_factory=io.store_factory if io else None,
     )
 
 

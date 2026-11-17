@@ -3,6 +3,9 @@
 from fastapi import APIRouter, HTTPException
 
 from app.auth.settings import get_settings
+from app.documents.runtime import local_upload_runtime
+from app.documents.service import DocumentError
+from app.documents.storage import StorageError
 
 router = APIRouter(prefix="/api", tags=["capabilities"])
 
@@ -16,6 +19,10 @@ def capabilities():
         )
     except HTTPException:
         password_login = False
+    try:
+        documents = local_upload_runtime() is not None
+    except (HTTPException, DocumentError, StorageError):
+        documents = False
     return {
         "auth": {
             "password_login": password_login,
@@ -25,6 +32,6 @@ def capabilities():
         },
         "invitations": True,
         "members": True,
-        "documents": False,
+        "documents": documents,
         "chat": False,
     }

@@ -214,6 +214,94 @@ def test_local_original_revocation_before_publication_leaves_no_visible_upload(
         ).fetchone() == (0,)
 
 
+def test_http_upload_and_list_use_local_runtime_with_real_database(
+    upload_scene, tmp_path, monkeypatch
+):
+    # Real HTTP/parser/CSRF/service/DB/filesystem; verified identity is synthetic.
+    from app.auth.settings import Settings
+    from app.auth.supabase import Identity
+    from app.capabilities import router as capabilities_router
+    from app.documents import router as reader
+    from app.documents import runtime, upload_router
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    c = upload_scene
+    root = tmp_path / "http-originals"
+    root.mkdir(mode=0o700)
+    secret = tmp_path / "io-url"
+    secret.touch(mode=0o600)
+    secret.write_text(
+        c["io_engine"].url.set(password=c["material"]).render_as_string(hide_password=False)
+    )
+    settings = runtime.UploadSettings(
+        local_uploads_enabled=True,
+        local_storage_root=str(root),
+        storage_io_database_url_file=str(secret),
+    )
+    monkeypatch.setattr(runtime, "upload_settings", lambda: settings)
+    monkeypatch.setattr(
+        upload_router, "get_settings", lambda: Settings(public_origin="https://test")
+    )
+    user = Identity(id=c["actor"], email="synthetic@example.test")
+
+    async def verified(request):
+        return user
+
+    def sessions(original):
+        with c["actor_tx"](original.id) as db:
+            yield db
+
+    monkeypatch.setattr(upload_router, "identity", verified)
+    monkeypatch.setattr(reader, "identity", verified)
+    monkeypatch.setattr(upload_router, "authenticated_session", sessions)
+    monkeypatch.setattr(reader, "authenticated_session", sessions)
+    app = FastAPI()
+    app.include_router(capabilities_router)
+    app.include_router(upload_router.router)
+    app.include_router(reader.router)
+
+    async def requests():
+        nonlocal user
+        async with AsyncClient(transport=ASGITransport(app), base_url="https://test") as client:
+            assert (await client.get("/api/capabilities")).json()["documents"] is True
+            url = f"/api/notebooks/{c['notebook']}/documents"
+            headers = {
+                "Origin": "https://test",
+                "Cookie": "__Host-notebook_csrf=test",
+                "X-CSRF-Token": "test",
+                "Idempotency-Key": "local-http-upload",
+            }
+            first = await client.post(
+                url, headers=headers, files={"file": ("note.txt", b"hello", "text/plain")}
+            )
+            assert first.status_code == 202
+            replay = await client.post(
+                url, headers=headers, files={"file": ("note.txt", b"hello", "text/plain")}
+            )
+            assert replay.status_code == 202 and replay.json() == first.json()
+            listing = await client.get(url)
+            assert listing.status_code == 200
+            assert listing.json()["items"] == [first.json()["document"]]
+            user = Identity(id=c["viewer"], email="viewer@example.test")
+            denied = await client.post(
+                url, headers=headers, files={"file": ("note.txt", b"hello", "text/plain")}
+            )
+            assert denied.status_code == 403
+
+    runtime.local_upload_runtime.cache_clear()
+    configured = None
+    try:
+        configured = runtime.local_upload_runtime()
+        asyncio.run(requests())
+        originals = list(root.glob("*/*/*/*/original"))
+        assert len(originals) == 1 and originals[0].read_bytes() == b"hello"
+    finally:
+        if configured is not None:
+            configured.engine.dispose()
+        runtime.local_upload_runtime.cache_clear()
+
+
 def test_complete_storage_then_durable_finalize_replay_and_member_projection(upload_scene):
     c = upload_scene
     result = perform(c)
