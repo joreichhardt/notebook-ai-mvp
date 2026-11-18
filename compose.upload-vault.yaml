@@ -1,0 +1,26 @@
+# Add only to the private upload-test stack. Never apply to the Login stack.
+services:
+  db:
+    command:
+      - postgres
+      - -c
+      - config_file=/var/lib/postgresql/data/postgresql.conf
+      - -c
+      - listen_addresses=*
+      - -c
+      - unix_socket_directories=/tmp
+      - -c
+      - log_statement=none
+      - -c
+      - log_min_error_statement=panic
+      - -c
+      - shared_preload_libraries=supabase_vault
+      - -c
+      - vault.getkey_script=/opt/notebook-provider-vault-getkey.sh
+    volumes:
+      - type: bind
+        source: ./docker/provider-vault-getkey.sh
+        target: /opt/notebook-provider-vault-getkey.sh
+        read_only: true
+        bind:
+          create_host_path: false
