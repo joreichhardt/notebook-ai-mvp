@@ -14,7 +14,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from .access import Access, save_state
+from .access import Access, access_inventory, save_state
 from .probes import connector_probe, public_check
 from .routing import PLACEHOLDER, Router, RoutingError, fingerprint, require, route_index
 
@@ -126,6 +126,11 @@ def main(argv=None):
         action="store_true",
         help="Main has approved this exact release for public activation",
     )
+    parser.add_argument(
+        "--invite-only",
+        action="store_true",
+        help="Publish the app login without Access; an invitation is still required in Notebook",
+    )
     args = parser.parse_args(argv)
     try:
         settings = json.loads(private_read(args.settings))
@@ -195,14 +200,16 @@ def main(argv=None):
         require(args.expected_fingerprint is not None, "reviewed_fingerprint_required")
         if args.mode == "activate":
             require(args.release_approved, "release_approval_required")
-            require(access is not None, "access_protection_required")
+            require(access is not None or args.invite_only, "access_protection_required")
+            require(not (access is not None and args.invite_only), "conflicting_publication_modes")
         with writer_lock():
             snapshot, _ = router.inspect()
             require(fingerprint(snapshot) == args.expected_fingerprint, "reviewed_snapshot_changed")
             if args.mode == "activate":
                 if access is None:
-                    raise RoutingError("access_protection_required")
-                access.inspect()
+                    access_inventory(api, settings["account_id"])
+                else:
+                    access.inspect()
                 verify_with_retry(settings["release"], True, access_domain)
                 router.activate(
                     lambda: connector_probe(

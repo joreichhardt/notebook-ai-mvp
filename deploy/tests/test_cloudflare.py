@@ -230,6 +230,8 @@ class ProbeTests(unittest.TestCase):
             )
         if path == "/":
             return 200, {"content-type": "text/html"}, b"<html></html>"
+        if path == "/api/workspaces":
+            return 401, {}, b""
         return 404, {}, b""
 
     def test_actual_readiness_frontend_and_admin_probe_matrix(self):
@@ -240,8 +242,8 @@ class ProbeTests(unittest.TestCase):
             return self.fetch(origin, path, **kw)
 
         app_check(SETTINGS["origin"], SETTINGS["release"], fetch=fetch)
-        self.assertEqual(calls, ["/api/health/ready", "/", *BLOCKED])
-        for bad in ("/api/health/ready", "/", *BLOCKED):
+        self.assertEqual(calls, ["/api/health/ready", "/", "/api/workspaces", *BLOCKED])
+        for bad in ("/api/health/ready", "/", "/api/workspaces", *BLOCKED):
 
             def bad_fetch(origin, path, bad=bad, **kw):
                 return (200, {}, b"fallback") if path == bad else self.fetch(origin, path, **kw)
@@ -569,6 +571,47 @@ class LocalSafetyTests(unittest.TestCase):
             self.assertEqual(len(api.writes), 2)
             self.assertEqual(events.count("ready"), 2)
             self.assertEqual(api.snapshot["config"]["ingress"][1]["service"], r.PLACEHOLDER)
+
+    def test_cli_invite_only_activates_without_access_but_refuses_overlap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings"
+            path.write_text(json.dumps(SETTINGS))
+            path.chmod(0o600)
+            for overlap in (False, True):
+                api = API()
+
+                def request(route, *args, overlap=overlap, api=api, **kwargs):
+                    if "/access/apps?" in route:
+                        return [{"id": "foreign", "domain": "note.yokoma.de"}] if overlap else []
+                    return api(route, *args, **kwargs)
+
+                with (
+                    patch("deploy.cloudflare.__main__.Cloudflare", return_value=request),
+                    patch("deploy.cloudflare.__main__.writer_lock"),
+                    patch("deploy.cloudflare.__main__.connector_probe") as ready,
+                    patch("deploy.cloudflare.__main__.verify_with_retry"),
+                    patch("sys.stdout", new_callable=io.StringIO),
+                    patch("sys.stderr", new_callable=io.StringIO),
+                ):
+                    result = main(
+                        [
+                            "activate",
+                            "--settings",
+                            str(path),
+                            "--token-file",
+                            "unused",
+                            "--invite-only",
+                            "--exclusive-writer",
+                            "--release-approved",
+                            "--connector-pid",
+                            "123",
+                            "--expected-fingerprint",
+                            r.fingerprint(api.snapshot),
+                        ]
+                    )
+                    self.assertEqual(result, int(overlap))
+                    self.assertEqual(ready.call_count, int(not overlap))
+                    self.assertEqual(len(api.writes), int(not overlap))
 
     def test_cli_refuses_writes_without_required_operating_gates(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -107,8 +107,13 @@ in this document should be run as a production rollout without Main coordination
   are read. A PID's executable name alone does not prove tunnel ownership.
 - `activate --exclusive-writer --release-approved --expected-fingerprint HASH
   --connector-pid PID`: exact Main-approved release and reviewed current snapshot;
-  Access inspection and public denial precede the origin readiness probe. Healthy
-  tunnel and exact readiness are mandatory. Repeated activation rechecks probes
+  By default, Access inspection and public denial precede the origin readiness
+  probe. For an explicitly approved invitation-only publication without an
+  extra Cloudflare login, pass `--invite-only` and omit Access settings. The
+  CLI refuses overlapping Access apps, requires the public 503 placeholder
+  before first activation, and verifies anonymous `/api/workspaces` returns 401
+  at the origin and at the public endpoint. It never edits Access in this mode.
+  Healthy tunnel and exact readiness are mandatory. Repeated activation rechecks probes
   but does not issue a PUT if unchanged.
 - `verify`: DNS, TLS and current public behavior, without writes.
 - `rollback --exclusive-writer --expected-fingerprint HASH`: freshly inspect and
