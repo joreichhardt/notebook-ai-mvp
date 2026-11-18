@@ -150,7 +150,7 @@ class TextWorkerSupervisor:
     def _now(self) -> float:
         try:
             now = self._clock()
-        except Exception:
+        except Exception:  # noqa: BLE001 — arbitrary clock failure must fault the loop
             self._fault()
             raise DelegationUnavailable("supervisor_unavailable") from None
         if not _finite(now) or (self._last_now is not None and now < self._last_now):
@@ -297,7 +297,7 @@ class TextWorkerSupervisor:
             return False
         try:
             now = self._clock()
-        except Exception:
+        except Exception:  # noqa: BLE001 — readiness must fail closed on any clock failure
             return False
         if (
             not _finite(now)
