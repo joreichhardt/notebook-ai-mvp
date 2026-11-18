@@ -145,6 +145,8 @@ export const api = {
       label,
       api_key,
     }),
+  replaceConnectionKey: (id: string, api_key: string) =>
+    request<Connection>(`/connections/${encodeURIComponent(id)}/key`, "PUT", { api_key }),
   testConnection: (id: string) =>
     request<{ models: { id: string }[]; status: string }>(
       `/connections/${encodeURIComponent(id)}/test`,

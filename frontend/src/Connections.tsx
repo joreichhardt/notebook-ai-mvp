@@ -13,6 +13,7 @@ export function Connections() {
     [selected, setSelected] = useState(""),
     [models, setModels] = useState<Record<string, string[]>>({}),
     [removing, setRemoving] = useState<Connection | null>(null),
+    [replacing, setReplacing] = useState<Connection | null>(null),
     [reload, setReload] = useState(0),
     [notice, setNotice] = useState("");
   useEffect(() => {
@@ -139,6 +140,11 @@ export function Connections() {
                     >
                       Verbindung testen
                     </button>
+                    {c.status !== "disconnected" && (
+                      <button disabled={busy} onClick={() => setReplacing(c)}>
+                        Schlüssel ersetzen
+                      </button>
+                    )}
                     <button disabled={busy} onClick={() => setRemoving(c)}>
                       {c.status === "disconnected"
                         ? "Entfernen erneut versuchen"
@@ -248,6 +254,33 @@ export function Connections() {
             )
           )}
         </>
+      )}
+      {replacing && (
+        <section className="editor" role="dialog" aria-labelledby="replace-key-title">
+          <h2 id="replace-key-title">Schlüssel für „{replacing.label}“ ersetzen</h2>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const key = String(new FormData(form).get("replacement_key") ?? "");
+            form.reset();
+            void run(async () => {
+              const result = await api.replaceConnectionKey(replacing.id, key);
+              setConnections((list) => list.map((item) => item.id === result.id ? result : item));
+              setModels((items) => ({ ...items, [result.id]: [] }));
+              setReplacing(null);
+              setNotice("Schlüssel ersetzt. Prüfe jetzt die Verbindung erneut.");
+            });
+          }}>
+            <label>
+              Neuer API-Schlüssel
+              <input name="replacement_key" type="password" autoComplete="off" required maxLength={16384} />
+            </label>
+            <div className="button-row">
+              <button disabled={busy}>Neuen Schlüssel speichern</button>
+              <button type="button" disabled={busy} onClick={() => setReplacing(null)}>Abbrechen</button>
+            </div>
+          </form>
+        </section>
       )}
       {removing && (
         <section

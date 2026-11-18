@@ -23,7 +23,15 @@ class BitwardenStore:
 
     def client(self):
         try:
-            if not self.config.configured:
+            if not all(
+                (
+                    self.config.bitwarden_api_url,
+                    self.config.bitwarden_identity_url,
+                    self.config.bitwarden_project_id,
+                    self.config.bitwarden_organization_id,
+                    self.config.bitwarden_token_file,
+                )
+            ):
                 raise ValueError()
             for url in (self.config.bitwarden_api_url, self.config.bitwarden_identity_url):
                 parsed = urlsplit(url)

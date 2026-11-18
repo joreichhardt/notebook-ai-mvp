@@ -20,11 +20,10 @@ from sqlalchemy.orm import Session
 from app.auth.security import fail
 from app.auth.supabase import Identity
 from app.connections.router import provider_config
-from app.connections.vault import BitwardenStore
+from app.connections.supabase_store import SupabaseStore
 from app.db.models import Admission, ProviderConnection
 from app.db.session import engine
 from app.providers.adapter import Adapter
-from app.providers.config import settings
 from app.providers.types import EmbeddingResult, Message, StreamEvent
 
 
@@ -37,11 +36,11 @@ class ConnectionState:
     status: str
 
 
-def _lookup(actor_id: UUID, connection_id: UUID) -> ConnectionState | None:
+def _lookup(actor_id: UUID, connection_id: UUID, *, expected: ConnectionState | None = None):
     with Session(engine()) as db, db.begin():
         safe = db.execute(
             text(
-                "SELECT NOT rolsuper AND NOT rolbypassrls AND rolname = 'notebook_app' "
+                "SELECT NOT rolsuper AND NOT rolbypassrls AND rolname = 'notebook_app' AND session_user=current_user "
                 "FROM pg_roles WHERE rolname=current_user"
             )
         ).scalar()
@@ -58,9 +57,16 @@ def _lookup(actor_id: UUID, connection_id: UUID) -> ConnectionState | None:
                 ProviderConnection.user_id == actor_id,
             )
         )
-        if row is None:
-            return None
-        return ConnectionState(row.id, row.user_id, row.provider_id, row.secret_id, row.status)
+        state = (
+            ConnectionState(row.id, row.user_id, row.provider_id, row.secret_id, row.status)
+            if row is not None
+            else None
+        )
+        if expected is not None:
+            if state != expected or expected.status != "active":
+                fail(409, "provider_key_unavailable", "Die Modellverbindung wurde geändert.")
+            return SupabaseStore(db).read(expected.id, expected.secret_id)
+        return state
 
 
 async def lookup_connection(actor_id, connection_id):
@@ -68,12 +74,7 @@ async def lookup_connection(actor_id, connection_id):
 
 
 async def read_secret(state):
-    return await asyncio.to_thread(
-        BitwardenStore(settings()).read,
-        state.secret_id,
-        state.user_id,
-        state.id,
-    )
+    return await asyncio.to_thread(_lookup, state.user_id, state.id, expected=state)
 
 
 @contextmanager

@@ -30,6 +30,7 @@ class Provider(BaseModel):
 class ProviderSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="NOTEBOOK_PROVIDER_")
     endpoints: list[Provider] = []
+    vault_enabled: bool = False
     bitwarden_api_url: str = ""
     bitwarden_identity_url: str = ""
     bitwarden_project_id: str = ""
@@ -38,15 +39,7 @@ class ProviderSettings(BaseSettings):
 
     @property
     def configured(self):
-        return all(
-            (
-                self.bitwarden_api_url,
-                self.bitwarden_identity_url,
-                self.bitwarden_project_id,
-                self.bitwarden_organization_id,
-                self.bitwarden_token_file,
-            )
-        )
+        return self.vault_enabled
 
 
 def settings():

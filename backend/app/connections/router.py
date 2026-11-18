@@ -2,7 +2,6 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 from app.auth.security import check_csrf, fail
 from app.auth.settings import get_settings
 from app.auth.supabase import Identity
-from app.connections.vault import BitwardenStore
+from app.connections.supabase_store import SupabaseStore
 from app.db.models import ProviderConnection
 from app.db.session import identity, user_session
 from app.providers.config import settings
@@ -34,9 +33,9 @@ def metadata(row):
 
 def owned(db, user, connection_id) -> ProviderConnection:
     row = db.scalar(
-        select(ProviderConnection).where(
-            ProviderConnection.id == connection_id, ProviderConnection.user_id == user.id
-        )
+        select(ProviderConnection)
+        .where(ProviderConnection.id == connection_id, ProviderConnection.user_id == user.id)
+        .with_for_update()
     )
     if row is None:
         raise HTTPException(
@@ -78,14 +77,11 @@ class Connect(BaseModel):
 
 
 @router.post("/connections", status_code=201)
-async def connect(body: Connect, request: Request, user: User, db: DB):
+def connect(body: Connect, request: Request, user: User, db: DB):
     check_csrf(request, get_settings().public_origin)
     provider_config(body.provider_id)
     connection_id = uuid4()
-    store = BitwardenStore(settings())
-    secret_id = await run_in_threadpool(
-        store.create, user.id, connection_id, body.api_key.get_secret_value()
-    )
+    secret_id = SupabaseStore(db).create(connection_id, body.api_key.get_secret_value())
     row = ProviderConnection(
         id=connection_id,
         user_id=user.id,
@@ -94,12 +90,8 @@ async def connect(body: Connect, request: Request, user: User, db: DB):
         secret_id=secret_id,
         status="active",
     )
-    try:
-        db.add(row)
-        db.flush()
-    except Exception:
-        await run_in_threadpool(store.delete, secret_id, user.id, connection_id)
-        raise
+    db.add(row)
+    db.flush()
     return metadata(row)
 
 
@@ -161,22 +153,28 @@ async def select_model(
     )
 
 
-@router.delete("/connections/{connection_id}", status_code=204)
-async def disconnect(connection_id: UUID, request: Request, user: User, db: DB):
+class ReplaceKey(BaseModel):
+    api_key: SecretStr = Field(min_length=1, max_length=16384)
+
+
+@router.put("/connections/{connection_id}/key")
+def replace_key(connection_id: UUID, body: ReplaceKey, request: Request, user: User, db: DB):
     check_csrf(request, get_settings().public_origin)
     row = owned(db, user, connection_id)
-    # Keep metadata inactive even if remote cleanup must be retried. The request's
-    # transaction commits normally, preserving its RLS identity until completion.
-    row.status = "disconnected"
+    provider_config(row.provider_id)
+    store = SupabaseStore(db)
+    store.delete(row.id, row.secret_id)
+    row.secret_id = store.create(row.id, body.api_key.get_secret_value())
+    row.last_tested_at = None
     db.flush()
-    try:
-        await run_in_threadpool(BitwardenStore(settings()).delete, row.secret_id, user.id, row.id)
-    except HTTPException as error:
-        if error.status_code != 503:
-            raise
-        return JSONResponse(
-            status_code=202, content={"status": "disconnected", "cleanup_pending": True}
-        )
+    return metadata(row)
+
+
+@router.delete("/connections/{connection_id}", status_code=204)
+def disconnect(connection_id: UUID, request: Request, user: User, db: DB):
+    check_csrf(request, get_settings().public_origin)
+    row = owned(db, user, connection_id)
+    SupabaseStore(db).delete(row.id, row.secret_id)
     db.delete(row)
     db.flush()
     return Response(status_code=204)
