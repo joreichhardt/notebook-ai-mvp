@@ -44,5 +44,15 @@ def test_merged_upload_test_profile_is_private_and_separates_worker():
         env["NOTEBOOK_UPLOAD_TEST_SCHEDULER_FILE"],
         env["NOTEBOOK_POC_SECRETS"] + "/api/notebook_database_url",
     }
-    assert all(m["read_only"] and not m["bind"]["create_host_path"] for m in mounts)
+    # Some Compose releases omit false booleans in their normalized JSON.
+    # Verify every worker bind explicitly opts out in the authored overlay too.
+    worker_source = (ROOT / "compose.upload-test.yaml").read_text().split("\n  text-worker:\n")[1]
+    blocks = worker_source.split("\n      - type: bind\n")[1:]
+    assert len(blocks) == len(mounts) == 3
+    assert all(
+        "\n        bind:\n          create_host_path: false\n" in block + "\n" for block in blocks
+    )
+    assert all(
+        m["read_only"] and m.get("bind", {}).get("create_host_path", False) is False for m in mounts
+    )
     assert not any("BWS_ACCESS_TOKEN" in s.get("environment", {}) for s in doc["services"].values())
