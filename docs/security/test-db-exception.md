@@ -9,7 +9,7 @@ Testfreigabe committen, pushen und veröffentlichen. Dies ist eine Risikoakzepta
 Keine Produktionsfreigabe und keine Änderung der Repository-Sichtbarkeit.
 
 Gültig bis ausschließlich **2026-12-01 UTC**. Scope: der unmittelbar auf
-`f93fb64a593b15a7b86f297337d0d97d0c0f3762` folgende Testfreigabe-Commit und seine
+`64473c148726110480f7e14b7c669f970f5c9b14` folgende Testfreigabe-Commit und seine
 Workflow-Wiederholungen. Der Betreiber bestätigte am 2026-11-18 die weitere
 Freigabe derselben Befunde für private Testreleases. Der Evaluator prüft
 weiterhin den ausdrücklich dokumentierten Git-Parent. Andere Digests, neue

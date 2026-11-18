@@ -5,7 +5,7 @@ Auftrag: MVP veröffentlichen; nachgewiesene öffentliche, ungenutzte Builddatei
 eng ausnehmen, niemals echte Credentials veröffentlichen. Gültigkeit bis
 2026-12-01 UTC (ausschließlich), nur Testsystem, keine Produktionsfreigabe.
 Gilt ausschließlich für den Freigabe-Commit unmittelbar nach
-`f93fb64a593b15a7b86f297337d0d97d0c0f3762` und dessen Workflow-Wiederholungen.
+`64473c148726110480f7e14b7c669f970f5c9b14` und dessen Workflow-Wiederholungen.
 Der Betreiber bestätigte diese unveränderte Ausnahme am 2026-11-18 für das private Testsystem.
 
 ## Exakter Scope
