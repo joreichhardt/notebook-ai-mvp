@@ -63,6 +63,8 @@ def app_check(origin, release, *, address=None, fetch=request):
         and b"<html" in body.lower(),
         "frontend_failed",
     )
+    status, _, _ = fetch(origin, "/api/workspaces", address=address)
+    require(status == 401, "anonymous_workspace_not_denied")
     for path in BLOCKED:
         status, _, _ = fetch(origin, path, address=address)
         require(status in (403, 404), "admin_path_exposed")

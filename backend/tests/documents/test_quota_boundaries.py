@@ -558,7 +558,7 @@ def _watchdog_test_schedule(monkeypatch):
     real_create, real_sleep = asyncio.create_task, asyncio.sleep
     watch_code = next(
         code
-        for code in TextWorker.run_one.__code__.co_consts
+        for code in TextWorker._run_one.__code__.co_consts
         if isinstance(code, CodeType) and code.co_name == "watch"
     )
 

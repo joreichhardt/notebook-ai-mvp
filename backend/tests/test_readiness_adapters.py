@@ -10,6 +10,8 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 from app import readiness
+from app.documents.local_storage import LocalStorageConfig
+from app.documents.runtime import LocalUploadRuntime
 from app.documents.storage import StorageConfig
 from app.health import ProbeUnavailable
 from pydantic import SecretStr
@@ -25,6 +27,28 @@ def no_network(monkeypatch):
     monkeypatch.setattr(socket.socket, "connect_ex", forbidden)
     monkeypatch.setattr(socket, "getaddrinfo", forbidden)
     monkeypatch.delenv("BWS_ACCESS_TOKEN", raising=False)
+
+
+@pytest.mark.parametrize("io_available", [True, False])
+def test_local_storage_readiness_rechecks_mount_and_io_role(tmp_path, io_available):
+    originals = tmp_path / "originals"
+    originals.mkdir(mode=0o700)
+    runtime = LocalUploadRuntime(LocalStorageConfig(originals), MagicMock())
+    with pytest.MonkeyPatch.context() as patches:
+        io_tx = MagicMock()
+        if not io_available:
+            io_tx.side_effect = RuntimeError("unavailable")
+        patches.setattr(LocalUploadRuntime, "io_tx", io_tx)
+        probe = readiness.local_storage_probe(runtime)
+        if io_available:
+            assert asyncio.run(probe()) is True
+        else:
+            with pytest.raises(ProbeUnavailable):
+                asyncio.run(probe())
+        originals.chmod(0o755)
+        with pytest.raises(ProbeUnavailable):
+            asyncio.run(probe())
+        io_tx.assert_called_once_with()
 
 
 def response(value, status=200, headers=None):

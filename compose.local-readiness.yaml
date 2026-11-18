@@ -1,0 +1,22 @@
+---
+# Layer over the upload overlay on a separate release-candidate project.
+# Do not apply to the existing private Upload-Test or Login projects.
+services:
+  api:
+    environment:
+      NOTEBOOK_LOCAL_READINESS_ENABLED: 'true'
+  text-worker:
+    # Start via --profile upload-test-worker. No host port or public proxy.
+    command:
+      - python
+      - -m
+      - uvicorn
+      - app.workers.service:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8001'
+      - --no-access-log
+      - --no-proxy-headers
+    restart: unless-stopped
+    stop_grace_period: 30s

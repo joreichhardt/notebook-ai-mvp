@@ -10,12 +10,17 @@ IMAGE = "supabase/postgres@sha256:f371b5f3f2ac0a05703f33d6e6134515fb2498cab708fb
 TARGET = "/nix/store/2ryvqnw8g2lcrvij4hqlm1ihflw2x3hd-ipa-priv-key.pem"
 RELEASE_PARENT = "64473c148726110480f7e14b7c669f970f5c9b14"
 EXPIRES = dt.date(2026, 12, 1)
+PUBLIC_FILE_SHA256 = "3b3ad9dfa59a1965b74a6f81d8d3b6cad221fd0d8c06411defcf9b0cf0382cfa"
 
 
 def evaluate(report, image, environment, parent, today):
     if (image != IMAGE or environment != "test" or parent != RELEASE_PARENT
             or today >= EXPIRES):
         raise ValueError("Test exception scope mismatch")
+    return evaluate_findings(report)
+
+
+def evaluate_findings(report):
     if (report.get("SchemaVersion") != 2 or report.get("ArtifactName") != IMAGE
             or report.get("ArtifactType") != "container_image"
             or not isinstance(report.get("Results"), list) or not report["Results"]):
@@ -52,7 +57,7 @@ def main():
     args.evidence.write_text(json.dumps({
         "approved": True, "image": IMAGE, "environment": "test", "count": count,
         "target": TARGET, "rule": "private-key", "expires": EXPIRES.isoformat(),
-        "public_file_sha256": "3b3ad9dfa59a1965b74a6f81d8d3b6cad221fd0d8c06411defcf9b0cf0382cfa",
+        "public_file_sha256": PUBLIC_FILE_SHA256,
     }, indent=2) + "\n")
     print(f"TEST ONLY: {count} verified public libcamera build-key finding accepted")
 

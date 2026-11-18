@@ -21,8 +21,10 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
+from app.documents.local_storage import LocalStorage
+from app.documents.runtime import LocalUploadRuntime
 from app.documents.storage import StorageConfig
-from app.health import ProbeUnavailable
+from app.health import ProbeUnavailable, image_release
 
 AsyncProbe = Callable[[], Coroutine[Any, Any, bool]]
 
@@ -192,6 +194,48 @@ def storage_probe(
             transport,
         )
         return value.get("id") == config.bucket and value.get("public") is False
+
+    return check
+
+
+def local_worker_probe(*, transport: httpx.AsyncBaseTransport | None = None) -> AsyncProbe:
+    async def check() -> bool:
+        release = image_release()
+        return release is not None and await _json_get(
+            "http://text-worker:8001/ready", {}, transport
+        ) == {"status": "ready", "release": release}
+
+    return check
+
+
+def local_storage_probe(runtime: LocalUploadRuntime) -> AsyncProbe:
+    """Recheck the private writable originals mount and restricted IO role."""
+    gate = threading.Lock()
+
+    def check_sync() -> bool:
+        if not gate.acquire(blocking=False):
+            return False
+        try:
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+            fd = os.open(runtime.config.root, flags)
+            try:
+                LocalStorage._private(fd, directory=True)
+                mount = os.fstatvfs(fd)
+                if mount.f_flag & os.ST_RDONLY or mount.f_bavail == 0:
+                    return False
+                if not os.access(".", os.W_OK | os.X_OK, dir_fd=fd, effective_ids=True):
+                    return False
+                with runtime.io_tx():
+                    return True
+            finally:
+                os.close(fd)
+        except Exception:  # noqa: BLE001 — do not surface path or connection details
+            raise ProbeUnavailable() from None
+        finally:
+            gate.release()
+
+    async def check() -> bool:
+        return await asyncio.to_thread(check_sync)
 
     return check
 

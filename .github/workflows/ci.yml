@@ -5,6 +5,11 @@ name: CI and immutable MVP images
   push:
     branches: [main, integration/notebooklm]
   workflow_dispatch:
+    inputs:
+      approved_public_revision:
+        description: Exact reviewed main commit for note.yokoma.de (empty means test only)
+        required: false
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -109,6 +114,8 @@ jobs:
     env:
       REGISTRY_PREFIX: ghcr.io/joreichhardt/notebook-ai-mvp
       RELEASE_SHA: ${{ github.sha }}
+      APPROVED_PUBLIC_REVISION: ${{ inputs.approved_public_revision }}
+      IMAGE_TAG: ${{ inputs.approved_public_revision != '' && format('public-{0}', github.sha) || github.sha }}
       AUTH_IMAGE: "supabase/gotrue@sha256:\
         1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b"
       DB_IMAGE: "supabase/postgres@sha256:\
@@ -123,15 +130,18 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           test -z "$(git status --porcelain)"
+          if [ -n "$APPROVED_PUBLIC_REVISION" ]; then
+            test "$GITHUB_EVENT_NAME" = workflow_dispatch
+            test "$APPROVED_PUBLIC_REVISION" = "$RELEASE_SHA"
+          fi
           docker build -f docker/api.Dockerfile \
             --build-arg "NOTEBOOK_RELEASE_SHA=$RELEASE_SHA" \
             --label "org.opencontainers.image.revision=$RELEASE_SHA" \
-            -t "$REGISTRY_PREFIX-api:$RELEASE_SHA" .
+            -t "$REGISTRY_PREFIX-api:$IMAGE_TAG" .
           docker build -f docker/frontend.Dockerfile \
             --label "org.opencontainers.image.revision=$RELEASE_SHA" \
-            -t "$REGISTRY_PREFIX-frontend:$RELEASE_SHA" .
-      # HIGH/CRITICAL findings block except the operator-approved test-only
-      # Auth/DB tuples in deploy/test_{auth,db}_scan.py. Secrets always block.
+            -t "$REGISTRY_PREFIX-frontend:$IMAGE_TAG" .
+      # Only explicitly scoped Auth/DB findings may be accepted.
       - name: Rescan source vulnerabilities and configuration
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
@@ -159,13 +169,24 @@ jobs:
           set -euo pipefail
           mkdir -p release
           date -u +%FT%TZ > release/scanned-at.txt
-          printf 'test-only\n' > release/environment.txt
-          cp docs/security/test-auth-exception.md release/
-          cp docs/security/test-db-exception.md release/
-          cp docs/security/test-db-build-key.md release/
+          if [ -n "$APPROVED_PUBLIC_REVISION" ]; then
+            printf 'public-notebook\n' > release/environment.txt
+            cp docs/security/public-notebook-exception.md release/
+          else
+            printf 'test-only\n' > release/environment.txt
+            cp docs/security/test-{auth-exception,db-exception,db-build-key}.md release/
+          fi
+          public_scan() {
+            local kind=$1 image=$2
+            shift 2
+            python3 -m deploy.public_release_scan "$kind" --image "$image" \
+              --host note.yokoma.de --release "$RELEASE_SHA" \
+              --approved-release "$APPROVED_PUBLIC_REVISION" \
+              --evidence "release/$kind-public-decision.json" "$@"
+          }
           for role in api frontend auth db; do
             case "$role" in
-              api|frontend) image="$REGISTRY_PREFIX-$role:$RELEASE_SHA" ;;
+              api|frontend) image="$REGISTRY_PREFIX-$role:$IMAGE_TAG" ;;
               auth) image="$AUTH_IMAGE" ;;
               db) image="$DB_IMAGE" ;;
             esac
@@ -174,30 +195,45 @@ jobs:
               trivy image --scanners vuln --severity HIGH,CRITICAL \
                 --format json --output release/auth-vulnerabilities.json \
                 --exit-code 0 "$image"
-              python3 deploy/test_auth_scan.py \
-                release/auth-vulnerabilities.json \
-                --image "$image" --environment test
+              if [ -n "$APPROVED_PUBLIC_REVISION" ]; then
+                public_scan auth "$image" < release/auth-vulnerabilities.json
+              else
+                python3 deploy/test_auth_scan.py release/auth-vulnerabilities.json \
+                  --image "$image" --environment test
+              fi
             elif [ "$role" = db ]; then
               trivy image --scanners vuln --severity HIGH,CRITICAL \
                 --format json --output release/db-vulnerabilities.json \
                 --exit-code 0 "$image"
-              # The approval is limited to this release's reviewed parent.
-              parent=$(git show -s --format=%P HEAD)
-              python3 deploy/test_db_scan.py release/db-vulnerabilities.json \
-                --image "$image" --environment test --release-parent "$parent"
+              if [ -n "$APPROVED_PUBLIC_REVISION" ]; then
+                public_scan db "$image" < release/db-vulnerabilities.json
+              else
+                parent=$(git show -s --format=%P HEAD)
+                python3 deploy/test_db_scan.py release/db-vulnerabilities.json \
+                  --image "$image" --environment test --release-parent "$parent"
+              fi
             else
               trivy image --scanners vuln --severity HIGH,CRITICAL \
                 --exit-code 1 "$image"
             fi
             if [ "$role" = db ]; then
               # Never log or upload raw secret matches.
-              trivy image --scanners secret --format json \
-                --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-                --exit-code 0 "$image" |
-                python3 deploy/test_db_secret_scan.py \
-                  --image "$image" --environment test \
-                  --release-parent "$parent" \
-                  --evidence release/db-secret-decision.json
+              if [ -n "$APPROVED_PUBLIC_REVISION" ]; then
+                target=$(python3 -c 'from deploy.test_db_secret_scan import TARGET; print(TARGET)')
+                fixture=$(docker create "$image")
+                trap 'docker rm "$fixture" >/dev/null' EXIT
+                hash=$(docker cp "$fixture:$target" - | tar -xO | sha256sum)
+                docker rm "$fixture" >/dev/null
+                trap - EXIT
+                trivy image --scanners secret --format json \
+                  --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 0 "$image" |
+                  public_scan db-secret "$image" --file-hash "${hash%% *}"
+              else
+                trivy image --scanners secret --format json \
+                  --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 0 "$image" |
+                  python3 deploy/test_db_secret_scan.py --image "$image" --environment test \
+                    --release-parent "$parent" --evidence release/db-secret-decision.json
+              fi
             else
               trivy image --scanners secret \
                 --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
@@ -206,11 +242,11 @@ jobs:
             trivy image --format cyclonedx \
               --output "release/$role.cdx.json" "$image"
           done
-      - name: Retain test scan evidence even on failure
+      - name: Retain scan evidence even on failure
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: test-scan-evidence-${{ github.sha }}
+          name: scan-evidence-${{ env.IMAGE_TAG }}
           path: release/
           retention-days: 30
       # login-action v3; the only token is the job-scoped GitHub package token.
@@ -224,7 +260,7 @@ jobs:
         run: |
           set -euo pipefail
           for role in api frontend; do
-            image="$REGISTRY_PREFIX-$role:$RELEASE_SHA"
+            image="$REGISTRY_PREFIX-$role:$IMAGE_TAG"
             docker push "$image"
             ref=$(docker inspect --format '{{index .RepoDigests 0}}' "$image")
             digest=${ref##*@}
@@ -250,6 +286,6 @@ jobs:
           push-to-registry: true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: immutable-release-${{ github.sha }}
+          name: immutable-release-${{ env.IMAGE_TAG }}
           path: release/
           retention-days: 30

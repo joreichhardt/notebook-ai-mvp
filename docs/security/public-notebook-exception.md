@@ -1,0 +1,8 @@
+# Revision-bound public release exception for note.yokoma.de
+
+The operator accepted the documented Auth and DB findings for the public Notebook login, and separately approved the documented public, unused libcamera build artifact. This is risk acceptance, not a claim of non-applicability. The exception ends before **2026-12-01 UTC** and does not apply to other deployments. The existing private test approvals are unchanged.
+
+- Auth and DB: exact pinned images and exact vulnerability tuples in `deploy/test_auth_scan.py` and `deploy/test_db_scan.py`, including the DB binary-target restriction. No new finding, package version, severity or digest is approved.
+- Public libcamera build artifact: exact DB digest, path, rule and file SHA-256 documented in [the original verification](test-db-build-key.md). The workflow verifies the bytes without running the image or emitting file or scanner match contents. All other secret findings still block.
+- Only dispatch the public build on `main` with the explicitly reviewed full revision in `approved_public_revision`. It builds and scans anew, publishes under a separate `public-<revision>` tag, and records the immutable registry digests and decisions for operator verification. This dispatch approves image publication only, not the tunnel cutover.
+- Keep DB, Auth administration, storage infrastructure, worker and provider egress private. Only the invite-gated Notebook application is in scope. Verify backup/rollback, origin readiness at the exact revision, anonymous denial, and the shared tunnel's exclusive-writer procedure before activation. Recheck at expiry; do not extend the exception automatically.

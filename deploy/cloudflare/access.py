@@ -32,6 +32,18 @@ def overlaps(domain):
     return hostname_matches(host)
 
 
+def access_inventory(api, account_id, *, owned=None):
+    apps = api(f"/accounts/{account_id}/access/apps?per_page=100")
+    for app in apps:
+        domains = [app.get("domain", ""), *app.get("self_hosted_domains", [])]
+        domains += [
+            d.get("uri", "") for d in app.get("destinations", []) if d.get("type") == "public"
+        ]
+        if any(overlaps(domain) for domain in domains):
+            require(owned is not None and app["id"] == owned, "access_application_conflict")
+    return apps
+
+
 class Access:
     def __init__(self, api, settings, state):
         validate_access(settings)
@@ -39,16 +51,9 @@ class Access:
         self.base = f"/accounts/{settings['account_id']}/access/apps"
 
     def inventory(self):
-        apps = self.api(self.base + "?per_page=100")
-        owned = self.state.get("app_id")
-        for app in apps:
-            domains = [app.get("domain", ""), *app.get("self_hosted_domains", [])]
-            domains += [
-                d.get("uri", "") for d in app.get("destinations", []) if d.get("type") == "public"
-            ]
-            if any(overlaps(domain) for domain in domains):
-                require(app["id"] == owned, "access_application_conflict")
-        return apps
+        return access_inventory(
+            self.api, self.settings["account_id"], owned=self.state.get("app_id")
+        )
 
     def inspect(self):
         require(
