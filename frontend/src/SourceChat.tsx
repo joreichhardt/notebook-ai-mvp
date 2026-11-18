@@ -8,7 +8,10 @@ export function SourceChat({ source }: { source: SourceDocument }) {
   const [question, setQuestion] = useState(""), [result, setResult] = useState<Answer>(), [passage, setPassage] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   useEffect(() => { const c = new AbortController(); api.connections(c.signal).then(r => {
-    if (!c.signal.aborted) setConnections(r.items.filter(v => v.status === "active" && v.model));
+    if (c.signal.aborted) return;
+    const available = r.items.filter(v => v.status === "active" && v.model);
+    setConnections(available);
+    setId(available.length === 1 ? available[0].id : "");
   }).catch(() => { if (!c.signal.aborted) setError("Verbindungen konnten nicht geladen werden."); }); return () => c.abort(); }, []);
   async function ask() {
     const connection = connections.find(c => c.id === id);
