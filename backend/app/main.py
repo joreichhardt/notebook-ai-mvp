@@ -7,6 +7,7 @@ from app.auth.invitations import router as invitations_router
 from app.auth.router import router as auth_router
 from app.capabilities import router as capabilities_router
 from app.connections.router import router as connections_router
+from app.documents.chat_router import router as chat_router
 from app.documents.router import router as documents_router
 from app.documents.upload_router import router as document_upload_router
 from app.health import router as health_router
@@ -56,3 +57,4 @@ app.include_router(connections_router)
 # literal-True capability gated before authentication or service construction.
 app.include_router(documents_router)
 app.include_router(document_upload_router)
+app.include_router(chat_router)

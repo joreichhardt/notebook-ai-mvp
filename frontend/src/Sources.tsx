@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, uploadMediaType, type Role, type SourceDocument } from "./api";
+import { SourceChat } from "./SourceChat";
 import { SourceTextPreview } from "./SourceText";
 
 function uploadError(error: unknown) {
@@ -125,13 +126,13 @@ function fetchError(error: unknown) {
 }
 
 // A scope-keyed child drops all data synchronously when the notebook or user changes.
-export function Sources({ notebookId, userId, role, documentsEnabled }: {
-  notebookId: string; userId: string; role?: Role; documentsEnabled?: boolean;
+export function Sources({ notebookId, userId, role, documentsEnabled, chatEnabled }: {
+  notebookId: string; userId: string; role?: Role; documentsEnabled?: boolean; chatEnabled?: boolean;
 }) {
   const canUpload = documentsEnabled === true && (role === "owner" || role === "editor");
-  return <SourceList key={JSON.stringify([userId, notebookId])} notebookId={notebookId} canUpload={canUpload} />;
+  return <SourceList key={JSON.stringify([userId, notebookId])} notebookId={notebookId} canUpload={canUpload} chatEnabled={chatEnabled === true} />;
 }
-function SourceList({ notebookId, canUpload }: { notebookId: string; canUpload: boolean }) {
+function SourceList({ notebookId, canUpload, chatEnabled }: { notebookId: string; canUpload: boolean; chatEnabled: boolean }) {
   const [items, setItems] = useState<SourceDocument[]>([]);
   const [selected, setSelected] = useState<SourceDocument>();
   const [loading, setLoading] = useState(true);
@@ -183,6 +184,7 @@ function SourceList({ notebookId, canUpload }: { notebookId: string; canUpload: 
       )}
       {selected && <SourceTextPreview key={JSON.stringify([selected.id, selected.version_id])}
         notebookId={notebookId} source={selected} onClose={() => setSelected(undefined)} />}
+      {selected && chatEnabled && <SourceChat key={JSON.stringify([selected.id, selected.version_id])} source={selected} />}
       <button type="button" disabled={loading} onClick={reload}>
         {error ? "Quellen erneut laden" : "Quellen aktualisieren"}
       </button>

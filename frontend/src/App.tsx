@@ -609,7 +609,7 @@ function WorkspaceApp({
                   <p className="muted">{current?.name}</p>
                   {config?.documents === true && (
                     <Sources notebookId={notebook.id} userId={session.user!.id}
-                      role={current?.role} documentsEnabled={config.documents} />
+                      role={current?.role} documentsEnabled={config.documents} chatEnabled={config.chat} />
                   )}
                   {canEdit && (
                     <button onClick={() => setEdit(notebook)}>

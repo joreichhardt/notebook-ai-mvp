@@ -19,6 +19,7 @@ export type AuthConfig = {
   invitations: boolean;
   members: boolean;
   documents?: boolean;
+  chat?: boolean;
 };
 export type PlatformRole = "admin" | "superadmin";
 export type Administrator = { user_id: string; role: PlatformRole };
@@ -164,11 +165,13 @@ export const api = {
       invitations: boolean;
       members: boolean;
       documents?: boolean;
+      chat?: boolean;
     }>("/capabilities", "GET", undefined, signal).then((c) => ({
       password_login: c.auth.password_login,
       invitations: c.invitations,
       members: c.members,
       documents: c.documents === true,
+      ...(c.chat === true ? { chat: true } : {}),
     })),
   members: (id: string, signal?: AbortSignal) =>
     request<{ items: Member[] }>(
