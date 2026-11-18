@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
     runner = BoundedThreadRunner()
     supervisor = None
     try:
-        supervisor = TextWorkerSupervisor(build_consumer(runtime, runner))
+        supervisor = TextWorkerSupervisor(build_consumer(runtime, runner, supervised=True))
         task = asyncio.create_task(supervisor.run())
         app.state.worker = supervisor
         try:

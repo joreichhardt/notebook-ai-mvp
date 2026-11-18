@@ -2,6 +2,8 @@
 
 import asyncio
 import importlib
+import subprocess
+import sys
 
 import httpx
 import pytest
@@ -37,7 +39,15 @@ def test_default_closed_and_profile_not_a_ready_switch(monkeypatch):
     )
     assert request("/api/connections").status_code == 404
     assert request("/auth/v1/admin/users").status_code == 404
-    assert "app.workers.supervisor" not in __import__("sys").modules
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            'import sys, app.poc; assert "app.workers.supervisor" not in sys.modules',
+        ],
+        check=True,
+        timeout=10,
+    )
 
 
 def test_secret_configuration_does_not_activate_login_profile(monkeypatch):

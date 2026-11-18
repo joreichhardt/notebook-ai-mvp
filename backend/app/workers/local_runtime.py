@@ -136,7 +136,7 @@ async def _finish_one(consumer, runner) -> str:
     return "held"
 
 
-def build_consumer(runtime: LocalTextRuntime, runner):
+def build_consumer(runtime: LocalTextRuntime, runner, *, supervised: bool = False):
     from app.workers.delegation import DelegationRepository, ExactTextConsumer, SchedulerFactory
     from app.workers.text import TextWorker
 
@@ -147,6 +147,7 @@ def build_consumer(runtime: LocalTextRuntime, runner):
         runtime.app_engine,
         store_factory=lambda authorize: LocalStorage(runtime.storage, authorize=authorize),
         operation_runner=runner,
+        work_observation=supervised,
         progress_observer=lambda progress: None,
     )
     return ExactTextConsumer(repository, worker, pool_timeout=1, connect_timeout=3)
