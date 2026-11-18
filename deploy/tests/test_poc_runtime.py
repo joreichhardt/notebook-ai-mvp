@@ -198,7 +198,15 @@ def test_nginx_has_no_public_auth_or_readiness_alias_and_otp_is_internal():
     assert "return 200" not in config
     assert "listen 8081;" in private
     assert "(token|user|logout|health)" in private
-    assert "admin/users" not in config
+    assert "admin" not in private
     template = (ROOT / "docker/poc-confirmation.html").read_text()
     assert "{{ .Token }}" in template
     assert "ConfirmationURL" not in template
+
+
+def test_public_nginx_reserves_infrastructure_prefixes_before_spa():
+    rule = "location ~ ^/(?:rest/v1|storage/v1|studio|pg|auth/v1/admin)(?:/|$) { return 404; }"
+    for name in ("nginx.conf", "nginx.poc.conf"):
+        config = (ROOT / "docker" / name).read_text().split("# Unpublished container port")[0]
+        assert config.count(rule) == 1
+        assert config.index(rule) < config.index("try_files")

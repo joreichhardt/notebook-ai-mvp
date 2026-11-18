@@ -136,30 +136,30 @@ async def _finish_one(consumer, runner) -> str:
     return "held"
 
 
+def build_consumer(runtime: LocalTextRuntime, runner):
+    from app.workers.delegation import DelegationRepository, ExactTextConsumer, SchedulerFactory
+    from app.workers.text import TextWorker
+
+    repository = DelegationRepository(
+        SchedulerFactory(runtime.scheduler_tx, pool_timeout=1, connect_timeout=3), runner
+    )
+    worker = TextWorker(
+        runtime.app_engine,
+        store_factory=lambda authorize: LocalStorage(runtime.storage, authorize=authorize),
+        operation_runner=runner,
+        progress_observer=lambda progress: None,
+    )
+    return ExactTextConsumer(repository, worker, pool_timeout=1, connect_timeout=3)
+
+
 async def execute(runtime: LocalTextRuntime) -> str:
+    from app.workers.delegation import BoundedThreadRunner
+
     runner = None
     assembled = False
     try:
-        # Configuration-only checks never import a worker implementation.
-        from app.workers.delegation import (
-            BoundedThreadRunner,
-            DelegationRepository,
-            ExactTextConsumer,
-            SchedulerFactory,
-        )
-        from app.workers.text import TextWorker
-
         runner = BoundedThreadRunner()
-        repository = DelegationRepository(
-            SchedulerFactory(runtime.scheduler_tx, pool_timeout=1, connect_timeout=3), runner
-        )
-        worker = TextWorker(
-            runtime.app_engine,
-            store_factory=lambda authorize: LocalStorage(runtime.storage, authorize=authorize),
-            operation_runner=runner,
-            progress_observer=lambda progress: None,
-        )
-        consumer = ExactTextConsumer(repository, worker, pool_timeout=1, connect_timeout=3)
+        consumer = build_consumer(runtime, runner)
         assembled = True
         return await _finish_one(consumer, runner)
     finally:

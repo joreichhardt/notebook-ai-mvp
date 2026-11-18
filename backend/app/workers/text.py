@@ -40,10 +40,6 @@ class ObservationUnavailable(RuntimeError):
     """Fixed observer fault; never a retryable database or lease failure."""
 
 
-class _ObserverFault(RuntimeError):
-    """Private control signal, caught before publishing an observer failure."""
-
-
 TextPhase = Literal["ingestion_claim", "pulse", "publish", "finish"]
 
 
@@ -54,15 +50,25 @@ class TextProgress:
     committed_at: float | None
 
 
-def _notify_observer(observer: Callable[[TextProgress], None], progress: TextProgress) -> None:
-    try:
-        result = observer(progress)
-        if result is not None:
-            if iscoroutine(result):
-                result.close()
-            raise _ObserverFault()
-    except (Exception, asyncio.CancelledError) as error:
-        raise _ObserverFault() from error
+WorkPhase = Literal["ingestion_claim", "authorize", "read", "decode", "chunks", "publish", "finish"]
+
+
+@dataclass(frozen=True)
+class WorkProgress:
+    phase: WorkPhase
+    sequence: int
+    admitted_at: float
+    started_at: float | None
+    completed_at: float | None
+
+
+@dataclass(frozen=True)
+class TextWorkSnapshot:
+    cycle: int
+    progress: WorkProgress | None
+    ingestion_progress: TextProgress | None
+    children_joined: bool
+    completed: tuple[WorkProgress, ...]
 
 
 class OriginalStore(Protocol):
@@ -93,7 +99,19 @@ class TextWorker:
         heartbeat_seconds: float = 5,
         operation_runner: OperationRunner | None = None,
         progress_observer: Callable[[TextProgress], None] | None = None,
+        work_observation: bool = False,
     ):
+        if type(work_observation) is not bool or (work_observation and operation_runner is None):
+            raise ValueError("invalid_work_observation")
+        self.work_observation = work_observation
+        self._work_cycle = self._work_sequence = 0
+        self._work_completed: tuple[WorkProgress, ...] = ()
+        self._work_progress: WorkProgress | None = None
+        self._ingestion_progress: TextProgress | None = None
+        self._last_work_at: float | None = None
+        self._work_children: tuple[asyncio.Task, ...] = ()
+        self._work_active = False
+        self._children_joined = True
         if not 1 <= lease_seconds <= 300 or not 0 < heartbeat_seconds < lease_seconds / 2:
             raise ValueError("invalid bounded heartbeat/lease")
         if progress_observer is not None and (
@@ -122,6 +140,83 @@ class TextWorker:
         self.store_factory = store_factory or (
             lambda auth: SupabaseStorage(storage, authorize=auth)
         )
+
+    def work_snapshot(self) -> TextWorkSnapshot:
+        with self._progress_lock:
+            return TextWorkSnapshot(
+                self._work_cycle,
+                self._work_progress,
+                self._ingestion_progress,
+                self._children_joined,
+                self._work_completed,
+            )
+
+    def _work_event(
+        self,
+        phase: WorkPhase,
+        event: Literal["admitted", "started", "completed"],
+        marker: tuple[int, int] | None = None,
+    ) -> tuple[int, int]:
+        now = monotonic()
+        with self._progress_lock:
+            current = (self._work_cycle, self._work_sequence)
+            if marker is not None and marker != current:
+                self._observation_failed = True
+                raise ObservationUnavailable("observation_unavailable")
+            if (
+                self._observation_failed
+                or type(now) not in (int, float)
+                or not isfinite(now)
+                or (self._last_work_at is not None and now < self._last_work_at)
+                or (self._last_observed_at is not None and now < self._last_observed_at)
+            ):
+                self._observation_failed = True
+                if event == "completed":
+                    return current
+                raise ObservationUnavailable("observation_unavailable")
+            if event == "completed" and len(self._work_completed) >= 8:
+                self._observation_failed = True
+                return current
+            self._last_work_at = now
+            previous = self._work_progress
+            if event == "admitted":
+                self._work_sequence += 1
+                self._work_progress = WorkProgress(phase, self._work_sequence, now, None, None)
+            elif previous is not None:
+                self._work_progress = WorkProgress(
+                    phase,
+                    previous.sequence,
+                    previous.admitted_at,
+                    now if event == "started" else previous.started_at,
+                    now if event == "completed" else None,
+                )
+            if event == "completed" and self._work_progress is not None:
+                self._work_completed += (self._work_progress,)
+            return self._work_cycle, self._work_sequence
+
+    async def _run_main(self, phase: WorkPhase, operation: Callable, *args):
+        if not self.work_observation:
+            return await self._run_operation(operation, *args)
+        marker = self._work_event(phase, "admitted")
+
+        def invoke():
+            self._work_event(phase, "started", marker)
+            try:
+                return operation(*args)
+            finally:
+                self._work_event(phase, "completed", marker)
+
+        return await self._run_operation(invoke)
+
+    async def _read(self, actor: UUID, source: Source, authorize: Authorize) -> bytes:
+        if not self.work_observation:
+            return await self.store_factory(authorize).read(actor, source.scope)
+        marker = self._work_event("read", "admitted")
+        self._work_event("read", "started", marker)
+        try:
+            return await self.store_factory(authorize).read(actor, source.scope)
+        finally:
+            self._work_event("read", "completed", marker)
 
     @property
     def observation_failed(self) -> bool:
@@ -156,6 +251,11 @@ class TextWorker:
                 or not isfinite(event_at)
                 or event_at < progress.started_at
                 or (self._last_observed_at is not None and event_at < self._last_observed_at)
+                or (
+                    self.work_observation
+                    and self._last_work_at is not None
+                    and event_at < self._last_work_at
+                )
             ):
                 self._observation_failed = True
                 # Invalid times never enter metadata/callbacks. A terminal exit
@@ -164,6 +264,11 @@ class TextWorker:
                     return
                 raise ObservationUnavailable("observation_unavailable") from None
             self._last_observed_at = event_at
+            if self.work_observation:
+                if progress.phase == "ingestion_claim" and not committed:
+                    self._ingestion_progress = None
+                elif committed and progress.phase in ("ingestion_claim", "pulse"):
+                    self._ingestion_progress = progress
             # A late watchdog still executes its real authorization transaction,
             # but cannot erase terminal truth while publication returns/joins.
             if (
@@ -194,18 +299,23 @@ class TextWorker:
         observer = self._progress_observer
         if observer is None:
             return
-        failed = False
         try:
-            _notify_observer(observer, progress)
-        except _ObserverFault:
-            failed = True
-        if failed:
-            # Leave the handler before raising: even __context__ must not retain
-            # the observer's private error. Logging is not part of this boundary.
+            result = observer(progress)
+            if result is not None:
+                if iscoroutine(result):
+                    result.close()
+                raise ObservationUnavailable("observation_unavailable")
+        except (Exception, asyncio.CancelledError):  # noqa: BLE001 — opaque observer boundary
+            # Observer cancellation is NOT cancellation of the worker's waiter.
+            # Persist terminal truth before calling any external trusted observer.
             with self._progress_lock:
                 self._observation_failed = True
-            if not committed or progress.phase not in ("publish", "finish"):
-                raise ObservationUnavailable("observation_unavailable") from None
+        else:
+            return
+        # Raise after leaving the handler: `from None` alone hides the original
+        # exception in tracebacks but retains it in __context__.
+        if not committed or progress.phase not in ("publish", "finish"):
+            raise ObservationUnavailable("observation_unavailable") from None
 
     def _start_progress(self, phase: TextPhase) -> float | None:
         if self.operation_runner is None:
@@ -350,10 +460,30 @@ class TextWorker:
 
     async def run_one(self, *, actor_id: UUID, job_id: UUID) -> str:
         """Trusted actor-bound seam; never registers a route or discovers other actors."""
+        if not self.work_observation:
+            return await self._run_one(actor_id=actor_id, job_id=job_id)
+        with self._progress_lock:
+            if self._work_active or not self._children_joined:
+                raise ObservationUnavailable("observation_unavailable")
+            self._work_active = True
+            self._children_joined = False
+            self._work_cycle += 1
+            self._work_progress = None
+            self._work_completed = ()
+            self._ingestion_progress = None
+            self._work_children = ()
+        try:
+            return await self._run_one(actor_id=actor_id, job_id=job_id)
+        finally:
+            with self._progress_lock:
+                self._children_joined = all(task.done() for task in self._work_children)
+                self._work_active = False
+
+    async def _run_one(self, *, actor_id: UUID, job_id: UUID) -> str:
         if self.observation_failed:
             raise ObservationUnavailable("observation_unavailable")
         try:
-            claimed = await self._run_operation(self._claim, actor_id, job_id)
+            claimed = await self._run_main("ingestion_claim", self._claim, actor_id, job_id)
         except (LeaseLost, QuotaUnavailable):
             return "not_claimed"
         if claimed is None:
@@ -372,14 +502,14 @@ class TextWorker:
                 raise TextRejected("unsupported_embedding")
             if source.media_type not in ("text/plain", "text/markdown"):
                 raise TextRejected("unsupported_media")
-            await authorize(actor_id, source.scope, "read")
-            data = await self.store_factory(authorize).read(actor_id, source.scope)
-            await authorize(actor_id, source.scope, "read")
+            await self._run_main("authorize", self._pulse, actor_id, job_id, token)
+            data = await self._read(actor_id, source, authorize)
+            await self._run_main("authorize", self._pulse, actor_id, job_id, token)
             if len(data) != source.byte_count or sha256(data).hexdigest() != source.sha256:
                 raise TextRejected("original_integrity_failed")
-            value = await self._run_operation(decode_text, data)
-            parts = await self._run_operation(chunks, value)
-            await authorize(actor_id, source.scope, "read")
+            value = await self._run_main("decode", decode_text, data)
+            parts = await self._run_main("chunks", chunks, value)
+            await self._run_main("authorize", self._pulse, actor_id, job_id, token)
             publishing = True
             if self.operation_runner is None:
                 # Preserve the original verified-Identity linearization boundary.
@@ -387,7 +517,9 @@ class TextWorker:
             else:
                 # Cancellation leaves a possibly committed outcome for durable
                 # reconciliation; it must not launch a conflicting finish/ack.
-                await self._run_operation(self._publish, actor_id, job_id, token, source, parts)
+                await self._run_main(
+                    "publish", self._publish, actor_id, job_id, token, source, parts
+                )
 
         async def watch():
             while True:
@@ -395,6 +527,8 @@ class TextWorker:
                 await self._run_operation(self._pulse, actor_id, job_id, token)
 
         work, watcher = asyncio.create_task(execute()), asyncio.create_task(watch())
+        if self.work_observation:
+            self._work_children = (work, watcher)
         try:
             done, _ = await asyncio.wait((work, watcher), return_when=asyncio.FIRST_COMPLETED)
             # A heartbeat racing AFTER the successful terminal commit sees no
@@ -416,8 +550,8 @@ class TextWorker:
                 if self.operation_runner is None:
                     self._finish(actor_id, job_id, token, "failed", exc.code)
                 else:
-                    await self._run_operation(
-                        self._finish, actor_id, job_id, token, "failed", exc.code
+                    await self._run_main(
+                        "finish", self._finish, actor_id, job_id, token, "failed", exc.code
                     )
                 return "failed"
             except QuotaUnavailable:
@@ -434,4 +568,16 @@ class TextWorker:
         finally:
             for task in (work, watcher):
                 task.cancel()
-            await asyncio.gather(work, watcher, return_exceptions=True)
+            joined = asyncio.gather(work, watcher, return_exceptions=True)
+            if not self.work_observation:
+                await joined
+            else:
+                cancelled = False
+                while not joined.done():
+                    try:
+                        await asyncio.shield(joined)
+                    except asyncio.CancelledError:
+                        cancelled = True
+                joined.result()
+                if cancelled:
+                    raise asyncio.CancelledError
