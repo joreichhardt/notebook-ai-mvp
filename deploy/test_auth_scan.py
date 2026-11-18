@@ -28,6 +28,10 @@ APPROVED = {
 def evaluate(report, image, environment, today):
     if environment != "test" or image != IMAGE or today >= EXPIRES:
         raise ValueError("Exception requires test scope, exact Auth digest and unexpired approval")
+    return evaluate_findings(report)
+
+
+def evaluate_findings(report):
     if (report.get("SchemaVersion") != 2 or report.get("ArtifactName") != IMAGE
             or report.get("ArtifactType") != "container_image"
             or not isinstance(report.get("Results"), list) or not report["Results"]):

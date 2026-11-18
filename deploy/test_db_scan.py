@@ -37,6 +37,10 @@ def evaluate(report, image, environment, release_parent, today):
     if (environment != "test" or image != IMAGE or release_parent != RELEASE_PARENT
             or today >= EXPIRES):
         raise ValueError("Test exception scope, release ancestry or expiry mismatch")
+    return evaluate_findings(report)
+
+
+def evaluate_findings(report):
     if (report.get("SchemaVersion") != 2 or report.get("ArtifactName") != IMAGE
             or report.get("ArtifactType") != "container_image"
             or not isinstance(report.get("Results"), list) or not report["Results"]):
