@@ -105,6 +105,14 @@ export async function request<T>(
   }
   if (!response.ok) {
     // Do not render arbitrary server text: it may include upstream diagnostics or secrets.
+    if (path === "/invitations/accept" && method === "POST" && response.status === 409) {
+      const error = await response.json().catch(() => null);
+      if (error?.detail?.code === "invitation_or_membership_invalid") {
+        throw new ApiError(409, "invitation_or_membership_invalid",
+          "Die Einladung konnte nicht angenommen werden. Prüfe, ob du mit der bestätigten Empfängeradresse angemeldet bist. Ist das der Fall, wende dich an die einladende Person.");
+      }
+      throw new ApiError(409, "request_failed", "Die Einladung konnte nicht angenommen werden.");
+    }
     const messages: Record<number, string> = {
       401: "Bitte melde dich erneut an.",
       403: "Du hast für diese Aktion keine Berechtigung.",
