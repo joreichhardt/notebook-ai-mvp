@@ -5,6 +5,15 @@ afterEach(() => {
   setCsrfToken();
 });
 describe("API security boundary", () => {
+  it("gives invitation-specific guidance on a rejected acceptance without exposing server text", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: { code: "invitation_or_membership_invalid", message: "private upstream detail" },
+    }), { status: 409 })));
+    await expect(api.acceptInvitation("fixture")).rejects.toMatchObject({
+      status: 409, code: "invitation_or_membership_invalid",
+      message: "Die Einladung konnte nicht angenommen werden. Prüfe, ob du mit der bestätigten Empfängeradresse angemeldet bist. Ist das der Fall, wende dich an die einladende Person.",
+    });
+  });
   it("uploads exactly one typed file with cookie, CSRF, key and browser multipart boundary", async () => {
     const document = { id: "d", notebook_id: "n/id", version_id: "v", filename: "Notes.md", status: "queued", error_code: null };
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ document, job: { id: "private" }, storage_key: "private" }), { status: 202 }));
