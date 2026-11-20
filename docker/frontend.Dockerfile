@@ -4,10 +4,9 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY frontend/ ./
 RUN npm run build
-FROM nginxinc/nginx-unprivileged:stable-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03
-USER 0:0
-# Apply available signed OS security fixes before returning to the runtime UID.
-RUN apk upgrade --no-cache
+FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+# Use the signed Alpine package containing the nginx 1.30.7 security fixes.
+RUN apk upgrade --no-cache && apk add --no-cache 'nginx>=1.30.7-r0'
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 USER 101:101
