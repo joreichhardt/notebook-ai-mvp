@@ -24,7 +24,7 @@ function Brand() {
         n.
       </span>
       <span>
-        notebook<span className="brand-caption">Wissen mit Quellen</span>
+        notebook<span className="brand-caption">better notes with ai</span>
       </span>
     </div>
   );
