@@ -23,7 +23,18 @@ pytestmark = pytest.mark.skipif(not URL, reason="Isolated PostgreSQL URL not con
 
 
 @pytest.fixture
-def http_runtime(scope, monkeypatch):
+def http_runtime(scope, monkeypatch, tmp_path):
+    from app.auth import invitations
+
+    password_file = tmp_path / "smtp-fixture"
+    password_file.write_text("synthetic-password")
+    settings = invitations.get_settings().model_copy(update={
+        "invitation_smtp_host": "smtp.example.test",
+        "invitation_smtp_sender": "notebook@example.test",
+        "invitation_smtp_password_file": str(password_file),
+    })
+    monkeypatch.setattr(invitations, "get_settings", lambda: settings)
+    monkeypatch.setattr(invitations.InvitationMailer, "send", lambda *_: None)
     # Passwordless URL: libpq uses the protected, per-role synthetic pgpass file.
     url = (
         make_url(URL)
@@ -130,7 +141,9 @@ def test_superuser_original_login_cannot_hide_behind_set_role(http_runtime, monk
     assert client.get(path).json() == before
 
 
-def test_committed_notebook_and_invitation_flow_preserves_accept_without_admission(http_runtime):
+def test_committed_notebook_and_invitation_flow_preserves_accept_without_admission(
+    http_runtime, monkeypatch
+):
     from uuid import uuid4
 
     client, scope = http_runtime
@@ -144,6 +157,12 @@ def test_committed_notebook_and_invitation_flow_preserves_accept_without_admissi
     assert client.delete(f"/api/notebooks/{notebook}").status_code == 204
     assert notebook not in {item["id"] for item in client.get(path).json()["items"]}
 
+    from app.auth import invitations
+
+    delivered = {}
+    monkeypatch.setattr(
+        invitations.InvitationMailer, "send", lambda _, email, token: delivered.update({email: token})
+    )
     recipient = uuid4()
     try:
         invited = client.post(
@@ -154,7 +173,10 @@ def test_committed_notebook_and_invitation_flow_preserves_accept_without_admissi
         app.dependency_overrides[session_layer.identity] = lambda: Identity(
             recipient, "invitee@example.test"
         )
-        accepted = client.post("/api/invitations/accept", json={"token": invited.json()["token"]})
+        assert "token" not in invited.json()
+        accepted = client.post(
+            "/api/invitations/accept", json={"token": delivered["invitee@example.test"]}
+        )
         assert accepted.status_code == 200
         assert client.get("/api/auth/admission").json() == {"admitted": True, "platform_role": None}
         assert client.get(path).status_code == 200

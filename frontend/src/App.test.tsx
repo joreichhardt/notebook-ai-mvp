@@ -183,7 +183,7 @@ describe("Sharing and capability discovery", () => {
   it("creates recipient-bound workspace invitations", async () => {
     vi.mocked(api.invite).mockResolvedValue({
       id: "i",
-      token: "secret-token",
+      delivery: "accepted_by_smtp",
       expires_at: "2026-12-01",
     });
     render(<App />);
@@ -195,12 +195,10 @@ describe("Sharing and capability discovery", () => {
       "friend@example.test",
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Einladungslink erstellen" }),
+      screen.getByRole("button", { name: "Einladung senden" }),
     );
-    const link = await screen.findByLabelText("Persönlicher Einladungslink");
-    expect(link).toHaveValue(
-      window.location.origin + "/invite#token=secret-token",
-    );
+    await screen.findByText(/Der Mailserver hat die Einladung angenommen/);
+    expect(screen.queryByLabelText("Persönlicher Einladungslink")).not.toBeInTheDocument();
     expect(api.invite).toHaveBeenCalledWith(
       "friend@example.test",
       "w",

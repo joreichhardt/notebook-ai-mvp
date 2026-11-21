@@ -4,28 +4,29 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { Administration } from "./Administration";
 import { api } from "./api";
 
-vi.mock("./api", () => ({ api: { invite: vi.fn(), administrators: vi.fn(), grantAdministrator: vi.fn() } }));
+vi.mock("./api", async (importOriginal) => ({ ...(await importOriginal<typeof import("./api")>()), api: { invite: vi.fn(), administrators: vi.fn(), grantAdministrator: vi.fn() } }));
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(api.administrators).mockResolvedValue({ items: [] });
 });
 
 it("creates a distinct app invitation with no shared workspace or admin rights", async () => {
-  vi.mocked(api.invite).mockResolvedValue({ id: "fixture", token: "synthetic-invitation-token", expires_at: "2030-01-01" });
+  vi.mocked(api.invite).mockResolvedValue({ id: "fixture", delivery: "accepted_by_smtp", expires_at: "2030-01-01" });
   render(<Administration role="admin" />);
   expect(screen.queryByRole("heading", { name: "Admins ernennen" })).not.toBeInTheDocument();
   expect(api.administrators).not.toHaveBeenCalled();
   await userEvent.type(screen.getByLabelText("E-Mail für die App-Einladung"), "recipient@example.test");
-  await userEvent.click(screen.getByRole("button", { name: "App-Einladungslink erstellen" }));
+  await userEvent.click(screen.getByRole("button", { name: "App-Einladung per E-Mail senden" }));
   await waitFor(() => expect(api.invite).toHaveBeenCalledWith("recipient@example.test", null, "viewer"));
-  expect(await screen.findByLabelText("Persönlicher App-Einladungslink")).toHaveValue(`${window.location.origin}/invite#token=synthetic-invitation-token`);
+  expect(await screen.findByRole("status")).toHaveTextContent("Der Mailserver hat die Einladung angenommen");
+  expect(screen.queryByLabelText("Persönlicher App-Einladungslink")).not.toBeInTheDocument();
 });
 
 it("shows no invitation link when the server rejects creation", async () => {
   vi.mocked(api.invite).mockRejectedValue(new Error("Keine Berechtigung"));
   render(<Administration role="admin" />);
   await userEvent.type(screen.getByLabelText("E-Mail für die App-Einladung"), "recipient@example.test");
-  await userEvent.click(screen.getByRole("button", { name: "App-Einladungslink erstellen" }));
+  await userEvent.click(screen.getByRole("button", { name: "App-Einladung per E-Mail senden" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Keine Berechtigung");
   expect(screen.queryByLabelText("Persönlicher App-Einladungslink")).not.toBeInTheDocument();
 });

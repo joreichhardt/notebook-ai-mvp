@@ -139,8 +139,9 @@ export default function App() {
             </div>
           </section>
           <section className="login-card">
-            <span className="eyebrow">WILLKOMMEN ZURÜCK</span>
-            <h2>Dein Notebook wartet.</h2>
+            <span className="eyebrow">{inviteToken ? "PERSÖNLICHE EINLADUNG" : "WILLKOMMEN ZURÜCK"}</span>
+            <h2>{inviteToken ? "Einladung annehmen" : "Dein Notebook wartet."}</h2>
+            {inviteToken && <p>Melde dich mit deinem bestehenden Konto für die eingeladene E-Mail-Adresse an.</p>}
             {sessionError || configError ? (
               <>
                 <ErrorBox error={sessionError || configError} />
@@ -157,7 +158,7 @@ export default function App() {
             )}
             <p className="fine">
               {inviteToken
-                ? "Melde dich mit der eingeladenen E-Mail-Adresse an, um die Einladung anzunehmen."
+                ? "Noch kein Konto? Die Einrichtung direkt aus der Einladung ist noch nicht verfügbar."
                 : "Zugang nur mit persönlicher Einladung."}
             </p>
           </section>

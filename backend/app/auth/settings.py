@@ -15,6 +15,19 @@ class Settings(BaseSettings):
     database_url: SecretStr = SecretStr("")
     database_url_file: str = ""
     supabase_anon_key_file: str = ""
+    invitation_smtp_host: str = ""
+    invitation_smtp_port: int = 587
+    invitation_smtp_sender: str = ""
+    invitation_smtp_password_file: str = ""
+
+    def read_invitation_smtp_credential(self) -> SecretStr:
+        if not self.invitation_smtp_password_file:
+            return SecretStr("")
+        try:
+            value = Path(self.invitation_smtp_password_file).read_text().rstrip("\r\n")
+        except (OSError, UnicodeError):
+            return SecretStr("")
+        return SecretStr(value)
 
 
 @lru_cache

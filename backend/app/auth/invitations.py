@@ -7,6 +7,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.auth.invitation_mail import InvitationMailer, InvitationMailUnavailable
 from app.auth.security import check_csrf, fail, invitation_hash, invitation_token
 from app.auth.settings import get_settings
 from app.auth.supabase import Identity
@@ -46,13 +47,28 @@ def rpc(db: Session, statement: str, params: dict):
         raise
 
 
-@router.post("/invitations", status_code=201)
+class InviteCreated(BaseModel):
+    id: UUID
+    expires_at: str
+    delivery: Literal["accepted_by_smtp", "unconfirmed"]
+
+
+@router.post("/invitations", status_code=201, response_model=InviteCreated)
 def create(
     body: InviteInput,
     request: Request,
     mutations: Annotated[ActorMutations, Depends(actor_mutations)],
 ):
-    check_csrf(request, get_settings().public_origin)
+    settings = get_settings()
+    check_csrf(request, settings.public_origin)
+    credential = settings.read_invitation_smtp_credential()
+    if not (settings.invitation_smtp_host and settings.invitation_smtp_sender and credential):
+        fail(503, "invitation_mail_unavailable", "E-Mail-Versand ist nicht verfügbar.")
+    mailer = InvitationMailer(
+        settings.public_origin, settings.invitation_smtp_host, settings.invitation_smtp_port,
+        settings.invitation_smtp_sender, credential.get_secret_value(),
+    )
+    email = body.email.lower()
     token, digest = invitation_token()
     invite_id = uuid4()
 
@@ -63,14 +79,20 @@ def create(
             {
                 "id": invite_id,
                 "hash": digest,
-                "email": body.email.lower(),
+                "email": email,
                 "workspace": body.workspace_id,
                 "role": body.role,
             },
         ).scalar_one()
-        return {"id": str(invite_id), "token": token, "expires_at": expiry.isoformat()}
+        return expiry.isoformat()
 
-    return mutations.run(create_invitation)
+    expires_at = mutations.run(create_invitation)
+    delivery = "accepted_by_smtp"
+    try:
+        mailer.send(email, token)
+    except InvitationMailUnavailable:
+        delivery = "unconfirmed"
+    return {"id": str(invite_id), "expires_at": expires_at, "delivery": delivery}
 
 
 @router.post("/invitations/accept")

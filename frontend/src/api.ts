@@ -134,6 +134,14 @@ export async function request<T>(
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
+export type InvitationDelivery = "accepted_by_smtp" | "unconfirmed";
+
+export function invitationDeliveryMessage(delivery: InvitationDelivery): string {
+  return delivery === "accepted_by_smtp"
+    ? "Der Mailserver hat die Einladung angenommen. Der Postfacheingang ist nicht bestätigt."
+    : "Einladung erstellt, aber der Mailversand konnte nicht bestätigt werden.";
+}
+
 export const api = {
   admission: (signal?: AbortSignal) =>
     request<{ admitted: boolean; platform_role?: PlatformRole | null }>(
@@ -202,7 +210,7 @@ export const api = {
       "DELETE",
     ),
   invite: (email: string, workspace_id: string | null, role: Role) =>
-    request<{ id: string; token: string; expires_at: string }>(
+    request<{ id: string; expires_at: string; delivery: InvitationDelivery }>(
       "/invitations",
       "POST",
       { email, workspace_id, role },
