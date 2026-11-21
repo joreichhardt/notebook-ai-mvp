@@ -1,0 +1,13 @@
+# Private, opt-in catalog for the full upload-test app with Supabase Vault.
+# Deliberately does not grant egress. Do not combine with the OpenAI relay.
+services:
+  api:
+    environment:
+      NOTEBOOK_PROVIDER_VAULT_ENABLED: 'true'
+      NOTEBOOK_PROVIDER_ENDPOINTS: >-
+        [{"id":"openai","label":"OpenAI","kind":"openai",
+        "base_url":"https://api.openai.com/v1"},
+        {"id":"claude","label":"Claude (Anthropic)","kind":"anthropic",
+        "base_url":"https://api.anthropic.com/v1"},
+        {"id":"groq","label":"Groq","kind":"openai",
+        "base_url":"https://api.groq.com/openai/v1"}]

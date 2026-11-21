@@ -40,6 +40,29 @@ def test_quote_points_to_server_selected_version_and_chunk(source):
     )
 
 
+def test_stale_selection_never_calls_execution(source):
+    from unittest.mock import AsyncMock, Mock
+
+    execution = Mock()
+    read_page = AsyncMock(return_value=source)
+    with pytest.raises(ValueError, match="source_unavailable"):
+        asyncio.run(
+            grounded_answer(
+                actor_id=uuid4(),
+                connection_id=uuid4(),
+                notebook_id=source.document.notebook_id,
+                document_id=source.document.id,
+                expected_version_id=uuid4(),
+                model="test",
+                question="Welche Farbe?",
+                read_page=read_page,
+                execution=execution,
+            )
+        )
+    read_page.assert_awaited_once()
+    execution.stream.assert_not_called()
+
+
 @pytest.mark.parametrize("revoked", [False, True])
 def test_answer_rechecks_user_source_after_provider(source, revoked):
     actor, connection = uuid4(), uuid4()
@@ -75,6 +98,7 @@ def test_answer_rechecks_user_source_after_provider(source, revoked):
         connection_id=connection,
         notebook_id=source.document.notebook_id,
         document_id=source.document.id,
+        expected_version_id=source.document.version_id,
         model="test",
         question="Welche Farbe?",
         read_page=read_page,

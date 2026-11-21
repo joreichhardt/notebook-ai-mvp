@@ -19,7 +19,7 @@ export function SourceChat({ source }: { source: SourceDocument }) {
     setBusy(true); setError(""); setResult(undefined); setPassage("");
     try {
       const r = await request<Answer>(`/notebooks/${encodeURIComponent(source.notebook_id)}/chat`, "POST", {
-        document_id: source.id, connection_id: id, model: connection.model, question,
+        document_id: source.id, expected_version_id: source.version_id, connection_id: id, model: connection.model, question,
       });
       if (r.citation.notebook_id !== source.notebook_id || r.citation.document_id !== source.id || r.citation.version_id !== source.version_id || !r.citation.quote?.trim() || typeof r.answer !== 'string') throw Error();
       setResult(r);

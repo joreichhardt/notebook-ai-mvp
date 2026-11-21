@@ -256,7 +256,7 @@ export function Connections() {
         </>
       )}
       {replacing && (
-        <section className="editor" role="dialog" aria-labelledby="replace-key-title">
+        <section key={replacing.id} className="editor" role="dialog" aria-labelledby="replace-key-title">
           <h2 id="replace-key-title">Schlüssel für „{replacing.label}“ ersetzen</h2>
           <form onSubmit={(event) => {
             event.preventDefault();

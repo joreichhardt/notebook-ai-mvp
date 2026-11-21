@@ -2,6 +2,7 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -162,6 +163,8 @@ def replace_key(connection_id: UUID, body: ReplaceKey, request: Request, user: U
     check_csrf(request, get_settings().public_origin)
     row = owned(db, user, connection_id)
     provider_config(row.provider_id)
+    if row.status != "active":
+        fail(409, "connection_inactive", "Verbindung wurde getrennt.")
     store = SupabaseStore(db)
     store.delete(row.id, row.secret_id)
     row.secret_id = store.create(row.id, body.api_key.get_secret_value())
@@ -171,10 +174,20 @@ def replace_key(connection_id: UUID, body: ReplaceKey, request: Request, user: U
 
 
 @router.delete("/connections/{connection_id}", status_code=204)
-def disconnect(connection_id: UUID, request: Request, user: User, db: DB):
+def disconnect(connection_id: UUID, request: Request, user: User, repository: DiscoveryRepo):
     check_csrf(request, get_settings().public_origin)
-    row = owned(db, user, connection_id)
-    SupabaseStore(db).delete(row.id, row.secret_id)
-    db.delete(row)
-    db.flush()
+    # Each transaction re-establishes the verified actor, RLS and admission.
+    with repository.session_factory(user) as db:
+        owned(db, user, connection_id).status = "disconnected"
+    try:
+        with repository.session_factory(user) as db:
+            row = owned(db, user, connection_id)
+            SupabaseStore(db).delete(row.id, row.secret_id)
+            db.delete(row)
+    except HTTPException as error:
+        if error.status_code != 503:
+            raise
+        return JSONResponse(
+            status_code=202, content={"status": "disconnected", "cleanup_pending": True}
+        )
     return Response(status_code=204)
