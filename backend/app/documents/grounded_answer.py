@@ -41,6 +41,7 @@ async def grounded_answer(
     actor_id: UUID,
     notebook_id: UUID,
     document_id: UUID,
+    expected_version_id: UUID,
     connection_id: UUID,
     model: str,
     question: str,
@@ -53,6 +54,7 @@ async def grounded_answer(
     if (
         sent.document.notebook_id != notebook_id
         or sent.document.id != document_id
+        or sent.document.version_id != expected_version_id
         or sent.document.status != "ready"
         or not sent.items
     ):

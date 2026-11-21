@@ -30,6 +30,7 @@ def test_private_chat_denies_disabled_csrf_and_unreadable_source(monkeypatch):
     url = f"/api/notebooks/{notebook}/chat"
     body = {
         "document_id": str(document),
+        "expected_version_id": str(uuid4()),
         "connection_id": str(uuid4()),
         "model": "test",
         "question": "Was?",

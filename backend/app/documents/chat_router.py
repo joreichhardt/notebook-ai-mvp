@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/notebooks")
 class Question(BaseModel):
     model_config = ConfigDict(extra="forbid")
     document_id: UUID
+    expected_version_id: UUID
     connection_id: UUID
     model: str = Field(min_length=1, max_length=200)
     question: str = Field(min_length=1, max_length=2000)
@@ -49,6 +50,7 @@ async def ask(
             actor_id=user.id,
             notebook_id=notebook_id,
             document_id=body.document_id,
+            expected_version_id=body.expected_version_id,
             connection_id=body.connection_id,
             model=body.model,
             question=body.question,

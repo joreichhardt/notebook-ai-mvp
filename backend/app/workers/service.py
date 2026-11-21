@@ -12,6 +12,10 @@ from app.workers.local_runtime import build_consumer, configured_runtime
 from app.workers.supervisor import TextWorkerSupervisor
 
 
+def build_supervisor(runtime, runner):
+    return TextWorkerSupervisor(build_consumer(runtime, runner, work_observation=True))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     runtime = configured_runtime()
@@ -19,21 +23,25 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("worker_disabled")
     runner = BoundedThreadRunner()
     supervisor = None
+    safe_to_dispose = False
     try:
-        supervisor = TextWorkerSupervisor(build_consumer(runtime, runner, supervised=True))
+        supervisor = build_supervisor(runtime, runner)
         task = asyncio.create_task(supervisor.run())
         app.state.worker = supervisor
         try:
             yield
         finally:
             app.state.worker = None
-            await supervisor.close()
+            report = await supervisor.close()
+            safe_to_dispose = report.quiescent
             if task.done():
-                await asyncio.gather(task, return_exceptions=True)
+                await task
+            if not report.quiescent or report.outcome_unknown:
+                raise RuntimeError("worker_shutdown_unconfirmed")
     finally:
         if supervisor is None:
-            await runner.close(timeout=3)
-        if not runner.snapshot().pending:
+            safe_to_dispose = await runner.close(timeout=3)
+        if safe_to_dispose and not runner.snapshot().pending:
             runtime.dispose()
 
 
