@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { api, type Member, type Role } from "./api";
+import { api, invitationDeliveryMessage, type Member, type Role } from "./api";
 const roles: Record<Role, string> = {
   owner: "Owner",
   editor: "Editor",
@@ -20,11 +20,15 @@ export function Invitation({
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [accepted, setAccepted] = useState(false);
   async function accept() {
     setBusy(true);
     setError("");
     try {
-      await api.acceptInvitation(token);
+      if (!accepted) {
+        await api.acceptInvitation(token);
+        setAccepted(true);
+      }
       await onAccepted();
     } catch (e) {
       setError(errorMessage(e));
@@ -47,11 +51,9 @@ export function Invitation({
       )}
       <div className="button-row">
         <button className="primary" disabled={busy} onClick={accept}>
-          {busy ? "Einladung wird geprüft …" : "Einladung annehmen"}
+          {busy ? "Bitte warten …" : accepted ? "Sitzung erneut laden" : "Einladung annehmen"}
         </button>
-        <button disabled={busy} onClick={onCancel}>
-          Abbrechen
-        </button>
+        {!accepted && <button disabled={busy} onClick={onCancel}>Abbrechen</button>}
       </div>
     </section>
   );
@@ -69,8 +71,7 @@ export function Sharing({
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [link, setLink] = useState(""),
-    [copied, setCopied] = useState(false),
+    [notice, setNotice] = useState(""),
     [remove, setRemove] = useState<Member | null>(null);
   useEffect(() => {
     const c = new AbortController();
@@ -105,17 +106,14 @@ export function Sharing({
   async function invite(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
-    setLink("");
-    setCopied(false);
+    setNotice("");
     await run(async () => {
       const result = await api.invite(
         String(data.get("email")),
         workspaceId,
         String(data.get("role")) as Role,
       );
-      const url = new URL("/invite", window.location.origin);
-      url.hash = new URLSearchParams({ token: result.token }).toString();
-      setLink(url.toString());
+      setNotice(invitationDeliveryMessage(result.delivery));
     });
   }
   return (
@@ -181,8 +179,7 @@ export function Sharing({
       <section className="editor">
         <h2>Eine Person einladen</h2>
         <p className="muted">
-          Der Link gilt für die angegebene E-Mail-Adresse. Teile ihn persönlich
-          mit der eingeladenen Person.
+          Der Link wird per E-Mail versendet und gilt nur für die angegebene Adresse.
         </p>
         <form onSubmit={invite}>
           <label>
@@ -200,28 +197,10 @@ export function Sharing({
             </select>
           </label>
           <button className="primary" disabled={busy}>
-            Einladungslink erstellen
+            Einladung senden
           </button>
         </form>
-        {link && (
-          <div className="invite-result">
-            <label>
-              Persönlicher Einladungslink
-              <input readOnly value={link} onFocus={(e) => e.target.select()} />
-            </label>
-            <button
-              onClick={() =>
-                run(async () => {
-                  await navigator.clipboard.writeText(link);
-                  setCopied(true);
-                })
-              }
-            >
-              {copied ? "Kopiert" : "Link kopieren"}
-            </button>
-            <p className="fine">Bewahre diesen Link vertraulich auf.</p>
-          </div>
-        )}
+        {notice && <p role="status">{notice}</p>}
       </section>
       {remove && (
         <section
